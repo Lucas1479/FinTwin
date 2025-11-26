@@ -1,0 +1,49 @@
+# #######################################
+# General
+# #######################################
+# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
+build/
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Environment / configuration
+.env
+.env.*
+*.local
+backend/env.*
+
+# Runtime files
+*.pid
+*.seed
+
+# #######################################
+# Editor / system files
+# #######################################
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# #######################################
+# Frontend (Vite + React)
+# #######################################
+frontend/.vite/
+frontend/.eslintcache
+
+# #######################################
+# Backend (Node/Express)
+# #######################################
+backend/.cache/
+backend/coverage/
+
+
