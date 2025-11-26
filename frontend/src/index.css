@@ -1,0 +1,102 @@
+@import "tailwindcss";
+@plugin "daisyui";
+
+@theme {
+  /* Brand Colors - Desaturated Purple */
+  --color-brand-50: #f0f1fa;
+  --color-brand-100: #e2e4f6;
+  --color-brand-200: #c6c9ed;
+  --color-brand-300: #a9ade5;
+  --color-brand-400: #8d92dc;
+  --color-brand-500: #7077d4; /* Base Color - Lower Saturation */
+  --color-brand-600: #5a5faa;
+  --color-brand-700: #434780;
+  --color-brand-800: #2d3055;
+  --color-brand-900: #16182b;
+  
+  --color-primary: #7077d4;
+  --color-primary-hover: #5a5faa;
+  --color-primary-light: #e2e4f6;
+
+  /* Radius */
+  --radius-box: 2rem; /* 32px for extra rounded feel */
+  --radius-btn: 9999px;
+  --radius-input: 1.25rem; /* 20px */
+}
+
+@layer base {
+  @font-face {
+    font-family: 'Outfit';
+    font-style: normal;
+    font-weight: 300 700;
+    font-display: swap;
+    src: url(https://fonts.gstatic.com/s/outfit/v11/QGYyz_MVcBeNP4NjuGObqx1XmO1I4TC0C4G-StheGws.woff2) format('woff2');
+    /* Note: In a real prod env, we should download fonts or use a proper loader. 
+       For this demo, we will rely on Google Fonts import in index.html */
+  }
+
+  body {
+    font-family: 'Outfit', sans-serif;
+    background-color: #f8f9fc;
+    color: #334155;
+  }
+}
+
+@layer utilities {
+  .card-base {
+    background-color: white;
+    border-radius: var(--radius-box);
+    border: 1px solid #eef2f6;
+    box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.03);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  
+  .card-base:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 20px 40px -10px rgba(112, 119, 212, 0.05);
+    border-color: #e2e4f6;
+  }
+  
+  .input-rounded {
+    border-radius: var(--radius-input);
+    border: 1px solid #e2e8f0;
+    padding: 0.875rem 1.25rem;
+    transition: all 0.2s;
+    background-color: #f8fafc;
+  }
+  
+  .input-rounded:focus {
+    background-color: white;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 4px var(--color-brand-100);
+    outline: none;
+  }
+
+  .btn-primary-rounded {
+    background-color: var(--color-primary);
+    color: white;
+    border-radius: var(--radius-btn);
+    padding: 0.875rem 2rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 10px 20px -5px rgba(112, 119, 212, 0.3);
+  }
+
+  .btn-primary-rounded:hover {
+    background-color: var(--color-primary-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 15px 30px -5px rgba(112, 119, 212, 0.4);
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeInUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
