@@ -78,6 +78,21 @@ const getMe = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc    Logout user / clear JWT cookie
+// @route   POST /api/users/logout
+// @access  Public (只做清理，不需要鉴权)
+const logoutUser = asyncHandler(async (req, res) => {
+  // 清除 httpOnly JWT cookie
+  res.cookie('jwt', '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    expires: new Date(0),
+  });
+
+  res.status(200).json({ message: 'Logged out successfully' });
+});
+
 // Generate JWT and set cookie
 const generateToken = (res, userId) => {
   const token = jwt.sign({ id: userId }, process.env.JWT_SECRET, {
@@ -96,5 +111,6 @@ export {
   registerUser,
   loginUser,
   getMe,
+  logoutUser,
 };
 
