@@ -1,7 +1,7 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Menu, X, User, Settings, LogOut, Search, Bell } from 'lucide-react';
-import api from '../../utils/api';
+import { getCurrentUser, logout as logoutService } from '../../services/authService';
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -10,29 +10,11 @@ const Navbar = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
 
-  // 从本地或后端获取当前登录用户信息
+  // Load current user information from auth service (internally handles localStorage + /users/me)
   useEffect(() => {
-    const stored = localStorage.getItem('userInfo');
-
-    if (stored) {
-      try {
-        setCurrentUser(JSON.parse(stored));
-        return;
-      } catch (e) {
-        console.error('Failed to parse userInfo from localStorage', e);
-      }
-    }
-
-    // 兜底：如果本地没有，就尝试从后端 /api/users/me 获取
     (async () => {
-      try {
-        const { data } = await api.get('/users/me');
-        const normalized = { id: data.id, name: data.name, email: data.email };
-        setCurrentUser(normalized);
-        localStorage.setItem('userInfo', JSON.stringify(normalized));
-      } catch (err) {
-        console.error('Failed to fetch current user info', err);
-      }
+      const user = await getCurrentUser();
+      setCurrentUser(user);
     })();
   }, []);
 
@@ -49,20 +31,10 @@ const Navbar = () => {
     : 'U';
 
   const handleLogout = async () => {
-    try {
-      // 调用后端登出接口，清除 httpOnly JWT Cookie
-      await api.post('/users/logout');
-    } catch (err) {
-      console.error('Logout failed:', err);
-      // 即使后端失败，也继续清理前端状态，避免卡死在登录态
-    }
-
-    // 清理前端本地数据
-    localStorage.removeItem('userInfo');
-    localStorage.removeItem('token');
+    await logoutService();
     setCurrentUser(null);
 
-    // 关闭个人菜单并跳转到登录页（或首页）
+    // Close profile menu and redirect to login page
     setIsProfileOpen(false);
     navigate('/login');
   };

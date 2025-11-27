@@ -80,9 +80,9 @@ const getMe = asyncHandler(async (req, res) => {
 
 // @desc    Logout user / clear JWT cookie
 // @route   POST /api/users/logout
-// @access  Public (只做清理，不需要鉴权)
+// @access  Public (only clears auth cookie, no auth required)
 const logoutUser = asyncHandler(async (req, res) => {
-  // 清除 httpOnly JWT cookie
+  // Clear httpOnly JWT cookie
   res.cookie('jwt', '', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
