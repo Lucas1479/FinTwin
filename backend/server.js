@@ -26,8 +26,30 @@ app.get('/', (req, res) => {
   res.send('API is running...');
 });
 
-// Routes
+// API routes
 app.use(routes);
+
+// 404 handler for unknown routes
+app.use((req, res, next) => {
+  const error = new Error(`Not Found - ${req.originalUrl}`);
+  error.statusCode = 404;
+  error.code = 'NOT_FOUND';
+  next(error);
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error(err);
+
+  const statusCode = err.statusCode || (res.statusCode === 200 ? 500 : res.statusCode);
+  const code = err.code || 'INTERNAL_ERROR';
+
+  res.status(statusCode).json({
+    message: err.message || 'Server error',
+    code,
+    stack: process.env.NODE_ENV === 'production' ? undefined : err.stack,
+  });
+});
 
 const PORT = process.env.PORT || 5000;
 
