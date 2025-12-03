@@ -1,17 +1,31 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AppError } from '../utils/errors.js';
 
 // LLMService: thin abstraction over different LLM providers (Gemini, Bedrock, etc.)
-// Ensures a unified input/output contract for the rest of the app.
+// Uses structured output when possible and always returns a unified shape.
 
 class LLMService {
   constructor(provider = process.env.LLM_PROVIDER || 'gemini') {
     this.provider = provider;
+
+    this.apiKey = process.env.GEMINI_API_KEY;
+    this.model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+
+    if (this.provider === 'gemini' && this.apiKey && this.apiKey !== 'your_gemini_api_key_here') {
+      try {
+        this.genAI = new GoogleGenerativeAI(this.apiKey);
+        this.generativeModel = this.genAI.getGenerativeModel({ model: this.model });
+        // console.log('LLMService: GoogleGenerativeAI initialized');
+      } catch (error) {
+        console.error('LLMService: failed to initialize GoogleGenerativeAI', error);
+      }
+    }
   }
 
   /**
    * Generate a model response with unified output format.
    * @param {string} prompt - Main user/system prompt.
-   * @param {object} context - Optional structured context (e.g. GoalContext, stage, user_input).
+   * @param {object} context - Optional structured context (e.g. GoalContext, stage, user_input, responseSchema).
    * @returns {Promise<{ provider: string, text: string, json: any, raw: any }>}
    */
   async generate(prompt, context = {}) {
@@ -20,7 +34,7 @@ class LLMService {
     }
 
     if (this.provider === 'gemini') {
-      return this.callGemini(prompt, context);
+      return this.generateWithGemini(prompt, context);
     }
 
     if (this.provider === 'bedrock') {
@@ -30,79 +44,66 @@ class LLMService {
     throw new AppError(`Unsupported LLM provider: ${this.provider}`, 500, 'LLM_PROVIDER_INVALID');
   }
 
-  // --- Provider-specific implementations ---
+  isConfigured() {
+    return !!this.generativeModel;
+  }
 
-  async callGemini(prompt, context) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new AppError('GEMINI_API_KEY is not configured.', 500, 'LLM_CONFIG_ERROR');
+  // --- Gemini structured output (similar style to aiService.js) ---
+  async generateWithGemini(prompt, context) {
+    if (!this.generativeModel) {
+      throw new AppError('Gemini model is not configured.', 500, 'LLM_CONFIG_ERROR');
     }
 
-    const model = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    const { responseSchema, ...restContext } = context || {};
 
-    // For now we just attach context as JSON below the prompt.
-    // Later this can be extended to include system instructions / schema.
+    // 默认行为：将 context 作为 JSON 附加在 prompt 下方，调用方仍需在 prompt 中要求 "Return JSON only"。
     const contextText =
-      context && Object.keys(context).length > 0
-        ? `\n\nContext (JSON):\n${JSON.stringify(context, null, 2)}`
+      restContext && Object.keys(restContext).length > 0
+        ? `\n\nContext (JSON):\n${JSON.stringify(restContext, null, 2)}`
         : '';
 
-    const body = {
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: `${prompt}${contextText}`,
-            },
-          ],
-        },
-      ],
-    };
+    const fullPrompt = `${prompt}${contextText}`;
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify(body),
-    });
+    const generationConfig =
+      responseSchema && Object.keys(responseSchema).length > 0
+        ? {
+            responseMimeType: 'application/json',
+            responseSchema,
+          }
+        : {};
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new AppError(
-        `Gemini API error: ${response.status} ${response.statusText}`,
-        response.status,
-        'LLM_PROVIDER_ERROR'
-      );
-    }
+    try {
+      const result = await this.generativeModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
+        generationConfig,
+      });
 
-    const data = await response.json();
-    const parts = data?.candidates?.[0]?.content?.parts || [];
-    const text = parts.map((p) => p.text || '').join('').trim();
+      const response = await result.response;
+      const text = response.text();
 
-    let parsedJson = null;
-    if (text) {
-      try {
-        parsedJson = JSON.parse(text);
-      } catch {
-        // Not strict JSON; leave parsedJson as null, caller can use raw text.
+      let parsedJson = null;
+      if (text) {
+        try {
+          parsedJson = JSON.parse(text);
+        } catch {
+          // If the model did not return strict JSON, parsedJson stays null.
+        }
       }
-    }
 
-    return {
-      provider: 'gemini',
-      text,
-      json: parsedJson,
-      raw: data,
-    };
+      return {
+        provider: 'gemini',
+        text,
+        json: parsedJson,
+        raw: response,
+      };
+    } catch (error) {
+      console.error('LLMService: Gemini generate error', error);
+      throw new AppError('Gemini generation failed', 502, 'LLM_PROVIDER_ERROR');
+    }
   }
 
   async callBedrock(prompt, context) {
     // Placeholder for future AWS Bedrock integration.
-    // Here we intentionally throw to make it explicit during local dev.
     throw new AppError(
       'Bedrock provider is not implemented yet in LLMService.',
       501,
@@ -114,5 +115,4 @@ class LLMService {
 const llmService = new LLMService();
 
 export default llmService;
-
 

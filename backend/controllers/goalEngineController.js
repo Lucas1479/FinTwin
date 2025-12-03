@@ -1,6 +1,7 @@
 import asyncHandler from 'express-async-handler';
 import llmService from '../services/llmService.js';
 import { BadRequestError } from '../utils/errors.js';
+import { buildGoalEnginePrompt, GOAL_ENGINE_STAGES } from '../services/goalEnginePrompts.js';
 
 // ==========================================
 // Goal Engine / LLM decision entrypoint
@@ -12,14 +13,21 @@ import { BadRequestError } from '../utils/errors.js';
 // @route   POST /api/goals/engine/generate
 // @access  Private
 export const generateGoalDecision = asyncHandler(async (req, res) => {
-  const { prompt, context } = req.body || {};
+  const { stage, goalContext, userInput, previousDecisions } = req.body || {};
 
-  if (!prompt) {
-    throw new BadRequestError('prompt is required', 'PROMPT_REQUIRED');
+  if (!stage || !Object.values(GOAL_ENGINE_STAGES).includes(stage)) {
+    throw new BadRequestError('Valid stage is required', 'STAGE_REQUIRED');
   }
 
-  // context can include: stage, goalContext, user_input, previous_decisions, etc.
-  const result = await llmService.generate(prompt, context || {});
+  // Build stage-specific prompt + context (includes responseSchema)
+  const { prompt, context } = buildGoalEnginePrompt({
+    stage,
+    goalContext,
+    userInput,
+    previousDecisions,
+  });
+
+  const result = await llmService.generate(prompt, context);
 
   res.json(result);
 });
