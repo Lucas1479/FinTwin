@@ -99,7 +99,7 @@ const generateToken = (res, userId) => {
   res.cookie('jwt', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
-    sameSite: 'strict', // Prevent CSRF
+    sameSite: 'lax', // Lax is better for general navigation and development than Strict
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
 };

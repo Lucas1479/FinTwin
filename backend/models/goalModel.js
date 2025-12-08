@@ -20,41 +20,6 @@ const ActionPlanSchema = new mongoose.Schema({
   reminder_date: { type: Date }
 }, { _id: true }); // Needs _id to facilitate locating when toggling completion on frontend
 
-// 3. Funding Mix: How existing assets are allocated to this goal
-const FundingMixSchema = new mongoose.Schema({
-  asset_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'FinancialAsset', // Refer to financial_assets collection model
-    required: true,
-  },
-  allocation_type: {
-    type: String,
-    required: true,
-    enum: ['Percentage', 'Fixed_Amount'],
-  },
-  allocation_value: {
-    type: Number,
-    required: true,
-    min: 0,
-  },
-}, { _id: false });
-
-// 4. Contribution Plan: Future recurring contributions for projection only
-const ContributionPlanSchema = new mongoose.Schema({
-  recurring_amount: {
-    type: Number,
-    default: 0,
-    min: 0,
-    description: 'Amount the user commits to save regularly. Used only for AI projections.',
-  },
-  frequency: {
-    type: String,
-    default: 'Monthly',
-    enum: ['Weekly', 'Fortnightly', 'Monthly'],
-    description: 'How often the recurring_amount is added in projection models.',
-  },
-}, { _id: false });
-
 // 1. Define Polymorphic Sub-Schemas (The "Magic Pocket" Shapes)
 // ==========================================
 // These schemas validate the `goal_details` mixed field based on the selected category.
@@ -196,28 +161,8 @@ const GoalSchema = new mongoose.Schema({
     description: "Used by AI for trade-off analysis"
   },
 
-  // Strategy snapshot: AI recommendation vs final user decision
-  strategy: {
-    recommended_risk: {
-      type: String,
-      enum: ['high-risk', 'middle-risk', 'low-risk'],
-      description: 'Risk level recommended by the AI for this goal.',
-    },
-    user_override: {
-      type: Boolean,
-      default: false,
-      description: 'True if user-selected riskTolerance differs from recommended_risk.',
-    },
-    ai_rationale: {
-      type: String,
-      maxlength: 1000,
-      description: 'Short explanation from AI on why this risk level was recommended.',
-    },
-    last_decision_at: {
-      type: Date,
-      description: 'Timestamp of the last strategy decision for this goal.',
-    },
-  },
+  // NOTE: Detailed strategy execution (AI rationale, overrides) has moved to planModel.js
+  // goalModel retains only the high-level risk preference.
 
   status: {
     type: String,
@@ -235,17 +180,9 @@ const GoalSchema = new mongoose.Schema({
   target_amount: { type: Number, required: true , min: 0 },
   current_amount: { type: Number, default: 0 , min: 0 },
   due_date: { type: Date, required: true },
-  inflation_adjusted:{ type:Boolean, default:true },
-
-  // Funding & Contributions (The Wallet)
-  // A. Existing Assets: how current assets are locked for this goal
-  funding_mix: [FundingMixSchema], // Array of { asset_id, allocation_type, allocation_value }
-
-  // B. Contribution Plan: future recurring savings (projection only)
-  contribution_plan: {
-    type: ContributionPlanSchema,
-    default: () => ({}), // falls back to { recurring_amount: 0, frequency: 'Monthly' }
-  },
+  
+  // NOTE: Funding Mix and Contribution Plan have been moved to planModel.js
+  // This keeps GoalSchema focused on the "Target" (What), while PlanSchema defines the "Method" (How).
 
   // --- Level 2: Polymorphic Details (Used for AI decision context) ---
   // Stores type-specific attributes for different goal types, keeping the Root clean

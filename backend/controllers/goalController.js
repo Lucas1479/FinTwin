@@ -1,18 +1,19 @@
 import asyncHandler from 'express-async-handler';
 import Goal from '../models/goalModel.js';
+import Plan from '../models/planModel.js';
 import { BadRequestError, NotFoundError } from '../utils/errors.js';
 
 // ==========================================
-// Goal Information / CRUD Controller
-// Handles creating, reading, updating and deleting
-// finalized Goal documents for a specific user.
+// Goal & Plan Controller
+// Handles the lifecycle of Goals and their associated Plans.
 // ==========================================
 
-// @desc    Create a new goal
+// @desc    Create a new goal (and its initial Plan)
 // @route   POST /api/goals
 // @access  Private
 export const createGoal = asyncHandler(async (req, res) => {
   const {
+    // --- Goal Fields ---
     goal_name,
     icon,
     category,
@@ -23,18 +24,25 @@ export const createGoal = asyncHandler(async (req, res) => {
     target_amount,
     current_amount,
     due_date,
-    inflation_adjusted,
-    funding_mix,
-    contribution_plan,
     goal_details,
     notes,
     linked_accounts,
+
+    // --- Plan Fields ---
+    strategyType,     // Maps to strategy_profile
+    granularSettings, // Maps to settings
+    product,          // Maps to investment_product / product_snapshot
+    contribution,     // { amount, frequency }
+    funding_source,
+    initial_allocations,
+    ai_rationale
   } = req.body;
 
   if (!goal_name || !category || !priority || !riskTolerance || !target_amount || !due_date) {
     throw new BadRequestError('Missing required goal fields');
   }
 
+  // 1. Create the Goal (The "What")
   const goal = await Goal.create({
     user_id: req.user._id,
     goal_name,
@@ -47,18 +55,43 @@ export const createGoal = asyncHandler(async (req, res) => {
     target_amount,
     current_amount,
     due_date,
-    inflation_adjusted,
-    funding_mix,
-    contribution_plan,
     goal_details,
     notes,
     linked_accounts,
   });
 
-  res.status(201).json(goal);
+  // 2. Create the Plan (The "How")
+  // Note: We map frontend keys to backend Schema keys here
+  const plan = await Plan.create({
+    goal_id: goal._id,
+    user_id: req.user._id,
+    strategy_profile: strategyType || 'balanced',
+    settings: {
+        inflation_adjusted: granularSettings?.inflationAdjust ?? true,
+        tax_optimized: granularSettings?.taxOptimized ?? false,
+        reinvest_dividends: granularSettings?.reinvestDividends ?? true,
+        liquidity_preference: granularSettings?.liquidity ?? 'flexible'
+    },
+    product_snapshot: product ? {
+        name: product.name,
+        provider: product.provider || 'Unknown',
+        fees: product.fees,
+        risk_level: product.risk_level || 'Medium'
+    } : undefined,
+    contribution: contribution || { amount: 0, frequency: 'monthly' },
+    funding_source, // ObjectId if real, null if mock
+    initial_allocations,
+    ai_rationale
+  });
+
+  // 3. Return Combined Result
+  res.status(201).json({
+    ...goal.toObject(),
+    plan: plan.toObject()
+  });
 });
 
-// @desc    Get all goals for current user
+// @desc    Get all goals for current user (includes active Plan)
 // @route   GET /api/goals
 // @access  Private
 export const getGoals = asyncHandler(async (req, res) => {
@@ -68,65 +101,91 @@ export const getGoals = asyncHandler(async (req, res) => {
     filter.status = req.query.status;
   }
 
-  const goals = await Goal.find(filter).sort({ rank: 1, created_at: -1 });
-  res.json(goals);
+  // 1. Fetch Goals
+  const goals = await Goal.find(filter).sort({ rank: 1, created_at: -1 }).lean();
+
+  // 2. Fetch Plans for these goals
+  // Optimization: Fetch all plans for this user in one go and map them in memory
+  const goalIds = goals.map(g => g._id);
+  const plans = await Plan.find({ goal_id: { $in: goalIds } }).lean();
+
+  // 3. Merge Plan into Goal
+  const goalsWithPlans = goals.map(goal => {
+    const plan = plans.find(p => p.goal_id.toString() === goal._id.toString());
+    return { ...goal, plan: plan || null };
+  });
+
+  res.json(goalsWithPlans);
 });
 
 // @desc    Get a single goal by id
 // @route   GET /api/goals/:id
 // @access  Private
 export const getGoalById = asyncHandler(async (req, res) => {
-  const goal = await Goal.findOne({ _id: req.params.id, user_id: req.user._id });
+  const goal = await Goal.findOne({ _id: req.params.id, user_id: req.user._id }).lean();
 
   if (!goal) {
     throw new NotFoundError('Goal not found');
+  }
+
+  const plan = await Plan.findOne({ goal_id: goal._id }).lean();
+
+  res.json({ ...goal, plan: plan || null });
+});
+
+// @desc    Update a goal (and optionally its plan)
+// @route   PUT /api/goals/:id
+// @access  Private
+export const updateGoal = asyncHandler(async (req, res) => {
+  let goal = await Goal.findOne({ _id: req.params.id, user_id: req.user._id });
+
+  if (!goal) {
+    throw new NotFoundError('Goal not found');
+  }
+
+  // --- Update Goal Fields ---
+  const goalFields = [
+    'goal_name', 'icon', 'category', 'priority', 'riskTolerance',
+    'status', 'rank', 'target_amount', 'current_amount', 'due_date',
+    'goal_details', 'notes', 'linked_accounts', 'completed_at'
+  ];
+
+  goalFields.forEach((field) => {
+    if (typeof req.body[field] !== 'undefined') {
+      goal[field] = req.body[field];
+    }
+  });
+  await goal.save();
+
+  // --- Update Plan Fields (If provided) ---
+  // If request contains plan-related keys, update the plan
+  if (req.body.strategyType || req.body.granularSettings || req.body.contribution) {
+      let plan = await Plan.findOne({ goal_id: goal._id });
+      if (!plan) {
+          // Create if missing (rare case)
+          plan = new Plan({ goal_id: goal._id, user_id: req.user._id });
+      }
+
+      if (req.body.strategyType) plan.strategy_profile = req.body.strategyType;
+      
+      if (req.body.granularSettings) {
+          if (req.body.granularSettings.inflationAdjust !== undefined) plan.settings.inflation_adjusted = req.body.granularSettings.inflationAdjust;
+          if (req.body.granularSettings.taxOptimized !== undefined) plan.settings.tax_optimized = req.body.granularSettings.taxOptimized;
+          // ... map others
+      }
+
+      if (req.body.contribution) plan.contribution = req.body.contribution;
+
+      await plan.save();
+      
+      // Return merged
+      return res.json({ ...goal.toObject(), plan: plan.toObject() });
   }
 
   res.json(goal);
 });
 
-// @desc    Update a goal
-// @route   PUT /api/goals/:id
-// @access  Private
-export const updateGoal = asyncHandler(async (req, res) => {
-  const goal = await Goal.findOne({ _id: req.params.id, user_id: req.user._id });
-
-  if (!goal) {
-    throw new NotFoundError('Goal not found');
-  }
-
-  const updatableFields = [
-    'goal_name',
-    'icon',
-    'category',
-    'priority',
-    'riskTolerance',
-    'status',
-    'rank',
-    'target_amount',
-    'current_amount',
-    'due_date',
-    'inflation_adjusted',
-    'funding_mix',
-    'contribution_plan',
-    'goal_details',
-    'notes',
-    'linked_accounts',
-    'strategy',
-    'completed_at',
-  ];
-
-  updatableFields.forEach((field) => {
-    if (typeof req.body[field] !== 'undefined') {
-      goal[field] = req.body[field];
-    }
-  });
-
-  const updated = await goal.save();
-  res.json(updated);
-});
-
-// @desc    Delete a goal
+// @desc    Delete a goal (and its plan)
 // @route   DELETE /api/goals/:id
 // @access  Private
 export const deleteGoal = asyncHandler(async (req, res) => {
@@ -136,7 +195,8 @@ export const deleteGoal = asyncHandler(async (req, res) => {
     throw new NotFoundError('Goal not found');
   }
 
-  res.status(200).json({ message: 'Goal removed' });
+  // Cleanup Plan
+  await Plan.deleteOne({ goal_id: req.params.id });
+
+  res.status(200).json({ message: 'Goal and associated Plan removed' });
 });
-
-

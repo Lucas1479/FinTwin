@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import morgan from 'morgan';
 import connectDB from './config/db.js';
 import routes from './routes/index.js';
 
@@ -15,11 +16,16 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:5173', // 前端地址
+  origin: 'http://localhost:5173', // 
   credentials: true // 允许携带 cookie
 }));
 app.use(express.json());
 app.use(cookieParser());
+
+// Logging Middleware
+if (process.env.NODE_ENV !== 'production') {
+  app.use(morgan('dev'));
+}
 
 // Routes
 app.get('/', (req, res) => {
