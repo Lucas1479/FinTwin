@@ -46,4 +46,8 @@ frontend/.eslintcache
 backend/.cache/
 backend/coverage/
 
-
+# #######################################
+# Data files (Local only)
+# #######################################
+backend/data/raw/*.csv
+backend/data/processed/*.json

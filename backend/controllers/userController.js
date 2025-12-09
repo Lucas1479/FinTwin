@@ -61,17 +61,24 @@ const loginUser = asyncHandler(async (req, res) => {
   }
 });
 
-// @desc    Get user data
+// @desc    Get user data (profile summary used by frontend dashboards)
 // @route   GET /api/users/me
 // @access  Private
 const getMe = asyncHandler(async (req, res) => {
   const user = await User.findById(req.user.id);
 
+  if (!user) {
+    res.status(404);
+    throw new Error('User not found');
+  }
+
   res.status(200).json({
     id: user._id,
     name: user.name,
     email: user.email,
-    // Add other fields as needed
+    age: user.age ?? null,
+    income: user.income ?? null,
+    riskTolerance: user.riskTolerance ?? 'Balanced',
   });
 });
 
@@ -110,4 +117,3 @@ export {
   getMe,
   logoutUser,
 };
-
