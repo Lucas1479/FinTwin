@@ -14,12 +14,12 @@ const api = axios.create({
 // Automatically injects token before the request is sent
 api.interceptors.request.use(
   (config) => {
-    // Retrieve token from localStorage (Standard for MERN stack)
-    const token = localStorage.getItem('token'); 
-    if (token) {
-      // Attach token using standard Bearer format
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+    // Note: We primarily use httpOnly cookies for auth.
+    // However, if we ever needed to switch back to headers, this is where we'd add it.
+    // const token = localStorage.getItem('token'); 
+    // if (token) {
+    //   config.headers.Authorization = `Bearer ${token}`;
+    // }
     return config;
   },
   (error) => {
@@ -41,7 +41,8 @@ api.interceptors.response.use(
       
       // 401: Unauthorized / Token Expired -> Redirect to login
       if (status === 401) {
-        localStorage.removeItem('token'); // Clear invalid token
+        localStorage.removeItem('userInfo'); // Clear user state
+        localStorage.removeItem('token'); // Clear legacy token if any
         
         // Force redirect if not already on login page
         if (window.location.pathname !== '/login') {

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import { User, Mail, Lock, ArrowRight, ShieldCheck } from 'lucide-react';
+import { register } from '../services/authService';
 
 const RegisterPage = () => {
   const [name, setName] = useState('');
@@ -27,19 +27,7 @@ const RegisterPage = () => {
     }
 
     try {
-      const config = {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      };
-
-      const { data } = await axios.post(
-        '/api/users',
-        { name, email, password },
-        config
-      );
-
-      localStorage.setItem('userInfo', JSON.stringify(data));
+      await register(name, email, password);
       navigate('/dashboard');
     } catch (error) {
       console.error(error);

@@ -7,6 +7,9 @@ import WealthPage from './pages/WealthPage';
 import GoalsPage from './pages/GoalsPage';
 import MarketplacePage from './pages/MarketplacePage';
 import PlaygroundPage from './pages/PlaygroundPage';
+import GoalCreatePathways from './pages/GoalCreatePathways';
+import GoalIntakePage from './pages/GoalIntakePage';
+import GoalGalleryPage from './pages/GoalGalleryPage';
 
 function App() {
   return (
@@ -20,6 +23,9 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/wealth" element={<WealthPage />} />
         <Route path="/goals" element={<GoalsPage />} />
+        <Route path="/goals/new" element={<GoalCreatePathways />} />
+        <Route path="/goals/new/ai" element={<GoalIntakePage />} />
+        <Route path="/goals/new/gallery" element={<GoalGalleryPage />} />
         <Route path="/marketplace" element={<MarketplacePage />} />
         <Route path="/playground" element={<PlaygroundPage />} />
 

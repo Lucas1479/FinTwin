@@ -1,15 +1,42 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Menu, X, User, Settings, LogOut, Search, Bell } from 'lucide-react';
+import { getCurrentUser, logout as logoutService } from '../../services/authService';
 
 const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
 
-  const handleLogout = () => {
-    navigate('/');
+  // Load current user information from auth service (internally handles localStorage + /users/me)
+  useEffect(() => {
+    (async () => {
+      const user = await getCurrentUser();
+      setCurrentUser(user);
+    })();
+  }, []);
+
+  const displayName = currentUser?.name || 'User';
+  const displayEmail = currentUser?.email || '';
+  const initials = currentUser?.name
+    ? currentUser.name
+        .split(' ')
+        .filter(Boolean)
+        .map((part) => part[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : 'U';
+
+  const handleLogout = async () => {
+    await logoutService();
+    setCurrentUser(null);
+
+    // Close profile menu and redirect to login page
+    setIsProfileOpen(false);
+    navigate('/login');
   };
 
   return (
@@ -50,16 +77,22 @@ const Navbar = () => {
                 className="flex items-center gap-3 p-1.5 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100"
               >
                 <div className="w-9 h-9 rounded-full bg-brand-100 border-2 border-white shadow-sm flex items-center justify-center text-primary font-bold text-sm">
-                  LS
+                  {initials}
                 </div>
-                <span className="hidden md:block text-sm font-bold text-slate-700">Lucas</span>
+                <span className="hidden md:block text-sm font-bold text-slate-700">
+                  {displayName}
+                </span>
               </button>
 
               {isProfileOpen && (
                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-200">
                   <div className="px-4 py-3 border-b border-slate-50 mb-2">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Signed in as</p>
-                    <p className="text-sm font-bold text-slate-900 truncate">lucas@example.com</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Signed in as
+                    </p>
+                    <p className="text-sm font-bold text-slate-900 truncate">
+                      {displayEmail || 'Unknown user'}
+                    </p>
                   </div>
                   <a href="#" className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors">
                     <User size={18} /> Your Profile

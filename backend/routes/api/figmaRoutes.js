@@ -8,8 +8,8 @@ router.get('/test', (req, res) => {
   res.json({ message: 'Figma integration endpoint ready' });
 });
 
-// 这里可以添加更多与 Figma MCP 交互的逻辑
-// 例如：接收 Webhook，或者作为 MCP Client 请求 Figma 数据
+// More Figma MCP-related logic can be added here
+// For example: receiving webhooks or acting as an MCP client to request Figma data
 
 export default router;
 

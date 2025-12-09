@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import asyncHandler from 'express-async-handler';
 import User from '../models/userModel.js';
+import { BadRequestError, UnauthorizedError } from '../utils/errors.js';
 
 // @desc    Register new user
 // @route   POST /api/users/register
@@ -9,16 +10,14 @@ const registerUser = asyncHandler(async (req, res) => {
   const { name, email, password } = req.body;
 
   if (!name || !email || !password) {
-    res.status(400);
-    throw new Error('Please add all fields');
+    throw new BadRequestError('Please add all fields');
   }
 
   // Check if user exists
   const userExists = await User.findOne({ email });
 
   if (userExists) {
-    res.status(400);
-    throw new Error('User already exists');
+    throw new BadRequestError('User already exists', 'USER_EXISTS');
   }
 
   // Create user
@@ -36,8 +35,7 @@ const registerUser = asyncHandler(async (req, res) => {
       email: user.email,
     });
   } else {
-    res.status(400);
-    throw new Error('Invalid user data');
+    throw new BadRequestError('Invalid user data');
   }
 });
 
@@ -59,8 +57,7 @@ const loginUser = asyncHandler(async (req, res) => {
       email: user.email,
     });
   } else {
-    res.status(401);
-    throw new Error('Invalid credentials');
+    throw new UnauthorizedError('Invalid credentials');
   }
 });
 
@@ -109,7 +106,7 @@ const generateToken = (res, userId) => {
   res.cookie('jwt', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
-    sameSite: 'strict', // Prevent CSRF
+    sameSite: 'lax', // Lax is better for general navigation and development than Strict
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
 };
