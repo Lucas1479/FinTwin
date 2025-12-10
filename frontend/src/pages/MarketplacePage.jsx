@@ -5,7 +5,7 @@ import FilterPanel from "../components/marketplace/FilterPanel";
 import ProductGrid from "../components/marketplace/ProductGrid";
 import ComparisonDock from "../components/marketplace/ComparisonDock";
 import ProductDetailsModal from "../components/marketplace/ProductDetailsModal";
-import { fetchCurrentUserProfile, fetchProducts } from "../services/api";
+import api, { fetchCurrentUserProfile, fetchProducts } from "../utils/api";
 import { scoreProduct } from "../utils/scoring";
 
 const clampNumber = (value, fallback = 0) => {

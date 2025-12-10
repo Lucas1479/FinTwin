@@ -65,4 +65,25 @@ api.interceptors.response.use(
   }
 );
 
+// Mock fetch functions until backend endpoints are ready or located
+export const fetchProducts = async () => {
+    // TODO: Replace with actual API call
+    // return api.get('/products').then(res => res.data);
+    return Promise.resolve([
+        { id: 1, name: 'Growth Fund', provider: 'Milford', riskLevel: 'Growth', fees: 1.05, returns: { '1y': 12, '5y': 8.5 }, category: 'ManagedFund' },
+        { id: 2, name: 'Conservative Fund', provider: 'ANZ', riskLevel: 'Conservative', fees: 0.8, returns: { '1y': 4, '5y': 3.5 }, category: 'KiwiSaver' },
+        { id: 3, name: 'Balanced Fund', provider: 'Fisher Funds', riskLevel: 'Balanced', fees: 0.95, returns: { '1y': 7, '5y': 6.0 }, category: 'ManagedFund' }
+    ]);
+};
+
+export const fetchCurrentUserProfile = async () => {
+    // TODO: Replace with actual API call
+    // return api.get('/users/profile').then(res => res.data);
+     return Promise.resolve({
+        riskTolerance: 'Balanced',
+        income: 80000,
+        currentSavings: 20000
+    });
+};
+
 export default api;
