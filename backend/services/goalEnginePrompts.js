@@ -28,8 +28,13 @@ function getStagePrompt(stage) {
 Stage: 1 · Definition & Diagnostics (Reality Check)
 
 Goal:
-- Clean and complete the goal definition: target amount, target date, priority (need/want/wish).
+- Clean and complete the goal definition based on USER INPUT and current context.
 - Run a simple feasibility/gap check using current_amount and contribution_plan if available.
+
+CRITICAL: "Chat-to-Form" Logic
+- If the 'userInput' contains specific intent (e.g., "I want to save 50k by 2030", "retirement at 60"), you MUST extract these values.
+- Return these extracted values in the "ai_decision" object using keys that match the form schema.
+- ALWAYS determine and return the "category" in "ai_decision". It MUST be one of: 'retirement', 'home', 'education', 'wealth', 'travel', 'vehicle', 'emergency', 'custom'. (Lowercase only).
 
 What you must do:
 - Normalise fields (e.g. ensure positive numbers, sensible dates).
@@ -39,15 +44,29 @@ What you must do:
 
     case GOAL_ENGINE_STAGES.STRATEGY:
       return `
-Stage: 2 · Strategic Guardrails (Risk & Allocation)
+Stage: 2 · Strategic Guardrails (Risk & Structure)
 
 Goal:
-- Recommend an appropriate risk strategy for this goal, based on time horizon, priority and user/global risk tolerance.
+- Recommend an appropriate ASSET ALLOCATION (Stocks/Bonds/Cash) and FUNDING STRUCTURE (Product Types) based on the goal context AND simulated user profile.
+
+Analysis Logic:
+1. Context Check: Look at 'context.goalContext.simulation_data' for 'user_profile' (existing assets, surplus) and 'market_products'.
+2. Time Horizon & Risk: 
+   - < 3 years: Defensive.
+   - 10+ years: Growth.
+3. Structure (The "How"):
+   - Utilize existing assets first if applicable.
+   - If 'retirement': Prioritise 'KiwiSaver' (Tax efficient, locked) + 'Managed Funds' (Liquidity).
+   - If 'home': 'KiwiSaver' (First Home Grant) + 'Term Deposits' or 'Savings' (Stable capital).
+   - If 'wealth'/'custom': 'Managed Funds' or 'ETFs'.
+   - If 'emergency': 'Savings' (High liquidity).
+   - Match products from 'market_products' list to the buckets.
 
 What you must do:
-- Suggest recommended_risk (low-risk / middle-risk / high-risk).
-- Explain the rationale in user-friendly language (inflation, volatility, horizon).
-- Indicate if the current riskTolerance on the goal is outside the recommended guardrail zone.
+- Populate 'ai_decision.strategy_recommendation'.
+- Suggest 'allocation' percentages (Asset Class Mix: Stocks/Bonds/Cash).
+- Suggest 'funding_structure' (Product Type Mix): e.g. 50% KiwiSaver, 50% Managed Fund.
+- Explain WHY in 'rationale', referencing the user's specific assets or surplus if relevant (e.g., "Use your $1200 monthly surplus to fund...").
 `.trim();
 
     case GOAL_ENGINE_STAGES.PRODUCT:
@@ -108,7 +127,7 @@ function getStageResponseSchema(stage) {
                 label: { type: 'string' },
                 type: {
                   type: 'string',
-                  enum: ['number', 'text', 'select', 'date', 'slider', 'toggle'],
+                  enum: ['number', 'text', 'select', 'date', 'slider', 'toggle', 'currency', 'textarea'],
                 },
                 required: { type: 'boolean' },
                 min: { type: 'number' },
@@ -119,6 +138,8 @@ function getStageResponseSchema(stage) {
                   items: { type: 'string' },
                 },
                 helpText: { type: 'string' },
+                placeholder: { type: 'string' },
+                defaultValue: { type: 'string' }
               },
               required: ['name', 'label', 'type'],
             },
@@ -128,8 +149,67 @@ function getStageResponseSchema(stage) {
       },
       ai_decision: {
         type: 'object',
-        description: 'AI decision payload for this stage.',
-        additionalProperties: true,
+        description: 'AI decision payload containing specific values to pre-fill or update in the frontend context.',
+        // EXPLICIT PROPERTIES DEFINITION (Required by Gemini)
+        properties: {
+            rationale: { type: 'string', description: "Explanation of the AI's recommendation" },
+            
+            // Core Fields
+            goal_name: { type: 'string' },
+            category: { type: 'string' },
+            priority: { type: 'string', enum: ['need', 'want', 'wish'] },
+            target_amount: { type: 'number' },
+            current_amount: { type: 'number' },
+            due_date: { type: 'string', description: "ISO Date String YYYY-MM-DD" },
+            
+            // Strategy Fields
+            riskTolerance: { type: 'string', enum: ['low-risk', 'middle-risk', 'high-risk'] },
+            inflationAdjust: { type: 'boolean' },
+            
+            // NEW: Strategy Recommendation Object
+            strategy_recommendation: {
+                type: 'object',
+                properties: {
+                    recommended_risk: { type: 'string', enum: ['conservative', 'balanced', 'growth', 'aggressive'] },
+                    allocation: {
+                        type: 'object',
+                        properties: {
+                            stocks: { type: 'number', description: "Percentage 0-100" },
+                            bonds: { type: 'number', description: "Percentage 0-100" },
+                            cash: { type: 'number', description: "Percentage 0-100" }
+                        },
+                        required: ['stocks', 'bonds', 'cash']
+                    },
+                    funding_structure: {
+                        type: 'array',
+                        description: "Recommended split across product types (buckets)",
+                        items: {
+                            type: 'object',
+                            properties: {
+                                type: { type: 'string', enum: ['KiwiSaver', 'Managed Fund', 'Term Deposit', 'Savings Account', 'ETF', 'Shares'] },
+                                percentage: { type: 'number', description: "0-100" },
+                                rationale: { type: 'string' }
+                            },
+                            required: ['type', 'percentage']
+                        }
+                    }
+                },
+                required: ['recommended_risk', 'allocation', 'funding_structure']
+            },
+
+            // Goal Details (Flattened or specific common fields)
+            // Note: Gemini struggles with 'mixed' types, so we define common specific fields here
+            retirement_age: { type: 'number' },
+            life_expectancy: { type: 'number' },
+            living_expense_pa: { type: 'number' },
+            property_price_estimate: { type: 'number' },
+            deposit_percentage: { type: 'number' },
+            location: { type: 'string' },
+            
+            // Generic fallback for unmapped fields (JSON string)
+            other_details_json: { type: 'string', description: "Stringified JSON for any other goal_details" }
+        },
+        required: ['rationale']
       },
     },
     required: ['form_schema', 'ai_decision'],
@@ -170,5 +250,3 @@ Output requirements:
 
   return { prompt, context };
 }
-
-

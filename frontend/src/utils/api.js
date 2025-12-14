@@ -4,7 +4,7 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: '/api', // Matches Vite proxy configuration
   withCredentials: true, // Allow cookies to be sent with requests
-  timeout: 10000, // 10-second timeout
+  timeout: 60000, // 60-second timeout for LLM calls
   // REMOVED: headers: { 'Content-Type': 'application/json' } 
   // Reason: Let Axios/Browser automatically detect content type (JSON vs FormData).
   // Setting it explicitly here would break FormData uploads.

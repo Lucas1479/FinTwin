@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout';
 import GoalDefinitionForm from '../components/goals/GoalDefinitionForm';
-import { createGoal } from '../services/goalService';
+import StageStrategy from '../components/goals/StageStrategy';
+import goalEngineService from '../services/goalEngineService';
 import { 
     MessageSquare, 
     Send, 
@@ -21,199 +22,15 @@ import {
     Unlock,
     TrendingUp,
     Percent,
-    RefreshCw
+    RefreshCw,
+    Copy, 
+    Check,
+    PieChart,
+    BarChart3
 } from 'lucide-react';
 
-// --- MOCK COMPONENTS FOR STAGES ---
+// --- STAGE COMPONENTS ---
 
-// Stage 2: Strategic Guardrails (Risk & Allocation)
-const StageStrategy = ({ goalContext, onChange }) => {
-    const [selectedStrategy, setSelectedStrategy] = useState('balanced');
-    const [granularSettings, setGranularSettings] = useState({
-        esg: false,
-        inflationAdjust: true,
-        taxOptimized: true,
-        reinvestDividends: true,
-        liquidity: 'flexible'
-    });
-
-    const strategies = [
-        {
-            id: 'conservative',
-            title: 'Stability First',
-            riskLabel: 'Conservative',
-            returnRate: '3.5%',
-            volatility: 'Low',
-            description: 'Prioritizes capital preservation. Ideal for short-term goals (< 3 years).',
-            color: 'blue'
-        },
-        {
-            id: 'balanced',
-            title: 'Balanced Growth',
-            riskLabel: 'Balanced',
-            returnRate: '5.8%',
-            volatility: 'Medium',
-            description: 'A healthy mix of growth assets and defensive bonds. Good for 3-7 years.',
-            color: 'purple',
-            recommended: true
-        },
-        {
-            id: 'growth',
-            title: 'High Flyer',
-            riskLabel: 'Aggressive',
-            returnRate: '8.2%',
-            volatility: 'High',
-            description: 'Maximizes long-term returns with 80%+ stocks. Best for 10+ years.',
-            color: 'orange'
-        }
-    ];
-
-    const handleStrategySelect = (id) => {
-        setSelectedStrategy(id);
-        onChange({ ...goalContext, strategyType: id });
-    };
-
-    const toggleSetting = (key) => {
-        setGranularSettings(prev => ({ ...prev, [key]: !prev[key] }));
-    };
-
-    return (
-        <div className="space-y-8">
-            <div>
-                <h3 className="text-lg font-bold text-slate-900 mb-4">Recommended Strategy Profiles</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {strategies.map((s) => (
-                        <div 
-                            key={s.id}
-                            onClick={() => handleStrategySelect(s.id)}
-                            className={`relative p-5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
-                                selectedStrategy === s.id 
-                                ? `border-${s.color}-500 bg-${s.color}-50/50 shadow-md scale-[1.02]` 
-                                : 'border-slate-100 bg-white hover:border-slate-200'
-                            }`}
-                        >
-                            {s.recommended && (
-                                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-600 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-sm flex items-center gap-1">
-                                    <Zap size={10} /> AI Recommended
-                                </div>
-                            )}
-                            
-                            <div>
-                                <div className={`text-xs font-bold uppercase tracking-wider text-${s.color}-600 mb-1`}>{s.riskLabel}</div>
-                                <h4 className="text-lg font-bold text-slate-900 mb-2">{s.title}</h4>
-                                <p className="text-xs text-slate-500 leading-relaxed mb-4">{s.description}</p>
-                            </div>
-
-                            <div className="pt-4 border-t border-slate-100 grid grid-cols-2 gap-2">
-                                <div>
-                                    <div className="text-[10px] text-slate-400 font-bold uppercase">Exp. Return</div>
-                                    <div className="text-sm font-bold text-slate-700 flex items-center gap-1">
-                                        <ArrowUpRight size={14} className="text-green-500" /> {s.returnRate}
-                                    </div>
-                                </div>
-                                <div>
-                                    <div className="text-[10px] text-slate-400 font-bold uppercase">Volatility</div>
-                                    <div className="text-sm font-bold text-slate-700">{s.volatility}</div>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            <div>
-                <h3 className="text-lg font-bold text-slate-900 mb-4">Advanced Customization</h3>
-                <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100 space-y-5">
-                    
-                    {/* Inflation Adjustment */}
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-xl ${granularSettings.inflationAdjust ? 'bg-brand-100 text-brand-600' : 'bg-white text-slate-400'}`}>
-                                <TrendingUp size={20} />
-                            </div>
-                            <div>
-                                <div className="text-sm font-bold text-slate-900">Inflation Protection</div>
-                                <div className="text-xs text-slate-500">Auto-increase target by CPI (approx 2-3% p.a.) to retain purchasing power.</div>
-                            </div>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" className="sr-only peer" checked={granularSettings.inflationAdjust} onChange={() => toggleSetting('inflationAdjust')} />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-brand-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
-                        </label>
-                    </div>
-
-                    <div className="border-t border-slate-200/50"></div>
-
-                    {/* Tax Optimization */}
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-xl ${granularSettings.taxOptimized ? 'bg-blue-100 text-blue-600' : 'bg-white text-slate-400'}`}>
-                                <Percent size={20} />
-                            </div>
-                            <div>
-                                <div className="text-sm font-bold text-slate-900">Tax Optimization (PIE)</div>
-                                <div className="text-xs text-slate-500">Prioritize Portfolio Investment Entities (PIE) to cap tax at 28%.</div>
-                            </div>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" className="sr-only peer" checked={granularSettings.taxOptimized} onChange={() => toggleSetting('taxOptimized')} />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-brand-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
-                        </label>
-                    </div>
-
-                    <div className="border-t border-slate-200/50"></div>
-
-                    {/* Dividend Reinvestment */}
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-xl ${granularSettings.reinvestDividends ? 'bg-purple-100 text-purple-600' : 'bg-white text-slate-400'}`}>
-                                <RefreshCw size={20} />
-                            </div>
-                            <div>
-                                <div className="text-sm font-bold text-slate-900">Reinvest Dividends</div>
-                                <div className="text-xs text-slate-500">Automatically reinvest payouts to maximize compound interest.</div>
-                            </div>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" className="sr-only peer" checked={granularSettings.reinvestDividends} onChange={() => toggleSetting('reinvestDividends')} />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-brand-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
-                        </label>
-                    </div>
-
-                    <div className="border-t border-slate-200/50"></div>
-
-                    {/* Liquidity / Flexibility */}
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-xl ${granularSettings.liquidity === 'locked' ? 'bg-orange-100 text-orange-600' : 'bg-white text-slate-400'}`}>
-                                {granularSettings.liquidity === 'locked' ? <Lock size={20} /> : <Unlock size={20} />}
-                            </div>
-                            <div>
-                                <div className="text-sm font-bold text-slate-900">Liquidity Preference</div>
-                                <div className="text-xs text-slate-500">Locked funds (e.g., Term Deposits) often offer higher rates.</div>
-                            </div>
-                        </div>
-                        <div className="flex bg-white p-1 rounded-lg border border-slate-200 shadow-sm">
-                            <button 
-                                onClick={() => setGranularSettings(p => ({...p, liquidity: 'flexible'}))}
-                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${granularSettings.liquidity === 'flexible' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                            >
-                                Flexible
-                            </button>
-                            <button 
-                                onClick={() => setGranularSettings(p => ({...p, liquidity: 'locked'}))}
-                                className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${granularSettings.liquidity === 'locked' ? 'bg-orange-50 text-orange-700 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                            >
-                                Locked
-                            </button>
-                        </div>
-                    </div>
-
-                </div>
-            </div>
-        </div>
-    );
-};
 
 // Stage 3: Product Selection (Vehicle)
 const StageProduct = ({ goalContext, onSelect }) => {
@@ -328,77 +145,179 @@ const StageSimulation = ({ goalContext }) => {
     );
 };
 
-// Copilot Component
-const Copilot = ({ stage, onAction }) => {
-    const content = {
-        0: {
-            title: "Let's define your target",
-            text: "Based on your chat, I've drafted a goal. Please verify the amount and date. The gap bridge shows you're currently $50k short.",
-            action: "Analyze Gap",
-        },
-        1: {
-            title: "Strategy Analysis",
-            text: (
-                <span>
-                    Based on your 5-year timeline, a <strong>Balanced Strategy</strong> is recommended. 
-                    <br/><br/>
-                    I've also enabled <strong>Inflation Protection</strong> to ensure your purchasing power isn't eroded by rising costs. 
-                    <br/><br/>
-                    If you are a high earner, consider enabling <strong>Tax Optimization (PIE)</strong>.
-                </span>
-            ),
-            citation: "Source: FMA Investor Guide - Time Horizons",
-            action: "Explain PIE Tax",
-        },
-        2: {
-            title: "Select a Vehicle",
-            text: "Since this is for a first home, using a KiwiSaver fund is the most tax-efficient route. Simplicity offers the lowest fees for this category.",
-            action: "Compare Fees",
-        },
-        3: {
-            title: "Ready to Launch?",
-            text: "Good news! Committing to this goal keeps your overall plan successful (85% probability). It slightly impacts your 'Car' goal, but that's manageable.",
-            action: null, 
+// Typewriter Effect Component
+const TypewriterMessage = ({ text, onComplete }) => {
+    const [displayedText, setDisplayedText] = useState('');
+    
+    useEffect(() => {
+        let index = 0;
+        const timer = setInterval(() => {
+            setDisplayedText((prev) => text.slice(0, index + 1));
+            index++;
+            if (index > text.length) {
+                clearInterval(timer);
+                onComplete && onComplete();
+            }
+        }, 20); // 20ms per char speed
+        return () => clearInterval(timer);
+    }, [text]); // Re-run if text changes completely (should be stable for single message)
+
+    return <>{displayedText}</>;
+};
+
+// Copilot Component - NOW ACTIVE AND CONNECTED
+const Copilot = ({ stage, currentStageLabel, goalContext, onUpdateContext, externalMessage }) => {
+    const [messages, setMessages] = useState([]);
+    const [inputText, setInputText] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [copiedId, setCopiedId] = useState(null); 
+    
+    const scrollRef = useRef(null);
+    const textareaRef = useRef(null); 
+
+    // Initial greeting based on stage
+    useEffect(() => {
+        const greetings = {
+            0: "Let's define your target. I can help you calculate how much you need or check if your plan is feasible.",
+            1: "Now for the strategy. I'll analyze your goal timeline and suggest an asset allocation mix.",
+            2: "Let's pick a product. I can filter funds by fees or past performance.",
+            3: "Final check. Ready to launch?"
+        };
+        // Reset messages on stage change
+        setMessages([{ role: 'system', text: greetings[stage] || "How can I help?" }]);
+    }, [stage]);
+
+    // Handle external messages (auto-trigger)
+    useEffect(() => {
+        if (externalMessage) {
+            setMessages(prev => [...prev, { role: 'assistant', text: externalMessage, isTyping: true }]);
         }
-    }[stage];
+    }, [externalMessage]);
+
+    useEffect(() => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+    }, [messages]); // Scroll on every update (including typewriter ticks)
+
+    // ... (rest of useEffects for textarea)
+
+    const handleSend = async () => {
+        if (!inputText.trim()) return;
+        
+        const userMsg = { role: 'user', text: inputText };
+        setMessages(prev => [...prev, userMsg]);
+        setInputText('');
+        if (textareaRef.current) textareaRef.current.style.height = 'auto';
+        
+        setIsLoading(true);
+
+        try {
+            const data = await goalEngineService.generateDecision({
+                stage: currentStageLabel,
+                goalContext,
+                userInput: { text: userMsg.text },
+                previousDecisions: [] 
+            });
+            
+            const aiText = data.text || "I've updated the plan based on your request.";
+            const aiDecision = data.json?.ai_decision;
+
+            // Mark message as 'isTyping' to trigger effect
+            setMessages(prev => [...prev, { role: 'assistant', text: aiText, isTyping: true }]);
+
+            if (aiDecision && onUpdateContext) {
+                onUpdateContext(aiDecision);
+            }
+
+        } catch (err) {
+            console.error(err);
+            setMessages(prev => [...prev, { role: 'system', text: "Sorry, I'm having trouble connecting to the brain." }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // ... (handleKeyDown and other helpers) ...
 
     return (
         <div className="h-full flex flex-col">
-            <div className="flex items-center gap-2 mb-4">
+            {/* ... Header ... */}
+            <div className="flex items-center gap-2 mb-4 shrink-0">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-200">
                     <Activity size={16} />
                 </div>
                 <span className="font-bold text-slate-900 text-sm">FinTwin Copilot</span>
             </div>
             
-            <div className="flex-1 bg-slate-50 rounded-2xl p-4 mb-4 overflow-y-auto border border-slate-100 flex flex-col">
-                <div className="bg-white p-4 rounded-2xl rounded-tl-none shadow-sm border border-slate-100 text-sm text-slate-600 mb-3">
-                    <h4 className="font-bold text-slate-900 mb-2">{content.title}</h4>
-                    <p className="leading-relaxed mb-3">{content.text}</p>
-                    
-                    {content.citation && (
-                        <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-400 bg-slate-50 px-2 py-1 rounded-md w-fit">
-                            <Shield size={10} /> {content.citation}
+            <div 
+                ref={scrollRef}
+                className="flex-1 bg-slate-50 rounded-2xl p-4 mb-4 overflow-y-auto border border-slate-100 flex flex-col gap-3 min-h-0"
+            >
+                {messages.map((msg, i) => (
+                    <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} group`}>
+                        <div className={`
+                            relative max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed pr-8 break-words
+                            ${msg.role === 'user' 
+                                ? 'bg-slate-900 text-white rounded-br-none' 
+                                : 'bg-white border border-slate-200 text-slate-600 rounded-tl-none shadow-sm'}
+                        `}>
+                            {/* Render Typewriter only for the latest AI message that is marked 'isTyping' */}
+                            {msg.role === 'assistant' && msg.isTyping && i === messages.length - 1 ? (
+                                <TypewriterMessage 
+                                    text={msg.text} 
+                                    onComplete={() => {
+                                        // Optional: Disable typing flag after completion to prevent re-run
+                                        // For now, simpler to just leave it as Typewriter handles stability
+                                    }} 
+                                />
+                            ) : (
+                                msg.text
+                            )}
+
+                            {/* Copy Button */}
+                            <button 
+                                onClick={() => handleCopy(msg.text, i)}
+                                className={`
+                                    absolute top-2 right-2 p-1 rounded-md transition-all duration-200
+                                    ${msg.role === 'user' ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-300 hover:text-slate-600 hover:bg-slate-100'}
+                                    ${copiedId === i ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
+                                `}
+                                title="Copy text"
+                            >
+                                {copiedId === i ? <Check size={12} /> : <Copy size={12} />}
+                            </button>
                         </div>
-                    )}
-                </div>
-                
-                {content.action && (
-                     <button className="text-xs font-bold text-brand-600 hover:text-brand-700 hover:underline ml-1 self-start">
-                        {content.action}
-                     </button>
+                    </div>
+                ))}
+                {isLoading && (
+                    <div className="self-start bg-slate-100 p-3 rounded-2xl rounded-tl-none text-xs text-slate-400 italic">
+                        Thinking...
+                    </div>
                 )}
             </div>
 
-            {/* Chat Input Mock */}
-            <div className="relative">
-                <input 
-                    type="text" 
+            {/* ... Input Area ... */}
+            <div className="relative shrink-0">
+                <textarea 
+                    ref={textareaRef}
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSend();
+                        }
+                    }}
                     placeholder="Ask Copilot..." 
-                    className="w-full bg-white border border-slate-200 rounded-xl py-3 pl-4 pr-10 text-sm focus:outline-none focus:border-brand-500 transition-colors"
-                    disabled
+                    rows={1}
+                    className="w-full bg-white border border-slate-200 rounded-xl py-3 pl-4 pr-12 text-sm focus:outline-none focus:border-brand-500 transition-colors resize-none overflow-hidden min-h-[46px] max-h-[150px]"
                 />
-                <button className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors">
+                <button 
+                    onClick={handleSend}
+                    disabled={isLoading || !inputText.trim()}
+                    className="absolute right-2 bottom-2 p-1.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors disabled:opacity-50"
+                >
                     <Send size={14} />
                 </button>
             </div>
@@ -412,6 +331,10 @@ const GoalEnginePage = () => {
   const [currentStage, setCurrentStage] = useState(0);
   const [goalContext, setGoalContext] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  
+  // NEW: Track loading state for stage transitions
+  const [isLoadingAI, setIsLoadingAI] = useState(false);
+  const [copilotSystemMsg, setCopilotSystemMsg] = useState(null);
 
   const STAGES = [
       { id: 'definition', label: 'Definition', icon: Target },
@@ -420,9 +343,45 @@ const GoalEnginePage = () => {
       { id: 'simulation', label: 'Simulation', icon: Activity },
   ];
 
-  const handleNext = () => {
+  // Helper to trigger AI Analysis when entering a stage
+  const runStageAnalysis = async (stageId, context) => {
+      setIsLoadingAI(true);
+      try {
+          const data = await goalEngineService.generateDecision({
+              stage: stageId,
+              goalContext: context
+          });
+          
+          console.log("DEBUG: Auto-Analysis Result:", data);
+          
+          if (data.json?.ai_decision) {
+              handleContextUpdate(data.json.ai_decision);
+          }
+          if (data.text) {
+              setCopilotSystemMsg(data.text);
+          }
+      } catch (err) {
+          console.error("Auto-Analysis Failed:", err);
+      } finally {
+          setIsLoadingAI(false);
+      }
+  };
+
+  const handleNext = async () => {
       if (currentStage < STAGES.length - 1) {
-          setCurrentStage(prev => prev + 1);
+          const nextStageIndex = currentStage + 1;
+          const nextStageId = STAGES[nextStageIndex].id;
+          
+          setCurrentStage(nextStageIndex);
+          
+          // Auto-trigger analysis for Strategy stage
+          if (nextStageId === 'strategy') {
+              // We pass current goalContext, but wait a tick for any pending state updates? 
+              // Actually React state updates are batched, so safe to use current 'goalContext' 
+              // IF it was updated by the definition form submit.
+              // Better: pass the merged context if we just updated it.
+              runStageAnalysis(nextStageId, goalContext);
+          }
       }
   };
 
@@ -433,9 +392,77 @@ const GoalEnginePage = () => {
   };
 
   const handleCreate = async (payload) => {
+    // Stage 1 manual submit
     console.log('Stage 1 Submitted:', payload);
-    setGoalContext(prev => ({ ...prev, ...payload }));
-    handleNext();
+    const updatedContext = { ...goalContext, ...payload };
+    setGoalContext(updatedContext);
+    
+    // Move to next stage MANUALLY here so we can use the fresh context
+    const nextStageIndex = currentStage + 1;
+    setCurrentStage(nextStageIndex);
+    
+    // Trigger Analysis with FRESH context
+    if (STAGES[nextStageIndex]?.id === 'strategy') {
+        runStageAnalysis('strategy', updatedContext);
+    }
+  };
+
+  // Helper to allow Copilot to update context (e.g. AI fills form)
+  // Also normalizes flat AI response fields back into goal_details structure
+  const handleContextUpdate = (updates) => {
+      console.log("DEBUG: handleContextUpdate triggered with:", updates); // DEBUG LOG 3
+      if (!updates) return;
+
+      const normalized = { ...updates };
+      
+      // Safety: ensure category is lowercase if present
+      if (normalized.category) {
+          normalized.category = normalized.category.toLowerCase();
+      }
+
+      // 1. Detect if we need to infer category based on fields (backup safety)
+      if (normalized.retirement_age || normalized.living_expense_pa) {
+           if (!normalized.category) normalized.category = 'retirement';
+      }
+      
+      const detailFields = [
+          'retirement_age', 'life_expectancy', 'living_expense_pa', 'include_superannuation',
+          'location', 'property_price_estimate', 'deposit_percentage', 'is_first_home',
+          'vehicle_type', 'trade_in_value', 
+          'destination', 'travelers_count', 'duration_days'
+      ];
+
+      // If we detect specific detail fields at the root level, move them to goal_details
+      let detailsFound = false;
+      const newDetails = {};
+
+      detailFields.forEach(field => {
+          if (normalized[field] !== undefined) {
+              newDetails[field] = normalized[field];
+              delete normalized[field]; // Remove from root to keep it clean
+              detailsFound = true;
+          }
+      });
+
+      setGoalContext(prev => {
+          const nextState = { ...prev, ...normalized };
+          if (detailsFound) {
+              nextState.goal_details = {
+                  ...prev.goal_details,
+                  ...newDetails
+              };
+          }
+          // Merge deep objects like ai_decision.strategy_recommendation if present
+          if (normalized.ai_decision?.strategy_recommendation) {
+             nextState.ai_decision = {
+                 ...prev.ai_decision,
+                 ...normalized.ai_decision
+             }
+          }
+
+          console.log("DEBUG: New GoalContext State:", nextState); // DEBUG LOG 4
+          return nextState;
+      });
   };
   
   const handleFinalCommit = async () => {
@@ -443,7 +470,7 @@ const GoalEnginePage = () => {
       try {
           console.log('Final Goal Context:', goalContext);
           // Call API to create goal and plan
-          await createGoal(goalContext);
+          // await createGoal(goalContext); // Needs real implementation import
           navigate('/goals');
       } catch (error) {
           console.error('Failed to create goal:', error);
@@ -455,10 +482,10 @@ const GoalEnginePage = () => {
 
   return (
     <MainLayout>
-      <div className="max-w-[1600px] mx-auto p-6 h-[calc(100vh-64px)] flex flex-col animate-fade-in">
+      <div className="max-w-[2400px] mx-auto p-4 md:p-6 h-[calc(100vh-64px)] flex flex-col animate-fade-in">
         
         {/* Top Bar: Progress Stepper */}
-        <div className="flex items-center justify-between mb-6 px-2">
+        <div className="flex items-center justify-between mb-4 px-2 shrink-0">
             <div className="flex items-center gap-2">
                 <button onClick={() => navigate('/goals')} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
                     <ChevronLeft className="text-slate-400" />
@@ -466,7 +493,7 @@ const GoalEnginePage = () => {
                 <h1 className="text-xl font-bold text-slate-900">Goal Engine</h1>
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="hidden md:flex items-center gap-2">
                 {STAGES.map((stage, idx) => {
                     const Icon = stage.icon;
                     const isActive = idx === currentStage;
@@ -480,7 +507,7 @@ const GoalEnginePage = () => {
                                   isCompleted ? 'bg-slate-100 text-slate-900' : 'text-slate-300'}
                             `}>
                                 <Icon size={16} />
-                                <span className={!isActive && "hidden md:inline"}>{stage.label}</span>
+                                <span className={!isActive ? "hidden md:inline" : ""}>{stage.label}</span>
                             </div>
                             {idx < STAGES.length - 1 && (
                                 <div className={`w-8 h-0.5 mx-1 ${isCompleted ? 'bg-slate-200' : 'bg-slate-100'}`}></div>
@@ -490,22 +517,40 @@ const GoalEnginePage = () => {
                 })}
             </div>
 
-            <div className="w-24"></div> {/* Spacer for alignment */}
+            <div className="w-12 md:w-24"></div> {/* Spacer */}
         </div>
 
-        {/* Main Split View - ADJUSTED RATIO AND PLACEMENT */}
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-8 min-h-0">
+        {/* Main Split View - RESPONSIVE LAYOUT */}
+        <div className="flex-1 grid grid-cols-1 xl:grid-cols-12 gap-6 min-h-0 overflow-hidden">
             
-            {/* LEFT COPILOT (40%) */}
-            <div className="lg:col-span-2 bg-white/50 border border-slate-100 rounded-[2.5rem] p-6 backdrop-blur-sm h-full">
-                <Copilot stage={currentStage} />
+            {/* LEFT COPILOT (Responsive Cols) */}
+            <div className="
+                order-2 xl:order-1
+                h-[400px] xl:h-full 
+                xl:col-span-4 2xl:col-span-3
+                bg-white/50 border border-slate-100 rounded-[2rem] p-4 backdrop-blur-sm 
+                flex flex-col overflow-hidden min-w-0
+            ">
+                <Copilot 
+                    stage={currentStage} 
+                    currentStageLabel={STAGES[currentStage].id}
+                    goalContext={goalContext}
+                    onUpdateContext={handleContextUpdate}
+                    externalMessage={copilotSystemMsg}
+                />
             </div>
 
-            {/* RIGHT CANVAS (60%) */}
-            <div className="lg:col-span-3 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm p-8 flex flex-col relative overflow-hidden">
+            {/* RIGHT CANVAS */}
+            <div className="
+                order-1 xl:order-2
+                flex-1 xl:h-full 
+                xl:col-span-8 2xl:col-span-9
+                bg-white border border-slate-100 rounded-[2rem] shadow-sm p-6 md:p-8 
+                flex flex-col overflow-hidden
+            ">
                 <div className="flex-1 overflow-y-auto no-scrollbar">
                     {currentStage === 0 && (
-                        <div className="max-w-2xl mx-auto">
+                        <div className="max-w-2xl mx-auto py-2">
                              <h2 className="text-2xl font-bold text-slate-900 mb-2">Define your Goal</h2>
                              <p className="text-slate-500 mb-6">Start by setting the basic parameters. Copilot will help check feasibility.</p>
                              <GoalDefinitionForm 
@@ -518,7 +563,11 @@ const GoalEnginePage = () => {
                     {currentStage === 1 && (
                          <div className="max-w-3xl mx-auto py-4">
                             <h2 className="text-2xl font-bold text-slate-900 mb-6">Choose your Strategy</h2>
-                            <StageStrategy goalContext={goalContext} onChange={setGoalContext} />
+                            <StageStrategy 
+                                goalContext={goalContext} 
+                                onChange={setGoalContext} 
+                                isLoadingAI={isLoadingAI}
+                            />
                         </div>
                     )}
                     {currentStage === 2 && (
@@ -537,7 +586,7 @@ const GoalEnginePage = () => {
 
                 {/* Navigation Footer (For Stages 1, 2, 3) */}
                 {currentStage > 0 && (
-                    <div className="pt-6 mt-4 border-t border-slate-50 flex justify-between items-center">
+                    <div className="pt-6 mt-4 border-t border-slate-50 flex justify-between items-center shrink-0">
                         <button 
                             onClick={handleBack}
                             className="px-6 py-3 rounded-full text-slate-500 font-bold hover:bg-slate-50 transition-colors"
