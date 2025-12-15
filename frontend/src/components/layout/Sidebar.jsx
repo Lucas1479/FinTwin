@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { LayoutDashboard, Target, Briefcase, ShoppingBag, Gamepad2, Settings, HelpCircle, LogOut, ChevronLeft, ChevronRight, Menu } from 'lucide-react';
@@ -26,20 +27,20 @@ const Sidebar = () => {
 
   // Core Modules (High Frequency)
   const mainItems = [
-    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { name: 'My Wealth', path: '/wealth', icon: Briefcase, label: 'Wealth Center' },
-    { name: 'My Goals', path: '/goals', icon: Target, label: 'Goal Management' },
+    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'My Wealth', path: '/wealth', icon: Briefcase },
+    { name: 'My Goals', path: '/goals', icon: Target },
   ];
 
   // Tools (Low Frequency)
   const toolItems = [
-    { name: 'Marketplace', path: '/marketplace', icon: ShoppingBag, label: 'Marketplace' },
-    { name: 'Playground', path: '/playground', icon: Gamepad2, label: 'Sandbox' },
+    { name: 'Marketplace', path: '/marketplace', icon: ShoppingBag },
+    { name: 'Playground', path: '/playground', icon: Gamepad2 },
   ];
 
   const bottomItems = [
     { name: 'Settings', path: '/settings', icon: Settings },
-    { name: 'Help & Support', path: '/help', icon: HelpCircle },
+    { name: 'Help', path: '/help', icon: HelpCircle },
   ];
 
   return (
@@ -105,9 +106,8 @@ const Sidebar = () => {
             {toolItems.map((item) => {
             const isActive = location.pathname === item.path;
             const Icon = item.icon;
-            
             return (
-                <Link 
+              <Link 
                 key={item.path}
                 to={item.path} 
                 title={isCollapsed ? item.name : ''}
@@ -123,7 +123,7 @@ const Sidebar = () => {
                 {!isCollapsed && <span className="whitespace-nowrap overflow-hidden">{item.name}</span>}
                 </Link>
             );
-            })}
+          })}
         </nav>
       </div>
 

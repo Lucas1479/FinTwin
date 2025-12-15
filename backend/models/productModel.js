@@ -48,7 +48,8 @@ const MetricsSchema = new mongoose.Schema({
   }
 }, { _id: false });
 
-// --- 3. Holdings (持仓明细) ---
+// --- 3. Top 5 Holdings (前5大持仓) ---
+// Reduced from Top 10 for storage efficiency; Top 5 is sufficient for concentration analysis
 const HoldingSchema = new mongoose.Schema({
   name: String,
   percent: Number, // Percentage of Net Assets (占净资产百分比)
