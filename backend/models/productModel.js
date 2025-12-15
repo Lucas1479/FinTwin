@@ -21,8 +21,16 @@ const AssetAllocationSchema = new mongoose.Schema({
 }, { _id: false });
 
 // --- 2. Metrics: Risk, Return, Fees (核心指标) ---
+// Risk Level Mapping (风险等级映射):
+//   1 -> Defensive/Cash (0-10% Growth, <2Y Horizon)
+//   2-3 -> Conservative (10-35% Growth, 2-5Y Horizon)
+//   4 -> Balanced (50% Growth, 5-10Y Horizon, Default)
+//   5 -> Growth (80% Growth, 10+Y Horizon)
+//   6-7 -> Aggressive (90-100% Growth, 15+Y Horizon)
+// NOTE: Risk Indicator (1-7) is a mandatory calculation based on 5-year volatility.
+//       We rely on this number as the source of truth for AI matching logic, rather than fund name.
 const MetricsSchema = new mongoose.Schema({
-  riskScore: { type: Number, min: 0, max: 10, required: true }, // Unified quantitative score (CSV 1-7, TermDeposit=1) (统一量化分)
+  riskScore: { type: Number, min: 1, max: 7, required: true }, // FMA Risk Indicator (1-7) based on 5-year volatility (基于5年波动率的强制性风险指标)
   
   // Fee Structure (费用结构)
   fees: {
@@ -73,8 +81,9 @@ const productSchema = new mongoose.Schema({
   },
   strategy: {
     type: String,
-    // Risk appetite classification (风险偏好分类)
-    enum: ['Defensive', 'Conservative', 'Balanced', 'Growth', 'Aggressive', 'High Growth'],
+    // Risk appetite classification derived from riskScore (风险偏好分类，由 riskScore 映射)
+    // Defensive(1) | Conservative(2-3) | Balanced(4) | Growth(5) | Aggressive(6-7)
+    enum: ['Defensive', 'Conservative', 'Balanced', 'Growth', 'Aggressive'],
     index: true
   },
 
