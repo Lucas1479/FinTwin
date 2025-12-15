@@ -67,14 +67,32 @@ def clean_and_export_products(input_file, output_file):
                 fund_type = 'Cash'
             
             # --- C. Metrics (Risk, Fees, Returns) ---
-            risk_score = int(row.get('Risk Reward Indicator Code', 3)) # Default to 3 if parsing fails (though we filtered NaNs)
+            risk_score = int(row.get('Risk Reward Indicator Code', 4)) # Default to 4 (Balanced) if parsing fails
             
-            # Strategy Mapping based on Risk Score (Standard industry bands)
-            strategy = 'Balanced'
-            if risk_score <= 2: strategy = 'Conservative' # covers Defensive too
-            elif risk_score == 3: strategy = 'Balanced'
-            elif risk_score <= 5: strategy = 'Growth'
-            elif risk_score >= 6: strategy = 'High Growth' # or Aggressive
+            # Strategy Mapping based on Risk Score (FinTwin Mapping Table)
+            # Risk Indicator (1-7) is a mandatory calculation based on 5-year volatility.
+            # We rely on this number as the source of truth for AI matching logic, rather than fund name.
+            # 
+            # | Risk Level | Strategy     | Asset Mix (Growth) | Typical Goal Horizon     |
+            # |------------|--------------|--------------------| -------------------------|
+            # | 1          | Defensive    | 0% - 10%           | < 2 Years                |
+            # | 2 - 3      | Conservative | 10% - 35%          | 2 - 5 Years              |
+            # | 4          | Balanced     | ~50%               | 5 - 10 Years (Default)   |
+            # | 5          | Growth       | ~80%               | 10+ Years                |
+            # | 6 - 7      | Aggressive   | 90% - 100%         | 15+ Years (Young investors)|
+            
+            if risk_score == 1:
+                strategy = 'Defensive'
+            elif risk_score in [2, 3]:
+                strategy = 'Conservative'
+            elif risk_score == 4:
+                strategy = 'Balanced'
+            elif risk_score == 5:
+                strategy = 'Growth'
+            elif risk_score >= 6:
+                strategy = 'Aggressive'
+            else:
+                strategy = 'Balanced' # Fallback
 
             metrics = {
                 'riskScore': risk_score,
