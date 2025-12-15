@@ -1,22 +1,25 @@
 import axios from 'axios';
 
-// 1. Create Axios instance
+// ==========================================
+// Axios Instance Configuration
+// ==========================================
+
 const api = axios.create({
   baseURL: '/api', // Matches Vite proxy configuration
   withCredentials: true, // Allow cookies to be sent with requests
-  timeout: 10000, // 10-second timeout
-  // REMOVED: headers: { 'Content-Type': 'application/json' } 
-  // Reason: Let Axios/Browser automatically detect content type (JSON vs FormData).
-  // Setting it explicitly here would break FormData uploads.
+  timeout: 30000, // 30-second timeout (increased for large data queries)
+  // Note: Don't set Content-Type here; let Axios auto-detect (JSON vs FormData)
 });
 
-// 2. Request Interceptor
-// Automatically injects token before the request is sent
+// ==========================================
+// Request Interceptor
+// ==========================================
+
 api.interceptors.request.use(
   (config) => {
-    // Note: We primarily use httpOnly cookies for auth.
-    // However, if we ever needed to switch back to headers, this is where we'd add it.
-    // const token = localStorage.getItem('token'); 
+    // We use httpOnly cookies for auth, no need to manually inject token.
+    // If switching to header-based auth:
+    // const token = localStorage.getItem('token');
     // if (token) {
     //   config.headers.Authorization = `Bearer ${token}`;
     // }
@@ -27,63 +30,88 @@ api.interceptors.request.use(
   }
 );
 
-// 3. Response Interceptor
-// Centralized response processing and error handling
+// ==========================================
+// Response Interceptor
+// ==========================================
+
 api.interceptors.response.use(
   (response) => {
-    // Return the response object directly
-    return response; 
+    return response;
   },
   (error) => {
-    // Global Error Handling
     if (error.response) {
       const status = error.response.status;
-      
-      // 401: Unauthorized / Token Expired -> Redirect to login
+
+      // 401: Unauthorized / Token Expired
       if (status === 401) {
-        localStorage.removeItem('userInfo'); // Clear user state
-        localStorage.removeItem('token'); // Clear legacy token if any
-        
-        // Force redirect if not already on login page
+        localStorage.removeItem('userInfo');
+        localStorage.removeItem('token');
+
+        // Redirect to login if not already there
         if (window.location.pathname !== '/login') {
-           window.location.href = '/login';
+          window.location.href = '/login';
         }
       }
-      
+
       // 403: Forbidden
       if (status === 403) {
-        console.error('Permission denied');
+        console.error('[API] Permission denied');
       }
-      
-      // 500: Server Error
+
+      // 500+: Server Error
       if (status >= 500) {
-        console.error('Server error, please try again later');
+        console.error('[API] Server error:', error.response.data?.message || 'Unknown error');
       }
+    } else if (error.code === 'ECONNABORTED') {
+      console.error('[API] Request timeout');
+    } else {
+      console.error('[API] Network error:', error.message);
     }
-    
+
     return Promise.reject(error);
   }
 );
 
-// Mock fetch functions until backend endpoints are ready or located
+// ==========================================
+// Legacy Exports (For backward compatibility)
+// ==========================================
+// These are deprecated. Use dedicated services instead:
+// - productService.js for products
+// - authService.js for auth
+// - goalService.js for goals
+
+/**
+ * @deprecated Use productService.getProducts() instead
+ */
 export const fetchProducts = async () => {
-    // TODO: Replace with actual API call
-    // return api.get('/products').then(res => res.data);
-    return Promise.resolve([
-        { id: 1, name: 'Growth Fund', provider: 'Milford', riskLevel: 'Growth', fees: 1.05, returns: { '1y': 12, '5y': 8.5 }, category: 'ManagedFund' },
-        { id: 2, name: 'Conservative Fund', provider: 'ANZ', riskLevel: 'Conservative', fees: 0.8, returns: { '1y': 4, '5y': 3.5 }, category: 'KiwiSaver' },
-        { id: 3, name: 'Balanced Fund', provider: 'Fisher Funds', riskLevel: 'Balanced', fees: 0.95, returns: { '1y': 7, '5y': 6.0 }, category: 'ManagedFund' }
-    ]);
+  console.warn('[DEPRECATED] fetchProducts() is deprecated. Use productService.getProducts() instead.');
+  try {
+    const response = await api.get('/products');
+    // Return raw data array for backward compatibility
+    return response.data?.data || [];
+  } catch (error) {
+    console.error('[API] fetchProducts error:', error);
+    return [];
+  }
 };
 
+/**
+ * @deprecated Use userService or authService instead
+ */
 export const fetchCurrentUserProfile = async () => {
-    // TODO: Replace with actual API call
-    // return api.get('/users/profile').then(res => res.data);
-     return Promise.resolve({
-        riskTolerance: 'Balanced',
-        income: 80000,
-        currentSavings: 20000
-    });
+  console.warn('[DEPRECATED] fetchCurrentUserProfile() is deprecated.');
+  try {
+    const response = await api.get('/users/profile');
+    return response.data || null;
+  } catch (error) {
+    console.error('[API] fetchCurrentUserProfile error:', error);
+    // Return default profile on error
+    return {
+      riskTolerance: 'Balanced',
+      income: 80000,
+      currentSavings: 20000,
+    };
+  }
 };
 
 export default api;
