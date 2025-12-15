@@ -1,48 +1,63 @@
-import { useEffect, useMemo, useState } from "react";
-import { ShoppingBag } from "lucide-react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { ShoppingBag, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import MainLayout from "../components/layout/MainLayout";
 import FilterPanel from "../components/marketplace/FilterPanel";
 import ProductGrid from "../components/marketplace/ProductGrid";
 import ComparisonDock from "../components/marketplace/ComparisonDock";
 import ProductDetailsModal from "../components/marketplace/ProductDetailsModal";
-import api, { fetchCurrentUserProfile, fetchProducts } from "../utils/api";
+import productService from "../services/productService";
+import { fetchCurrentUserProfile } from "../utils/api";
 import { scoreProduct } from "../utils/scoring";
+
+// ==========================================
+// Constants
+// ==========================================
+
+const PAGE_SIZE = 100; // Products per page (API request)
+const DISPLAY_PER_PAGE = 24; // Products displayed per page on frontend
+
+// ==========================================
+// Utility Functions
+// ==========================================
 
 const clampNumber = (value, fallback = 0) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
 };
 
+/**
+ * Apply client-side filters to products
+ */
 function applyFilters(products, filters, profile) {
   let list = [...products];
 
-  // Category
+  // Category filter
   if (filters.category && filters.category !== "All") {
     list = list.filter((p) => p?.category === filters.category);
   }
 
-  // Risk levels
+  // Risk levels filter
   if (Array.isArray(filters.riskLevels) && filters.riskLevels.length > 0) {
     list = list.filter((p) => filters.riskLevels.includes(p?.riskLevel));
   }
 
-  // Providers
+  // Providers filter
   if (Array.isArray(filters.providers) && filters.providers.length > 0) {
     list = list.filter((p) => filters.providers.includes(p?.provider));
   }
 
-  // Min 5y return
-  const min5y = clampNumber(filters.minReturn5y, 0);
+  // Min 5-year return filter
+  const min5y = clampNumber(filters.minReturn5y, -100);
   list = list.filter(
     (p) => clampNumber(p?.returns?.["5y"], -Infinity) >= min5y
   );
 
-  // Max fee
-  const maxFee = clampNumber(filters.maxFee, 2.0);
+  // Max fee filter
+  const maxFee = clampNumber(filters.maxFee, 10.0);
   list = list.filter((p) => clampNumber(p?.fees, Infinity) <= maxFee);
 
-  // Eligibility: hide products with minimumInvestment well above user's capacity
-  const hideIneligible = filters.hideIneligible ?? true;
+  // Eligibility filter
+  const hideIneligible = filters.hideIneligible ?? false;
   const capacity = clampNumber(profile?.maxTicketSize, 0) || Infinity;
   if (hideIneligible && Number.isFinite(capacity) && capacity > 0) {
     list = list.filter((p) => {
@@ -51,7 +66,7 @@ function applyFilters(products, filters, profile) {
     });
   }
 
-  // Search (fund name or provider)
+  // Search filter
   const q = (filters.search || "").trim().toLowerCase();
   if (q) {
     list = list.filter((p) => {
@@ -61,7 +76,7 @@ function applyFilters(products, filters, profile) {
     });
   }
 
-  // De-duplicate by provider + name (ignore category) to reduce noisy duplicates
+  // De-duplicate by provider + name
   const unique = new Map();
   for (const p of list) {
     const key = `${(p?.provider || "").trim().toLowerCase()}::${(p?.name || "")
@@ -71,10 +86,9 @@ function applyFilters(products, filters, profile) {
       unique.set(key, p);
     }
   }
-
   list = Array.from(unique.values());
 
-  // Attach a smart score for downstream sorting (shared with Dashboard)
+  // Attach smart score
   if (profile) {
     list = list.map((p) => {
       const scored = scoreProduct(p, profile);
@@ -85,14 +99,143 @@ function applyFilters(products, filters, profile) {
   return list;
 }
 
+// ==========================================
+// Pagination Component
+// ==========================================
+
+const Pagination = ({ currentPage, totalPages, onPageChange }) => {
+  if (totalPages <= 1) return null;
+
+  // Generate page numbers to display
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    
+    let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    let end = Math.min(totalPages, start + maxVisible - 1);
+    
+    // Adjust start if we're near the end
+    if (end - start < maxVisible - 1) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+    
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    
+    return pages;
+  };
+
+  const pageNumbers = getPageNumbers();
+
+  return (
+    <div className="flex items-center justify-center gap-1">
+      {/* First page */}
+      <button
+        onClick={() => onPageChange(1)}
+        disabled={currentPage === 1}
+        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        title="First page"
+      >
+        <ChevronsLeft size={16} />
+      </button>
+
+      {/* Previous page */}
+      <button
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage === 1}
+        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        title="Previous page"
+      >
+        <ChevronLeft size={16} />
+      </button>
+
+      {/* Page numbers */}
+      <div className="flex items-center gap-1 px-2">
+        {pageNumbers[0] > 1 && (
+          <>
+            <button
+              onClick={() => onPageChange(1)}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50"
+            >
+              1
+            </button>
+            {pageNumbers[0] > 2 && <span className="px-1 text-slate-400">...</span>}
+          </>
+        )}
+
+        {pageNumbers.map((page) => (
+          <button
+            key={page}
+            onClick={() => onPageChange(page)}
+            className={`flex h-9 w-9 items-center justify-center rounded-lg text-sm font-medium transition-colors ${
+              page === currentPage
+                ? "bg-slate-900 text-white"
+                : "text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            {page}
+          </button>
+        ))}
+
+        {pageNumbers[pageNumbers.length - 1] < totalPages && (
+          <>
+            {pageNumbers[pageNumbers.length - 1] < totalPages - 1 && (
+              <span className="px-1 text-slate-400">...</span>
+            )}
+            <button
+              onClick={() => onPageChange(totalPages)}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50"
+            >
+              {totalPages}
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Next page */}
+      <button
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage === totalPages}
+        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        title="Next page"
+      >
+        <ChevronRight size={16} />
+      </button>
+
+      {/* Last page */}
+      <button
+        onClick={() => onPageChange(totalPages)}
+        disabled={currentPage === totalPages}
+        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        title="Last page"
+      >
+        <ChevronsRight size={16} />
+      </button>
+    </div>
+  );
+};
+
+// ==========================================
+// Main Component
+// ==========================================
+
 const MarketplacePage = () => {
+  // Data states
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [profile, setProfile] = useState({
-    riskTolerance: "Balanced",
-  });
+  const [profile, setProfile] = useState({ riskTolerance: "Balanced" });
 
+  // Pagination states (API level)
+  const [apiPage, setApiPage] = useState(1);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const [apiTotalPages, setApiTotalPages] = useState(1);
+
+  // Display pagination (client-side within loaded data)
+  const [displayPage, setDisplayPage] = useState(1);
+
+  // Filter states
   const [filters, setFilters] = useState({
     category: "All",
     groupBy: "none",
@@ -100,96 +243,114 @@ const MarketplacePage = () => {
     sortDir: "desc",
     riskLevels: [],
     providers: [],
-    minReturn5y: 0,
-    maxFee: 2.0,
+    minReturn5y: -100,
+    maxFee: 10.0,
     search: "",
-    hideIneligible: true,
+    hideIneligible: false,
   });
 
+  // UI states
   const [compareList, setCompareList] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [visibleCount, setVisibleCount] = useState(12);
 
+  // ==========================================
+  // Data Loading
+  // ==========================================
+
+  const loadPage = useCallback(async (page) => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const { products: fetchedProducts, pagination } = await productService.getProducts({
+        page,
+        limit: PAGE_SIZE,
+      });
+
+      setProducts(fetchedProducts);
+      setTotalProducts(pagination.total);
+      setApiTotalPages(pagination.pages);
+      setApiPage(page);
+      setDisplayPage(1); // Reset display page when API page changes
+
+    } catch (err) {
+      setError("Failed to load products. Please try again later.");
+      console.error("[Marketplace] Load error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Initial load
   useEffect(() => {
     let isMounted = true;
 
-    const load = async () => {
-      try {
-        setLoading(true);
-        setError("");
+    const loadInitialData = async () => {
+      const [, userResult] = await Promise.allSettled([
+        loadPage(1),
+        fetchCurrentUserProfile(),
+      ]);
 
-        const [productsResult, userResult] = await Promise.allSettled([
-          fetchProducts(),
-          fetchCurrentUserProfile(),
-        ]);
+      if (!isMounted) return;
 
-        if (!isMounted) return;
-
-        if (productsResult.status === "fulfilled") {
-          setProducts(Array.isArray(productsResult.value) ? productsResult.value : []);
-        } else {
-          setError("Failed to load products. Please try again later.");
-          // eslint-disable-next-line no-console
-          console.error(productsResult.reason);
-        }
-
-        if (userResult.status === "fulfilled") {
-          const user = userResult.value || {};
-          setProfile((prev) => ({
-            ...prev,
-            riskTolerance: user.riskTolerance || prev.riskTolerance,
-          }));
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError("Failed to load data. Please try again later.");
-          // eslint-disable-next-line no-console
-          console.error(err);
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+      if (userResult.status === "fulfilled") {
+        const user = userResult.value || {};
+        setProfile((prev) => ({
+          ...prev,
+          riskTolerance: user.riskTolerance || prev.riskTolerance,
+          income: user.income,
+        }));
       }
     };
 
-    load();
+    loadInitialData();
+    return () => { isMounted = false; };
+  }, [loadPage]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // 当筛选条件变化时，将可见数量重置为第一页（避免上一页“View more”的状态污染新结果）
+  // Reset display page when filters change
   useEffect(() => {
-    setVisibleCount(12);
+    setDisplayPage(1);
   }, [filters]);
+
+  // ==========================================
+  // Computed Values
+  // ==========================================
 
   const providerOptions = useMemo(() => {
     const set = new Set(products.map((p) => p?.provider).filter(Boolean));
-    return Array.from(set).sort((a, b) =>
-      String(a).localeCompare(String(b))
-    );
+    return Array.from(set).sort((a, b) => String(a).localeCompare(String(b)));
   }, [products]);
 
   const maxTicketSize = useMemo(() => {
     if (profile?.income && Number.isFinite(profile.income)) {
-      // Rough heuristic: up to 25% of annual income in a single product, min 20k
       return Math.max(20000, profile.income * 0.25);
     }
-    // Fallback: roughly two years of default monthly contributions (1000)
     return 24000;
   }, [profile]);
 
+  // Apply client-side filters
   const filteredProducts = useMemo(
     () => applyFilters(products, filters, { ...profile, maxTicketSize }),
     [products, filters, profile, maxTicketSize]
   );
 
-  const visibleProducts = useMemo(
-    () => filteredProducts.slice(0, visibleCount),
-    [filteredProducts, visibleCount]
-  );
+  // Calculate display pagination
+  const displayTotalPages = Math.ceil(filteredProducts.length / DISPLAY_PER_PAGE);
+  
+  // Get products for current display page
+  const displayProducts = useMemo(() => {
+    const start = (displayPage - 1) * DISPLAY_PER_PAGE;
+    const end = start + DISPLAY_PER_PAGE;
+    return filteredProducts.slice(start, end);
+  }, [filteredProducts, displayPage]);
+
+  // Calculate showing range
+  const showingStart = filteredProducts.length === 0 ? 0 : (displayPage - 1) * DISPLAY_PER_PAGE + 1;
+  const showingEnd = Math.min(displayPage * DISPLAY_PER_PAGE, filteredProducts.length);
+
+  // ==========================================
+  // Event Handlers
+  // ==========================================
 
   const handleToggleCompare = (id) => {
     setCompareList((prev) => {
@@ -203,6 +364,25 @@ const MarketplacePage = () => {
     });
   };
 
+  const handleDisplayPageChange = (newPage) => {
+    setDisplayPage(newPage);
+    // Scroll to top of grid
+    document.getElementById("marketplace-grid-top")?.scrollIntoView({ 
+      behavior: "smooth", 
+      block: "start" 
+    });
+  };
+
+  const handleApiPageChange = (newPage) => {
+    loadPage(newPage);
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // ==========================================
+  // Render
+  // ==========================================
+
   return (
     <MainLayout>
       <div className="mx-auto max-w-7xl animate-fade-in px-4 pb-28 pt-8">
@@ -214,41 +394,49 @@ const MarketplacePage = () => {
             </div>
 
             <div className="flex-1">
-              <h1 className="text-3xl font-bold text-slate-900">
-                Marketplace
-              </h1>
+              <h1 className="text-3xl font-bold text-slate-900">Marketplace</h1>
               <p className="mt-2 text-sm text-slate-600">
-                Browse, filter, and compare investment products using a curated
-                snapshot dataset.
+                Browse, filter, and compare investment products from our curated database.
               </p>
             </div>
 
-            <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-500">
-              MVP
-            </span>
+            <div className="flex flex-col items-end gap-1">
+              <span className="rounded-full bg-emerald-100 px-4 py-2 text-xs font-bold uppercase tracking-widest text-emerald-600">
+                {totalProducts.toLocaleString()} Products
+              </span>
+            </div>
           </div>
 
-          {/* Content */}
-          <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-4">
-            {/* Left: Filters */}
+          {/* Content Grid */}
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-4">
+            {/* Left: Sticky Filters */}
             <div className="lg:col-span-1">
-              <FilterPanel
-                filters={filters}
-                setFilters={setFilters}
-                providers={providerOptions}
-                maxTicketSize={maxTicketSize}
-              />
+              <div className="lg:sticky lg:top-4">
+                <FilterPanel
+                  filters={filters}
+                  setFilters={setFilters}
+                  providers={providerOptions}
+                  maxTicketSize={maxTicketSize}
+                />
+              </div>
             </div>
 
             {/* Right: Product Grid */}
             <div className="lg:col-span-3">
               {loading ? (
-                <div className="rounded-2xl border border-slate-100 bg-white p-10 text-center text-sm text-slate-600">
-                  Loading products...
+                <div className="rounded-2xl border border-slate-100 bg-white p-10 text-center">
+                  <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-orange-500"></div>
+                  <p className="mt-4 text-sm text-slate-600">Loading products...</p>
                 </div>
               ) : error ? (
-                <div className="rounded-2xl border border-rose-100 bg-rose-50 p-6 text-sm text-rose-800">
-                  {error}
+                <div className="rounded-2xl border border-rose-100 bg-rose-50 p-6 text-center">
+                  <p className="text-sm text-rose-800">{error}</p>
+                  <button
+                    onClick={() => loadPage(1)}
+                    className="mt-4 rounded-full bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700"
+                  >
+                    Retry
+                  </button>
                 </div>
               ) : filteredProducts.length === 0 ? (
                 <div className="rounded-2xl border border-slate-100 bg-white p-10 text-center">
@@ -261,9 +449,37 @@ const MarketplacePage = () => {
                 </div>
               ) : (
                 <>
+                  {/* Results info bar */}
+                  <div className="mb-4 flex items-center justify-between">
+                    <div className="text-sm text-slate-600">
+                      Showing <span className="font-semibold text-slate-900">{showingStart}-{showingEnd}</span> of{" "}
+                      <span className="font-semibold text-slate-900">{filteredProducts.length}</span> products
+                      <span className="text-slate-400"> ({totalProducts.toLocaleString()} in database)</span>
+                    </div>
+                    
+                    {/* API Page selector (for large datasets) */}
+                    {apiTotalPages > 1 && (
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <span>Data batch:</span>
+                        <select
+                          value={apiPage}
+                          onChange={(e) => handleApiPageChange(Number(e.target.value))}
+                          className="rounded border border-slate-200 px-2 py-1 text-xs"
+                        >
+                          {Array.from({ length: apiTotalPages }, (_, i) => i + 1).map((p) => (
+                            <option key={p} value={p}>
+                              {(p - 1) * PAGE_SIZE + 1} - {Math.min(p * PAGE_SIZE, totalProducts)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Product grid */}
                   <div id="marketplace-grid-top">
                     <ProductGrid
-                      products={visibleProducts}
+                      products={displayProducts}
                       compareList={compareList}
                       onToggleCompare={handleToggleCompare}
                       groupBy={filters.groupBy}
@@ -275,55 +491,28 @@ const MarketplacePage = () => {
                     />
                   </div>
 
-                  {filteredProducts.length > 12 && (
-                    <div className="mt-6 flex justify-center gap-3">
-                      {visibleCount < filteredProducts.length && (
-                        <button
-                          type="button"
-                          className="rounded-full bg-slate-900 px-6 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
-                          onClick={() =>
-                            setVisibleCount((prev) =>
-                              Math.min(prev + 9, filteredProducts.length)
-                            )
-                          }
-                        >
-                          View more ({filteredProducts.length - visibleCount} more)
-                        </button>
-                      )}
-
-                      {visibleCount > 12 && (
-                        <button
-                          type="button"
-                          className="rounded-full border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                          onClick={() => {
-                            setVisibleCount(12);
-                            const el = document.getElementById(
-                              "marketplace-grid-top"
-                            );
-                            if (el) {
-                              el.scrollIntoView({ behavior: "smooth", block: "start" });
-                            }
-                          }}
-                        >
-                          View less
-                        </button>
-                      )}
-                    </div>
-                  )}
+                  {/* Pagination */}
+                  <div className="mt-8">
+                    <Pagination
+                      currentPage={displayPage}
+                      totalPages={displayTotalPages}
+                      onPageChange={handleDisplayPageChange}
+                    />
+                  </div>
                 </>
               )}
             </div>
           </div>
         </div>
 
-        {/* Bottom Compare Dock */}
+        {/* Comparison Dock */}
         <ComparisonDock
           compareList={compareList}
           products={products}
           onClear={() => setCompareList([])}
         />
 
-        {/* Details Modal */}
+        {/* Product Details Modal */}
         <ProductDetailsModal
           product={selectedProduct}
           open={Boolean(selectedProduct)}
