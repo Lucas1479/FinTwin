@@ -113,6 +113,7 @@ function generateRandomString(length = 4) {
 }
 
 // Pre-validate Hook: Automatically generate a unique username if not provided
+
 UserSchema.pre('validate', async function() {
     const user = this;
 
