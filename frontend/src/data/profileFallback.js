@@ -82,10 +82,10 @@ const PROFILE_FALLBACK = {
     fundNumber: 'A200',
   },
   aiInsight:
-    '⚠️ Your emergency buffer is parked in a 0% cash account. Consider a short-term deposit to earn ~$600/yr with similar safety.',
+    '⚠️ Gap Alert: You are $122,000 short on your First Home goal. (Go to Simulator)',
   gapInsights: [
-    'Your home goal has a $122,000 gap today — a budgeting widget (see Playground → Simulator) can help you close it.',
-    'Projecting a 10% higher savings rate unlocks $6k more gap coverage for 2025.',
+    "Reallocate $200/mo from discretionary spend to save $2,400/yr. (Go to Budgeting)",
+    "A 5% savings boost adds $32,000 to your net worth by 2028. (Go to Simulator)",
   ],
 };
 

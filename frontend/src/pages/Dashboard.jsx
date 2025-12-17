@@ -36,6 +36,36 @@ const BUDGET_WEIGHTS = [
   { title: 'Traveling', color: '#f43f5e', ratio: 0.22 },
 ];
 
+const CASH_FLOW_HISTORY = {
+  'Jan-Jun': [
+    { month: 'Jan', value: 2500 },
+    { month: 'Feb', value: 1800 },
+    { month: 'Mar', value: -500 },
+    { month: 'Apr', value: 2100 },
+    { month: 'May', value: 1200 },
+    { month: 'Jun', value: 900 },
+  ],
+  'Jul-Dec': [
+    { month: 'Jul', value: 1200 },
+    { month: 'Aug', value: 800 },
+    { month: 'Sep', value: -400 },
+    { month: 'Oct', value: 1500 },
+    { month: 'Nov', value: 2200 },
+    { month: 'Dec', value: 1800 },
+  ],
+};
+
+const generateLinePath = (data) => {
+  if (!data || data.length === 0) return '';
+  const points = data.map((item, index) => {
+    const x = ((index * 2 + 1) / 12) * 100;
+    const height = Math.min(100, Math.abs(item.value) / 45);
+    const y = 100 - height;
+    return `${x},${y}`;
+  });
+  return `M ${points.join(' L ')}`;
+};
+
 const buildLiquidityGradient = (segments) => {
   const total = segments.reduce((sum, segment) => sum + (segment.value ?? 0), 0) || 1;
   let cumulative = 0;
@@ -56,6 +86,7 @@ const Dashboard = () => {
   const [error, setError] = useState('');
   const [showLiquid, setShowLiquid] = useState(false);
   const [simulationBoost, setSimulationBoost] = useState(1);
+  const [trendPeriod, setTrendPeriod] = useState('Jul-Dec');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -218,6 +249,17 @@ const Dashboard = () => {
     });
   }, [monthlyExpenses]);
 
+  const budgetGradient = useMemo(() => {
+    let cumulative = 0;
+    const stops = budgetCategories.map((cat) => {
+      const start = cumulative;
+      cumulative += cat.percentage;
+      const end = cumulative;
+      return `${cat.color} ${start}% ${end}%`;
+    });
+    return `conic-gradient(${stops.join(', ')})`;
+  }, [budgetCategories]);
+
   const highestBudgetCategory =
     budgetCategories.length > 0
       ? budgetCategories.reduce((prev, current) =>
@@ -248,374 +290,381 @@ const Dashboard = () => {
               Add widget
             </button>
           </div>
-          <section className="card-base p-8 space-y-3">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-widest text-slate-500">North Star</p>
-                <div className="mt-2 flex items-center gap-3">
+        </section>
+
+        <section className="grid gap-6 lg:grid-cols-3 items-start">
+          {/* Column 1: Net Worth, Insight, Budget */}
+          <div className="space-y-6">
+            <section className="card-base p-6 space-y-4">
+              <p className="text-xs tracking-widest text-slate-500">Net worth</p>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
                   <span className="rounded-full bg-slate-100 p-2 text-slate-500">
-                    <DollarSign size={20} />
+                    <DollarSign size={24} />
                   </span>
-                  <div className="space-y-1">
-                    <p className="text-sm uppercase tracking-wide text-slate-500">
-                      Total net worth
-                    </p>
-                    <p className="text-4xl font-bold text-slate-900">
-                      {formatCurrency(showLiquid ? liquidWealth : netWorth)}
-                    </p>
-                    <p className="text-sm text-slate-500">
-                      Liquid wealth: {formatCurrency(liquidWealth)} · Assets {formatCurrency(totalAssets)} ·
-                      Liabilities {formatCurrency(totalLiabilities)}
-                    </p>
+                  <p className="text-3xl font-bold text-slate-900">
+                    {formatCurrency(showLiquid ? liquidWealth : netWorth)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn-primary-rounded px-3 py-2 text-[10px]"
+                  onClick={() => setShowLiquid((prev) => !prev)}
+                >
+                  {showLiquid ? 'Full' : 'Liquid'}
+                </button>
+              </div>
+              {error && (
+                <div className="flex items-center gap-2 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-2 text-xs text-rose-700">
+                  <AlertCircle size={16} /> {error}
+                </div>
+              )}
+              {loading && (
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-2 text-sm text-slate-500">
+                  Refreshing...
+                </div>
+              )}
+            </section>
+
+            <article className="card-base p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs tracking-widest text-slate-500">Money mind AI</p>
+                  <h3 className="text-xl font-bold text-slate-900">Personalized insight</h3>
+                </div>
+                <Sparkles size={20} className="text-indigo-500" />
+              </div>
+
+              <button
+                type="button"
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 transition-colors"
+                onClick={() => navigate('/playground')}
+              >
+                Simulator prompts
+                <ArrowRight size={16} />
+              </button>
+            </article>
+
+            <article className="card-base p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs tracking-widest text-slate-500">Budget</p>
+                  <h3 className="text-xl font-bold text-slate-900">Monthly spend plan</h3>
+                </div>
+                <div className="text-sm font-semibold text-slate-500">
+                  {formatCurrency(monthlyExpenses)}
+                </div>
+              </div>
+              
+              <div className="flex flex-col items-center justify-center py-4">
+                <div 
+                  className="relative h-48 w-48 rounded-full"
+                  style={{ background: budgetGradient }}
+                >
+                  <div className="absolute inset-4 flex flex-col items-center justify-center rounded-full bg-white">
+                     <p className="text-xs text-slate-500 font-semibold">Total Budget</p>
+                     <p className="text-xl font-bold text-slate-900">{formatCurrency(monthlyExpenses)}</p>
                   </div>
                 </div>
               </div>
-              <div className="text-xs">
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                {budgetCategories.map((category) => (
+                  <div key={category.title} className="flex items-center gap-2">
+                    <span
+                      className="h-3 w-3 rounded-full shrink-0"
+                      style={{ backgroundColor: category.color }}
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-[11px] font-semibold text-slate-900 leading-tight">
+                        {category.title}
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        {category.percentage}%
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </div>
+
+          {/* Column 2 & 3: Goal Bridge, Simulator, Cash Flow, Picks */}
+          <div className="lg:col-span-2 space-y-6">
+            <article className="card-base p-6 space-y-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs tracking-widest text-slate-500">Goal bridge</p>
+                  <h2 className="text-xl font-bold text-slate-900">
+                    {primaryGoal?.title ?? 'Primary goal'}
+                  </h2>
+                </div>
                 <button
                   type="button"
-                  className="btn-primary-rounded flex items-center gap-1 px-3 py-2 text-[11px]"
-                  onClick={() => setShowLiquid((prev) => !prev)}
+                  className="rounded-full bg-indigo-50 px-4 py-2 text-[11px] font-bold text-indigo-600 hover:bg-indigo-100 transition-colors"
+                  onClick={() => navigate('/goals')}
                 >
-                  {showLiquid ? 'View full net worth' : 'Spot liquid wealth'}
+                  View details
                 </button>
               </div>
-            </div>
-            {error && (
-              <div className="flex items-center gap-2 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-2 text-xs text-rose-700">
-                <AlertCircle size={16} /> {error}
-              </div>
-            )}
-            {loading && (
-              <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-2 text-sm text-slate-500">
-                Refreshing your data…
-              </div>
-            )}
-          </section>
-        </section>
-        <section className="grid gap-6 lg:grid-cols-3">
-          <article className="card-base p-6 space-y-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-widest text-slate-500">Goal Bridge</p>
-                <h2 className="text-xl font-bold text-slate-900">
-                  {primaryGoal?.title ?? 'Primary Goal'}
-                </h2>
-              </div>
-              <button
-                type="button"
-                className="text-xs font-semibold tracking-wide text-slate-500"
-                onClick={() => navigate('/goals')}
-              >
-                View all goals
-              </button>
-            </div>
-            <div className="space-y-3">
-              {profile.goals.map((goal, index) => {
-                const totalGoalFunds = (goal.currentAmount ?? 0) + (goal.projectedAmount ?? 0);
-                const goalProgress = goal.targetAmount
-                  ? Math.min(1, totalGoalFunds / goal.targetAmount)
-                  : 0;
-                return (
-                  <div
-                    key={goal.id}
-                    className="flex items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold uppercase text-slate-600">
-                        {index + 1}
-                      </span>
-                      <div>
+              <div className="space-y-6">
+                {profile.goals.map((goal) => {
+                  const totalGoalFunds = (goal.currentAmount ?? 0) + (goal.projectedAmount ?? 0);
+                  const goalProgress = goal.targetAmount
+                    ? Math.min(1, totalGoalFunds / goal.targetAmount)
+                    : 0;
+                  const pct = Math.round(goalProgress * 100);
+                  return (
+                    <div key={goal.id} className="space-y-2">
+                      <div className="flex items-center justify-between">
                         <p className="text-sm font-semibold text-slate-900">{goal.title}</p>
-                        <p className="text-[11px] text-slate-400">
-                          Target {formatCurrency(goal.targetAmount ?? 0)}
+                        <p className="text-sm font-semibold text-slate-600">
+                          {formatCurrency(goal.targetAmount ?? 0)}
                         </p>
                       </div>
-                    </div>
-                    <div className="flex flex-1 flex-col items-end gap-1 text-right">
-                      <span className="text-[11px] uppercase tracking-[0.2em] text-slate-400">progress</span>
-                      <span className="text-sm font-semibold text-slate-900">
-                        {Math.round(goalProgress * 100)}%
-                      </span>
-                      <div className="w-full">
-                        <div className="h-2 rounded-full bg-slate-100">
-                          <div
-                            className="h-full rounded-full bg-blue-600 transition-all"
-                            style={{ width: `${Math.min(100, goalProgress * 100)}%` }}
-                          />
+                      <div className="relative h-6 w-full rounded-full bg-indigo-50">
+                        <div
+                          className="flex h-full items-center rounded-full bg-indigo-500 px-2 transition-all"
+                          style={{ width: `${Math.min(100, pct)}%` }}
+                        >
+                          <span className="text-[10px] font-bold text-white">{pct}%</span>
                         </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="w-full">
-              <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-widest text-slate-500">
-                <span>Plan health</span>
-                <span>{planHealthValue}%</span>
-              </div>
-              <div className="h-2 rounded-full bg-slate-100">
-                <div
-                  className="h-full rounded-full bg-amber-500"
-                  style={{ width: `${planHealthValue}%` }}
-                />
-              </div>
-            </div>
-            <div className="text-sm font-medium text-rose-600">{gapMessage}</div>
-          </article>
-          <article className="card-base p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-widest text-slate-500">Goal allocation</p>
-                <h3 className="text-lg font-bold text-slate-900">Assets mapped to each goal</h3>
-              </div>
-              <PieChart size={20} className="text-slate-400" />
-            </div>
-            <div className="mt-5 flex items-center justify-center">
-              <div
-                className="relative h-40 w-40 rounded-full border border-slate-100"
-                style={{ background: goalAllocation.gradient }}
-              >
-                <div className="absolute inset-6 flex flex-col items-center justify-center rounded-full bg-white text-center text-sm font-semibold text-slate-600">
-                  <span className="text-xs uppercase tracking-[0.2em] text-slate-400">Mapped</span>
-                  <span className="text-2xl text-slate-900">{goalAllocationCoverage}%</span>
-                  <span className="text-xs tracking-[0.2em] text-slate-400">of assets</span>
-                </div>
-              </div>
-            </div>
-            <div className="mt-5 space-y-2 text-sm">
-              {goalAllocation.segments.length > 0 ? (
-                goalAllocation.segments.map((segment) => {
-                  const segmentShare = goalAllocation.total
-                    ? Math.round((segment.value / goalAllocation.total) * 100)
-                    : 0;
-                  return (
-                    <div key={segment.key} className="flex items-center justify-between text-slate-500">
-                      <span className="flex items-center gap-2">
-                        <span
-                          className="inline-block h-2 w-2 rounded-full"
-                          style={{ backgroundColor: segment.color }}
-                        />
-                        {segment.label}
-                      </span>
-                      <span>{segmentShare}%</span>
-                    </div>
                   );
-                })
-              ) : (
-                <p className="text-xs text-slate-400">Add goals to see how assets are distributed.</p>
-              )}
-            </div>
-          </article>
-          <article className="card-base p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-widest text-slate-500">KiwiSaver</p>
-                <h3 className="text-xl font-bold text-slate-900">{profile.kiwisaver.provider}</h3>
+                })}
               </div>
-              <CreditCard size={22} className="text-slate-400" />
-            </div>
-            <div>
-              <p className="text-sm text-slate-500">Fund number {profile.kiwisaver.fundNumber}</p>
-              <p className="text-3xl font-bold text-slate-900">
-                {formatCurrency(profile.kiwisaver.balance)}
-              </p>
-              <p className="text-sm text-slate-500">
-                1Y return {profile.kiwisaver.return1y?.toFixed(1)}% vs market{' '}
-                {profile.kiwisaver.benchmark1y?.toFixed(1)}%
-              </p>
-            </div>
-            <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-widest">
-              <span className="text-emerald-500">Aligned with {profile.riskTolerance}</span>
-              <span className="text-slate-400">Snapshot</span>
-            </div>
-            <button
-              type="button"
-              className="btn-primary-rounded w-full py-3 text-xs font-semibold"
-              onClick={() => navigate('/playground')}
-            >
-              Explore KiwiSaver strategies
-            </button>
-          </article>
-        </section>
-        <section className="grid gap-6 lg:grid-cols-3">
-          <article className="card-base p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-widest text-slate-500">Money Mind AI</p>
-                <h3 className="text-xl font-bold text-slate-900">Personalized insight</h3>
-              </div>
-              <Sparkles size={20} className="text-indigo-500" />
-            </div>
-            <p className="text-sm text-slate-600">{profile.aiInsight}</p>
-            <div className="space-y-2 text-xs text-slate-500">
-              {profile.gapInsights.map((insight, idx) => (
-                <p key={idx}>• {insight}</p>
-              ))}
-            </div>
-            <button
-              type="button"
-              className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800"
-              onClick={() => navigate('/playground')}
-            >
-              Simulator prompts
-              <ArrowRight size={16} />
-            </button>
-          </article>
-          <article className="card-base p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-widest text-slate-500">Simulation sandbox</p>
-                <h3 className="text-xl font-bold text-slate-900">Savings rate slider</h3>
-              </div>
-              <Play size={20} className="text-slate-400" />
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm text-slate-500">
-                Adjust how aggressive the plan is. This teaser links into the Playground slider.
-              </p>
-              <input
-                type="range"
-                min="0"
-                max="10"
-                value={simulationBoost}
-                onChange={(event) => setSimulationBoost(Number(event.target.value))}
-                className="w-full"
-              />
-              <div className="flex items-center justify-between text-sm text-slate-500">
-                <span>Current boost {simulationBoost}x</span>
-                <span>{formatCurrency(simulationProjection)}</span>
-              </div>
-            </div>
-            <div className="h-24 rounded-2xl bg-gradient-to-r from-slate-200 via-slate-100 to-transparent" />
-            <button
-              type="button"
-              className="btn-primary-rounded w-full py-3 text-xs font-semibold"
-              onClick={() => navigate('/playground')}
-            >
-              Open Playground sandbox
-            </button>
-          </article>
-          <article className="card-base p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-widest text-slate-500">Budget</p>
-                <h3 className="text-xl font-bold text-slate-900">Monthly spend plan</h3>
-              </div>
-              <div className="text-sm font-semibold text-slate-500">
-                {formatCurrency(monthlyExpenses)}
-              </div>
-            </div>
-            <div className="space-y-3">
-              {budgetCategories.map((category) => (
-                <div key={category.title} className="space-y-1">
-                  <div className="flex items-center justify-between text-sm font-semibold text-slate-900">
-                    <span className="flex items-center gap-2">
-                      <span
-                        className="inline-block h-2 w-2 rounded-full"
-                        style={{ backgroundColor: category.color }}
-                      />
-                      {category.title}
-                    </span>
-                    <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
-                      {category.percentage}% · {formatCurrency(category.amount)}
-                    </span>
+            </article>
+
+            <div className="grid gap-6 lg:grid-cols-2 items-start">
+              <article className="card-base p-5 space-y-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs tracking-widest text-slate-500">Goal accelerator</p>
+                    <h3 className="text-lg font-bold text-slate-900 mt-1">Timeline simulator</h3>
                   </div>
-                  <div className="h-2 rounded-full bg-slate-100">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${Math.min(100, Math.max(0, category.percentage))}%`,
-                        backgroundColor: category.color,
-                      }}
-                    />
+                  <div className="rounded-full bg-indigo-50 p-2 text-indigo-500">
+                    <Play size={20} fill="currentColor" />
                   </div>
                 </div>
-              ))}
-            </div>
-          </article>
-        </section>
-        <section className="grid gap-6 lg:grid-cols-3">
-          <article className="card-base lg:col-span-2 p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-widest text-slate-500">Monthly surplus</p>
-                <h3 className="text-xl font-bold text-slate-900">
-                  {surplus >= 0 ? 'Surplus monitor' : 'Surplus monitor'}
-                </h3>
-              </div>
-              <BarChart4 size={24} className="text-slate-400" />
-            </div>
-            <div className="flex items-center gap-4 text-sm text-slate-500">
-              <span>
-                Income {formatCurrency(monthlyIncome)} · Expenses {formatCurrency(monthlyExpenses)}
-              </span>
-              <span className="text-slate-400">Surplus {formatCurrency(surplus)}</span>
-            </div>
-            <div className="space-y-2">
-              <div className="rounded-full bg-slate-100 p-1">
-                <div
-                  className="h-3 rounded-full bg-emerald-500 transition-all"
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      (monthlyIncome / (monthlyIncome + monthlyExpenses || 1)) * 100
-                    )}%`,
-                  }}
-                />
-              </div>
-              <div className="rounded-full bg-slate-100 p-1">
-                <div
-                  className="h-3 rounded-full bg-rose-500 transition-all"
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      (monthlyExpenses / (monthlyIncome + monthlyExpenses || 1)) * 100
-                    )}%`,
-                  }}
-                />
-              </div>
-            </div>
-          </article>
-          <article className="card-base p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-widest text-slate-500">Smart move</p>
-                <h3 className="text-xl font-bold text-slate-900">Marketplace feed</h3>
-              </div>
-              <ArrowUpRight size={20} className="text-slate-400" />
-            </div>
-            {smartMoveProduct ? (
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-slate-900">
-                  {smartMoveProduct.product.name || smartMoveProduct.product.provider}
-                </p>
-                <p className="text-sm text-slate-500">
-                  {smartMoveProduct.product.category} · {smartMoveProduct.annual?.toFixed(1)}% p.a.
-                </p>
-                <p className="text-sm text-slate-500">
-                  Aligned with {profile.riskTolerance} risk tolerance
-                </p>
-              </div>
-            ) : (
-              <p className="text-sm text-slate-500">No recommendation yet. Browse the Marketplace.</p>
-            )}
-            <div className="space-y-2 text-sm text-slate-500">
-              {recommended.map((item) => (
-                <div key={`${item.product.id}-${item.product.name}`} className="flex items-center justify-between">
-                  <span>{item.product.provider}</span>
-                  <span>{item.annual?.toFixed(1)}% p.a.</span>
+
+                <div className="rounded-2xl bg-slate-50 p-5 border border-slate-100">
+                   <div className="flex items-center justify-between mb-4">
+                      <span className="text-xs font-semibold text-slate-500">Time to goal</span>
+                      <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100">
+                        {simulationBoost > 0 ? `-${(simulationBoost * 3)} months` : '0 months'}
+                      </span>
+                   </div>
+                   
+                   <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-[10px] font-bold tracking-wider">
+                          <span className="text-indigo-400">Standard pace</span>
+                          <span className="text-slate-400">60 mo</span>
+                        </div>
+                        <div className="h-2 w-full bg-indigo-50 rounded-full overflow-hidden">
+                           <div className="h-full bg-indigo-300 w-full" />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-[10px] font-bold tracking-wider">
+                          <span className="text-indigo-600">Accelerated</span>
+                          <span className="text-slate-400">{Math.max(0, 60 - (simulationBoost * 3))} mo</span>
+                        </div>
+                        <div className="h-2 w-full bg-indigo-100 rounded-full overflow-hidden">
+                           <div 
+                             className="h-full bg-indigo-600 transition-all duration-500 ease-out" 
+                             style={{ width: `${Math.max(0, (60 - (simulationBoost * 3)) / 60 * 100)}%` }} 
+                           />
+                        </div>
+                      </div>
+                   </div>
                 </div>
-              ))}
+
+                <div className="space-y-3 pt-1">
+                  <div className="flex justify-between items-center px-1">
+                    <span className="text-sm font-semibold text-slate-700">Monthly contribution</span>
+                    <span className="text-sm font-bold text-indigo-600">+{simulationBoost * 10}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="10"
+                    step="1"
+                    value={simulationBoost}
+                    onChange={(event) => setSimulationBoost(Number(event.target.value))}
+                    className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600 hover:bg-slate-200 transition-colors"
+                  />
+                </div>
+                
+                <button
+                  type="button"
+                  className="mt-2 w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-[0.98]"
+                  onClick={() => navigate('/playground')}
+                >
+                  Run full simulation
+                  <ArrowRight size={16} />
+                </button>
+              </article>
+
+              <div className="space-y-6">
+                <article className="card-base p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs tracking-widest text-slate-500">Monthly surplus</p>
+                      <h3 className="text-xl font-bold text-slate-900">
+                        Monthly cash flow
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      className="rounded-full bg-indigo-50 px-4 py-2 text-[11px] font-bold text-indigo-600 hover:bg-indigo-100 transition-colors"
+                      onClick={() => navigate('/budget')}
+                    >
+                      Adjust budget
+                    </button>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs font-semibold text-slate-500">
+                        <span>Income</span>
+                        <span>{formatCurrency(monthlyIncome)}</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-indigo-50">
+                        <div
+                          className="h-full rounded-full bg-indigo-500 transition-all"
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              (monthlyIncome / (monthlyIncome + monthlyExpenses || 1)) * 100
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs font-semibold text-slate-500">
+                        <span>Expenses</span>
+                        <span>{formatCurrency(monthlyExpenses)}</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-indigo-50">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            surplus < 0 ? 'bg-purple-600' : 'bg-indigo-300'
+                          }`}
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              (monthlyExpenses / (monthlyIncome + monthlyExpenses || 1)) * 100
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-100">
+                       <div className="flex items-center justify-between mb-3">
+                         <p className="text-xs font-semibold text-slate-500">6-Month Trend</p>
+                         <div className="flex rounded-lg bg-slate-100 p-0.5">
+                           {['Jan-Jun', 'Jul-Dec'].map((period) => (
+                             <button
+                               key={period}
+                               type="button"
+                               onClick={() => setTrendPeriod(period)}
+                               className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${
+                                 trendPeriod === period
+                                   ? 'bg-white text-indigo-600 shadow-sm'
+                                   : 'text-slate-400 hover:text-slate-600'
+                               }`}
+                             >
+                               {period}
+                             </button>
+                           ))}
+                         </div>
+                       </div>
+                       <div className="relative h-24 w-full">
+                          <svg 
+                            className="absolute inset-0 h-full w-full z-10 pointer-events-none overflow-visible" 
+                            viewBox="0 0 100 100" 
+                            preserveAspectRatio="none"
+                          >
+                            <path
+                              d={generateLinePath(CASH_FLOW_HISTORY[trendPeriod])}
+                              fill="none"
+                              stroke="#6366f1"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              vectorEffect="non-scaling-stroke"
+                              className="drop-shadow-sm opacity-80"
+                            />
+                          </svg>
+
+                          <div className="flex items-end justify-between h-full gap-2 relative z-0">
+                              {CASH_FLOW_HISTORY[trendPeriod].map((item, i) => (
+                                <div key={i} className="flex flex-col items-center gap-1 w-full group">
+                                  <div className="relative w-full flex items-end justify-center h-full bg-slate-50 rounded-md overflow-hidden">
+                                    <div 
+                                      className={`w-full rounded-t-md transition-all duration-500 ${item.value >= 0 ? 'bg-indigo-600' : 'bg-rose-400'}`}
+                                      style={{ height: `${Math.min(100, Math.abs(item.value) / 45)}%` }}
+                                    />
+                                    <div className="absolute bottom-0 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-[10px] px-1 py-0.5 rounded -mb-6 z-20 whitespace-nowrap">
+                                      {formatCurrency(item.value)}
+                                    </div>
+                                  </div>
+                                  <span className="text-[10px] font-medium text-slate-400">{item.month}</span>
+                                </div>
+                              ))}
+                           </div>
+                       </div>
+                    </div>
+                  </div>
+                </article>
+
+                <article className="card-base p-6 space-y-4">
+                  <div>
+                    <p className="text-xs tracking-widest text-slate-500">Smart move</p>
+                    <h3 className="text-xl font-bold text-slate-900">Top matched picks</h3>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    {recommended.length > 0 ? (
+                      recommended.slice(0, 2).map((item) => (
+                        <div 
+                          key={`${item.product.id}-${item.product.name}`} 
+                          className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-3"
+                        >
+                          <div>
+                            <p className="text-sm font-bold text-slate-900 capitalize">
+                              {item.product.provider.toLowerCase()}
+                            </p>
+                            <p className="text-xs text-slate-500">{item.product.category}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-indigo-600">
+                              {item.annual?.toFixed(1)}%
+                            </p>
+                            <p className="text-[10px] text-slate-400">p.a.</p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-slate-500">No matches yet.</p>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="w-full rounded-xl bg-indigo-600 py-3 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition-colors"
+                    onClick={() => navigate('/marketplace')}
+                  >
+                    Open Marketplace
+                  </button>
+                </article>
+              </div>
             </div>
-            <button
-              type="button"
-              className="btn-primary-rounded w-full py-3 text-xs font-semibold"
-              onClick={() => navigate('/marketplace')}
-            >
-              Open Marketplace
-            </button>
-          </article>
+          </div>
         </section>
       </div>
     </MainLayout>
