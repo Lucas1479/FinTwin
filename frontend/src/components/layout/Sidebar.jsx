@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-import { LayoutDashboard, Target, Briefcase, ShoppingBag, Gamepad2, Settings, HelpCircle, LogOut, ChevronLeft, ChevronRight, Menu } from 'lucide-react';
+import { LayoutDashboard, Target, Briefcase, ShoppingBag, Gamepad2, Settings, HelpCircle, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const Sidebar = () => {
   const location = useLocation();
