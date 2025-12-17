@@ -74,29 +74,55 @@ def map_risk_to_strategy(risk_score):
         return 'Balanced'  # Fallback
 
 
+def clean_name(name):
+    """Convert ALL CAPS name to Title Case, preserving common acronyms"""
+    if not name:
+        return ""
+    
+    # If name is already mixed case (not just fully upper), assume it's fine
+    # But many sources provide ALL CAPS, so we force Title Case for consistency if it looks like ALL CAPS
+    if name.isupper():
+        name = name.title()
+    
+    # Fix common acronyms and brand names that .title() breaks
+    # Note: Keys are the .title() version, Values are the correct version
+    corrections = {
+        'Us ': 'US ', 'Nz ': 'NZ ', 'Uk ': 'UK ', 'Usa ': 'USA ', 
+        'Etf': 'ETF', 'Pie': 'PIE', 'Lpf': 'LPF', 'Amp': 'AMP', 
+        'Anz': 'ANZ', 'Bnz': 'BNZ', 'Asb': 'ASB', 'Gmi': 'GMI',
+        'Esg': 'ESG', 'Sri': 'SRI', 'S&p': 'S&P', 'Msci': 'MSCI',
+        'Gdp': 'GDP'
+    }
+    
+    for wrong, right in corrections.items():
+        name = name.replace(wrong, right)
+        
+    return name
+
+
 def process_single_file(file_path, category_hint):
     """Process a single CSV file and return list of product records"""
     records = []
     
     if not os.path.exists(file_path):
-        print(f"⚠️  File not found: {file_path}, skipping...")
+        print(f"File not found: {file_path}, skipping...")
         return records
     
     try:
         df = pd.read_csv(file_path, low_memory=False)
-        print(f"✅ Loaded {len(df)} rows from {file_path}")
+        print(f"Loaded {len(df)} rows from {file_path}")
     except Exception as e:
-        print(f"❌ Error loading {file_path}: {e}")
+        print(f"Error loading {file_path}: {e}")
         return records
     
     # Filter essential rows (must have Fees and Risk data)
     df_clean = df.dropna(subset=['Total Annual Fund Fees', 'Risk Reward Indicator Code']).copy()
-    print(f"   ℹ️  Filtered to {len(df_clean)} rows with valid Fees & Risk data.")
+    print(f"   Filtered to {len(df_clean)} rows with valid Fees & Risk data.")
     
     for _, row in df_clean.iterrows():
         try:
             # --- A. Basic Identity ---
-            name = str(row.get('Fund Name', '')).strip()
+            name = clean_name(str(row.get('Fund Name', '')).strip())
             provider = str(row.get('Scheme Name', '')).strip()
             code = str(row.get('Fund Number', '')).strip()
             description = str(row.get('Fund Description', '')).strip()
@@ -197,7 +223,7 @@ def process_single_file(file_path, category_hint):
             records.append(product_doc)
         
         except Exception as err:
-            print(f"   ⚠️  Skipping row {row.get('Fund Name', 'Unknown')}: {err}")
+            print(f"   Skipping row {row.get('Fund Name', 'Unknown')}: {err}")
             continue
     
     return records
@@ -244,7 +270,7 @@ def get_mock_term_deposits():
 
 def main():
     print("=" * 60)
-    print("🚀 FinTwin Product Data Pipeline")
+    print(">>> FinTwin Product Data Pipeline")
     print("=" * 60)
     
     all_records = []
@@ -255,20 +281,42 @@ def main():
         file_path = file_config["file"]
         category_hint = file_config["category_hint"]
         
-        print(f"\n📂 Processing: {file_path} (hint: {category_hint})")
+        print(f"\nProcessing: {file_path} (hint: {category_hint})")
         records = process_single_file(file_path, category_hint)
         file_stats[file_path] = len(records)
         all_records.extend(records)
     
     # Add mock Term Deposits
-    print(f"\n➕ Injecting Mock Term Deposits...")
+    print(f"\nInjecting Mock Term Deposits...")
     mock_tds = get_mock_term_deposits()
     all_records.extend(mock_tds)
     file_stats["Mock TermDeposits"] = len(mock_tds)
     
+    # --- De-duplication Logic ---
+    print(f"\nDe-duplicating records based on Provider + Name...")
+    unique_map = {}
+    duplicates_count = 0
+    
+    for r in all_records:
+        # Create a unique key
+        key = f"{str(r['provider']).strip()}::{str(r['name']).strip()}".upper()
+        
+        if key not in unique_map:
+            unique_map[key] = r
+        else:
+            duplicates_count += 1
+            # Conflict resolution: Prefer KiwiSaver over Fund
+            existing = unique_map[key]
+            if r['category'] == 'KiwiSaver' and existing['category'] == 'Fund':
+                unique_map[key] = r  # Upgrade to KiwiSaver
+    
+    all_records = list(unique_map.values())
+    print(f"   Found {duplicates_count} duplicates.")
+    print(f"   Final unique count: {len(all_records)}")
+
     # Statistics Summary
     print(f"\n" + "=" * 60)
-    print(f"📊 Data Summary")
+    print(f"Data Summary")
     print("=" * 60)
     
     # Per-file stats
@@ -294,7 +342,7 @@ def main():
         json.dump(all_records, f, indent=2, ensure_ascii=False)
     
     print(f"\n" + "=" * 60)
-    print(f"🎉 Success! Exported {len(all_records)} products to {OUTPUT_FILE}")
+    print(f"Success! Exported {len(all_records)} products to {OUTPUT_FILE}")
     print("=" * 60)
 
 

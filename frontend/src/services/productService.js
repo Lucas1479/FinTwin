@@ -128,7 +128,13 @@ const productService = {
    */
   async getProducts(params = {}) {
     try {
-      const response = await api.get('/products', { params });
+      // Map frontend category to backend if needed for server-side filtering
+      const apiParams = { ...params };
+      if (apiParams.category === 'ManagedFund') {
+        apiParams.category = 'Fund';
+      }
+
+      const response = await api.get('/products', { params: apiParams });
       
       if (response.data?.success) {
         return {

@@ -80,7 +80,8 @@ export const getProducts = asyncHandler(async (req, res) => {
 
   // Pagination
   const pageNum = Math.max(1, parseInt(page));
-  const limitNum = Math.min(100, Math.max(1, parseInt(limit))); // Cap at 100 per page for performance
+  // Allow larger limit for bulk loading (e.g. 2000 for full marketplace load)
+  const limitNum = Math.min(5000, Math.max(1, parseInt(limit))); 
   const skip = (pageNum - 1) * limitNum;
 
   // Execute query

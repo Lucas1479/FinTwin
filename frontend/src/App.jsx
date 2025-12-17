@@ -3,7 +3,7 @@ import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import Dashboard from './pages/Dashboard';
-import WealthPage from './pages/WealthPage';
+import WealthCenterPage from './pages/WealthCenterPage';
 import GoalsPage from './pages/GoalsPage';
 import MarketplacePage from './pages/MarketplacePage';
 // import PlaygroundPage from './pages/PlaygroundPage';
@@ -24,7 +24,7 @@ function App() {
         
         {/* Protected Routes (Should Wrap in Auth Middleware later) */}
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/wealth" element={<WealthPage />} />
+        <Route path="/wealth" element={<WealthCenterPage />} />
         <Route path="/goals" element={<GoalsPage />} />
         <Route path="/goals/new" element={<GoalCreatePathways />} />
         <Route path="/goals/new/ai" element={<GoalIntakePage />} />
@@ -43,19 +43,3 @@ function App() {
 }
 
 export default App;
-
-
-
-
-// import React from 'react';
-// import ScenarioLobby from './pages/Playground/ScenarioLobby';
-
-// function App() {
-//   return (
-//     <div>
-//       <ScenarioLobby />
-//     </div>
-//   );
-// }
-
-// export default App;
