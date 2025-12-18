@@ -2,6 +2,7 @@ import express from 'express';
 import userRoutes from './userRoutes.js';
 import figmaRoutes from './figmaRoutes.js';
 import productRoutes from './productRoutes.js';
+import cashFlowRoutes from './cashFlowRoutes.js'; // New Import
 
 import goalRoutes from './goalRoutes.js';
 
@@ -15,6 +16,7 @@ router.use('/figma', figmaRoutes);
 router.use('/products', productRoutes);
 router.use('/goals', goalRoutes);
 router.use('/wealth', wealthCentreRoutes);
+router.use('/cashflow', cashFlowRoutes); // New Route
 
 // Health Check for /api/health
 router.get('/health', (req, res) => {
