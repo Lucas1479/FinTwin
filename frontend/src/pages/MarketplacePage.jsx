@@ -10,6 +10,7 @@ import ProductDetailsModal from "../components/marketplace/ProductDetailsModal";
 import productService from "../services/productService";
 import { fetchCurrentUserProfile } from "../utils/api";
 import { scoreProduct } from "../utils/scoring";
+import { useSidebar } from "../context/SidebarContext";
 
 const PAGE_SIZE = 2000; 
 const DISPLAY_PER_PAGE = 12; // Reduced for less scrolling
@@ -151,6 +152,7 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
 };
 
 const MarketplacePage = () => {
+  const { isCollapsed } = useSidebar();
   // ... (State logic unchanged) ...
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -266,19 +268,21 @@ const MarketplacePage = () => {
 
         {/* Main Grid: Filters + Content */}
         {/* Changed from lg to xl breakpoint for sidebar layout */}
-        <div className="grid grid-cols-1 gap-8 2xl:grid-cols-[280px_1fr]">
+        <div className={`grid grid-cols-1 gap-8 ${isCollapsed ? '2xl:grid-cols-[280px_1fr]' : ''}`}>
           
           {/* Left: Filter Panel (Only visible on 2XL screens) */}
-          <div className="hidden 2xl:block relative">
-            <div className="sticky top-24 space-y-6">
-              <FilterPanel
-                filters={filters}
-                setFilters={setFilters}
-                providers={providerOptions}
-                maxTicketSize={maxTicketSize}
-              />
+          {isCollapsed && (
+            <div className="hidden 2xl:block relative">
+              <div className="sticky top-24 space-y-6">
+                <FilterPanel
+                  filters={filters}
+                  setFilters={setFilters}
+                  providers={providerOptions}
+                  maxTicketSize={maxTicketSize}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Right: Content */}
           <div className="space-y-6">
@@ -302,7 +306,7 @@ const MarketplacePage = () => {
                 />
 
                 {/* Horizontal Filter Bar (Visible on screens smaller than 2XL) */}
-                <div className="2xl:hidden">
+                <div className={isCollapsed ? "2xl:hidden" : ""}>
                   <HorizontalFilterBar 
                     filters={filters}
                     setFilters={setFilters}

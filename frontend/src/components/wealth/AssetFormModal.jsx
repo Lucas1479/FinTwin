@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Upload, Check, ScanLine, DollarSign, Calendar, Building, Tag, Percent, ArrowRight, Trash2 } from 'lucide-react';
+import { X, Upload, Check, ScanLine, DollarSign, Calendar, Building, Tag, Percent, ArrowRight, Trash2, TrendingUp, Sparkles } from 'lucide-react';
 import { createAsset, updateAsset, deleteAsset } from '../../services/wealthService';
+import { createPassiveIncome, deletePassiveIncomesByAsset } from '../../services/cashFlowService';
 
 // Category Definitions
 const CATEGORIES = {
@@ -39,6 +40,11 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [ocrSuccess, setOcrSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  
+  // Passive Income Prompt State
+  const [showPassiveIncomePrompt, setShowPassiveIncomePrompt] = useState(false);
+  const [pendingAsset, setPendingAsset] = useState(null); // Asset that was just created
+  const [calculatedInterest, setCalculatedInterest] = useState({ monthly: 0, yearly: 0 });
   
   // Form State
   const [formData, setFormData] = useState({
@@ -112,19 +118,72 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null }) => {
         asset_details: formData.details
       };
 
+      let createdAsset = null;
+
       if (assetToEdit) {
         await updateAsset(assetToEdit._id, payload);
+        onRefresh();
+        onClose();
       } else {
-        await createAsset(payload);
+        createdAsset = await createAsset(payload);
+        
+        // Check if asset has interest rate and should prompt for passive income
+        const interestRate = formData.details.interest_rate;
+        const assetValue = Number(formData.value);
+        const hasInterest = interestRate && interestRate > 0 && assetValue > 0;
+        const isInterestBearingCategory = ['Cash_Bank', 'Cash_TermDeposit'].includes(selectedCategory);
+        
+        if (hasInterest && isInterestBearingCategory) {
+          // Calculate expected interest
+          const yearlyInterest = assetValue * (interestRate / 100);
+          const monthlyInterest = yearlyInterest / 12;
+          
+          setCalculatedInterest({ monthly: monthlyInterest, yearly: yearlyInterest });
+          setPendingAsset({ ...createdAsset, ...payload, _id: createdAsset._id });
+          setShowPassiveIncomePrompt(true);
+          // Don't close modal yet - show prompt
+        } else {
+          onRefresh();
+          onClose();
+        }
       }
-
-      onRefresh();
-      onClose();
     } catch (error) {
       console.error("Failed to save asset:", error);
     } finally {
       setLoading(false);
     }
+  };
+  
+  // Handle passive income creation
+  const handleCreatePassiveIncome = async () => {
+    if (!pendingAsset) return;
+    setLoading(true);
+    
+    try {
+      await createPassiveIncome({
+        sourceAssetId: pendingAsset._id,
+        name: `${pendingAsset.name} Interest`,
+        amount: calculatedInterest.monthly,
+        frequency: 'Monthly',
+      });
+      
+      onRefresh();
+      setShowPassiveIncomePrompt(false);
+      setPendingAsset(null);
+      onClose();
+    } catch (error) {
+      console.error("Failed to create passive income:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Skip passive income creation
+  const handleSkipPassiveIncome = () => {
+    setShowPassiveIncomePrompt(false);
+    setPendingAsset(null);
+    onRefresh();
+    onClose();
   };
 
   const handleDelete = async () => {
@@ -236,8 +295,79 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null }) => {
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-8">
           
+          {/* PASSIVE INCOME PROMPT (After Asset Creation) */}
+          {showPassiveIncomePrompt && pendingAsset && (
+            <div className="space-y-6 text-center animate-in fade-in duration-300">
+              {/* Success Icon */}
+              <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
+                <Check size={32} className="text-emerald-600" />
+              </div>
+              
+              <div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Asset Created!</h3>
+                <p className="text-slate-500 text-sm">
+                  <span className="font-bold text-slate-700">{pendingAsset.name}</span> has been added to your portfolio.
+                </p>
+              </div>
+              
+              {/* Interest Highlight */}
+              <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5 text-left">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <TrendingUp size={24} className="text-indigo-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-indigo-900 mb-1 flex items-center gap-2">
+                      <Sparkles size={16} className="text-indigo-500" />
+                      Passive Income Detected
+                    </h4>
+                    <p className="text-sm text-indigo-700 mb-3">
+                      This account earns <span className="font-bold">{formData.details.interest_rate}% p.a.</span> interest. 
+                      Would you like to track this as passive income in your Cash Flow?
+                    </p>
+                    
+                    <div className="bg-white rounded-xl p-4 border border-indigo-100">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-slate-500">Estimated Monthly Interest</span>
+                        <span className="text-lg font-bold text-emerald-600">
+                          +${calculatedInterest.monthly.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center mt-1 text-xs text-slate-400">
+                        <span>~${calculatedInterest.yearly.toFixed(0)} per year</span>
+                        <span>Added to Cash Flow</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleSkipPassiveIncome}
+                  className="flex-1 px-5 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+                >
+                  Skip for Now
+                </button>
+                <button
+                  onClick={handleCreatePassiveIncome}
+                  disabled={loading}
+                  className="flex-1 px-5 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {loading ? <Loader size={18} className="animate-spin" /> : <Check size={18} />}
+                  Add to Cash Flow
+                </button>
+              </div>
+              
+              <p className="text-xs text-slate-400">
+                This will help the system automatically calculate your projected cash balance.
+              </p>
+            </div>
+          )}
+
           {/* STEP 1: Category Selection (Create Mode Only) */}
-          {step === 1 && !assetToEdit && (
+          {step === 1 && !assetToEdit && !showPassiveIncomePrompt && (
             <div className="space-y-8">
               {/* Type Toggle */}
               <div className="flex bg-slate-100 p-1 rounded-xl w-fit mx-auto">
@@ -279,7 +409,7 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null }) => {
           )}
 
           {/* STEP 2: Form Details */}
-          {step === 2 && (
+          {step === 2 && !showPassiveIncomePrompt && (
             <form onSubmit={handleSubmit} className="space-y-8">
               
               {/* OCR Dropzone (Create Mode Only) */}
@@ -354,7 +484,7 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null }) => {
         </div>
 
         {/* Footer */}
-        {step === 2 && (
+        {step === 2 && !showPassiveIncomePrompt && (
           <div className="px-8 py-5 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
             
             {/* Left: Back (Create) or Delete (Edit) */}

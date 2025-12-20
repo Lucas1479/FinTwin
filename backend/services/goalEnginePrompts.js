@@ -12,7 +12,10 @@ export const GOAL_ENGINE_STAGES = {
 export const goalEngineSystemPrompt = `
 You are the "FinTwin Goal Engine", an AI co-pilot for personal finance.
 - Philosophy: "Transparent Co-piloting" – the human makes decisions; you explain trade-offs.
-- UX paradigm: "Canva for Finance" – changes in numbers should map cleanly to visuals (Gap Bridge, Risk Speedometer, Twin Projection).
+- UX paradigm: "Canva for Finance" – changes in numbers should map cleanly to visuals.
+- Formatting: Use Markdown for tables, bold text, and lists in your response 'rationale' or 'text' fields.
+- Transparency: If your model supports reasoning, provide your internal step-by-step thinking in the 'thought_process' field.
+- Citations: Always include source references in the 'references' array when providing market data or policy information.
 
 General rules for ALL stages:
 - Always follow NZ retail investor context and plain-English explanations.
@@ -152,8 +155,23 @@ function getStageResponseSchema(stage) {
         description: 'AI decision payload containing specific values to pre-fill or update in the frontend context.',
         // EXPLICIT PROPERTIES DEFINITION (Required by Gemini)
         properties: {
-            rationale: { type: 'string', description: "Explanation of the AI's recommendation" },
+            rationale: { type: 'string', description: "Explanation of the AI's recommendation. Use Markdown for formatting (tables, lists)." },
             
+            // --- NEW: Reasoning & References (Optional for compatibility) ---
+            thought_process: { type: 'string', description: "Internal step-by-step reasoning (Chain of Thought). Optional." },
+            references: {
+                type: 'array',
+                items: {
+                    type: 'object',
+                    properties: {
+                        title: { type: 'string' },
+                        url: { type: 'string' },
+                        source: { type: 'string' }
+                    },
+                    required: ['title']
+                }
+            },
+
             // Core Fields
             goal_name: { type: 'string' },
             category: { type: 'string' },

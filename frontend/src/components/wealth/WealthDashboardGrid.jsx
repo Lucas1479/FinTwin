@@ -79,23 +79,38 @@ const KpiCard = ({ title, value, change, icon: Icon }) => {
 };
 
 // ============ MAIN COMPONENT ============
-const WealthDashboardGrid = ({ assets, liabilities, summary }) => {
+const WealthDashboardGrid = ({ assets, liabilities, summary, onOpenLiquidity }) => {
   
-  // Data Logic (Keep same as before)
+  // Data Logic (Updated to Industry Standard Tiers)
   const liquidityData = useMemo(() => {
-    let liquid = 0, semi = 0, locked = 0;
+    let t1 = 0; // Tier 1: Liquid Cash (T+0)
+    let t2 = 0; // Tier 2: Semi-Liquid / Marketable (T+3)
+    let t3 = 0; // Tier 3+4: Fixed / Locked (Illiquid)
+    
     const total = summary.totalAssets || 1;
+    
     assets.forEach(a => {
-      const cat = a.category;
-      if (['Cash_Bank', 'Cash_Physical', 'Invest_Shares'].includes(cat)) liquid += a.value;
-      else if (['Invest_ManagedFund', 'KiwiSaver', 'Cash_TermDeposit'].includes(cat)) semi += a.value;
-      else locked += a.value;
+      const c = a.category;
+      
+      // Tier 1: Cash
+      if (['Cash_Bank', 'Cash_Physical'].includes(c)) {
+        t1 += a.value;
+      } 
+      // Tier 2: Marketable Securities (Shares + Funds)
+      else if (['Invest_Shares', 'Invest_ManagedFund'].includes(c)) {
+        t2 += a.value;
+      }
+      // Tier 3+4: Fixed & Locked (Property, KiwiSaver, TermDeposit, Vehicles)
+      else {
+        t3 += a.value;
+      }
     });
+
     return [
-      { name: 'Liquid', value: liquid, fill: COLORS.chart4, percent: ((liquid / total) * 100).toFixed(0) },
-      { name: 'Growth', value: semi, fill: COLORS.chart2, percent: ((semi / total) * 100).toFixed(0) },
-      { name: 'Locked', value: locked, fill: COLORS.chart3, percent: ((locked / total) * 100).toFixed(0) },
-    ];
+      { name: 'Liquid', value: t1, fill: COLORS.chart1, percent: ((t1 / total) * 100).toFixed(0) },     // Deep Indigo
+      { name: 'Semi-Liquid', value: t2, fill: COLORS.chart2, percent: ((t2 / total) * 100).toFixed(0) }, // Medium Indigo
+      { name: 'Locked', value: t3, fill: '#cbd5e1', percent: ((t3 / total) * 100).toFixed(0) },        // Slate (Fixed)
+    ].filter(item => item.value > 0);
   }, [assets, summary]);
 
   const trendData = useMemo(() => {
@@ -179,12 +194,15 @@ const WealthDashboardGrid = ({ assets, liabilities, summary }) => {
         <div className={CARD_BASE}>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-bold text-slate-900">Liquidity</h3>
-            <button className="w-8 h-8 rounded-full border border-slate-100 flex items-center justify-center hover:bg-slate-50 transition-colors group">
+            <button 
+              onClick={onOpenLiquidity}
+              className="w-8 h-8 rounded-full border border-slate-100 flex items-center justify-center hover:bg-slate-50 transition-colors group cursor-pointer"
+            >
               <ArrowUpRight size={14} className="text-slate-400 group-hover:text-violet-600 transition-colors" />
             </button>
           </div>
 
-          <div className="flex items-center h-[180px]"> 
+          <div className="flex items-center h-[180px]">  
             {/* Legend List (Left) - Vertically Distributed */}
             <div className="flex-1 flex flex-col justify-center space-y-5">
               {liquidityData.map((item) => (

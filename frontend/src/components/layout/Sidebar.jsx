@@ -1,29 +1,11 @@
-import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Target, Briefcase, ShoppingBag, Gamepad2, Settings, HelpCircle, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useSidebar } from '../../context/SidebarContext';
 
 const Sidebar = () => {
   const location = useLocation();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const { isCollapsed, toggleSidebar } = useSidebar();
   
-  // Auto-collapse on smaller screens (e.g. laptop/tablet < 1280px)
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 1280) {
-        setIsCollapsed(true);
-      } else {
-        setIsCollapsed(false);
-      }
-    };
-
-    // Initial check
-    handleResize();
-
-    // Listen for resize
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
   // Core Modules (High Frequency)
   const mainItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
@@ -53,7 +35,7 @@ const Sidebar = () => {
       {/* Collapse Toggle */}
       <div className="flex justify-end mb-6">
           <button 
-            onClick={() => setIsCollapsed(!isCollapsed)}
+            onClick={toggleSidebar}
             className="p-2 rounded-xl text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors"
           >
               {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}

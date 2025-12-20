@@ -12,33 +12,36 @@ import GoalIntakePage from './pages/GoalIntakePage';
 import GoalGalleryPage from './pages/GoalGalleryPage';
 import ScenarioLobby from './pages/Playground/ScenarioLobby';
 import ScenarioWorkspace from './pages/Playground/ScenarioWorkspace';
+import { SidebarProvider } from './context/SidebarContext';
 
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        
-        {/* Protected Routes (Should Wrap in Auth Middleware later) */}
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/wealth" element={<WealthCenterPage />} />
-        <Route path="/goals" element={<GoalsPage />} />
-        <Route path="/goals/new" element={<GoalCreatePathways />} />
-        <Route path="/goals/new/ai" element={<GoalIntakePage />} />
-        <Route path="/goals/new/gallery" element={<GoalGalleryPage />} />
-        <Route path="/marketplace" element={<MarketplacePage />} />
-        {/* <Route path="/playground" element={<PlaygroundPage />} /> */}
-        <Route path="/playground" element={<ScenarioLobby />} />
-        <Route path="/playground/scenario/:id" element={<ScenarioWorkspace />} /> 
-        
+    <SidebarProvider>
+      <Router>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          
+          {/* Protected Routes (Should Wrap in Auth Middleware later) */}
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/wealth" element={<WealthCenterPage />} />
+          <Route path="/goals" element={<GoalsPage />} />
+          <Route path="/goals/new" element={<GoalCreatePathways />} />
+          <Route path="/goals/new/ai" element={<GoalIntakePage />} />
+          <Route path="/goals/new/gallery" element={<GoalGalleryPage />} />
+          <Route path="/marketplace" element={<MarketplacePage />} />
+          {/* <Route path="/playground" element={<PlaygroundPage />} /> */}
+          <Route path="/playground" element={<ScenarioLobby />} />
+          <Route path="/playground/scenario/:id" element={<ScenarioWorkspace />} /> 
+          
 
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Router>
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Router>
+    </SidebarProvider>
   );
 }
 

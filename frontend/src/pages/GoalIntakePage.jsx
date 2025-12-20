@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import MainLayout from '../components/layout/MainLayout';
 import GoalDefinitionForm from '../components/goals/GoalDefinitionForm';
 import StageStrategy from '../components/goals/StageStrategy';
@@ -26,7 +28,9 @@ import {
     Copy, 
     Check,
     PieChart,
-    BarChart3
+    BarChart3,
+    Brain,
+    ExternalLink
 } from 'lucide-react';
 
 // --- STAGE COMPONENTS ---
@@ -145,24 +149,37 @@ const StageSimulation = ({ goalContext }) => {
     );
 };
 
-// Typewriter Effect Component
-const TypewriterMessage = ({ text, onComplete }) => {
+// Typewriter Effect Component - NOW SUPPORTS MARKDOWN
+const TypewriterMessage = ({ text, onComplete, role }) => {
     const [displayedText, setDisplayedText] = useState('');
     
     useEffect(() => {
         let index = 0;
         const timer = setInterval(() => {
-            setDisplayedText((prev) => text.slice(0, index + 1));
+            setDisplayedText(text.slice(0, index + 1));
             index++;
-            if (index > text.length) {
+            if (index >= text.length) {
                 clearInterval(timer);
-                onComplete && onComplete();
+                if (onComplete) onComplete();
             }
-        }, 20); // 20ms per char speed
+        }, 10);
         return () => clearInterval(timer);
-    }, [text]); // Re-run if text changes completely (should be stable for single message)
+    }, [text]);
 
-    return <>{displayedText}</>;
+    return (
+        <ReactMarkdown 
+            remarkPlugins={[remarkGfm]}
+            components={{
+                table: ({node, ...props}) => (
+                    <div className="overflow-x-auto my-4 w-full border border-slate-100 rounded-lg no-scrollbar">
+                        <table className="min-w-full divide-y divide-slate-100" {...props} />
+                    </div>
+                )
+            }}
+        >
+            {displayedText}
+        </ReactMarkdown>
+    );
 };
 
 // Copilot Component - NOW ACTIVE AND CONNECTED
@@ -171,6 +188,7 @@ const Copilot = ({ stage, currentStageLabel, goalContext, onUpdateContext, exter
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [copiedId, setCopiedId] = useState(null); 
+    const [showReasoning, setShowReasoning] = useState(true);
     
     const scrollRef = useRef(null);
     const textareaRef = useRef(null); 
@@ -200,7 +218,11 @@ const Copilot = ({ stage, currentStageLabel, goalContext, onUpdateContext, exter
         }
     }, [messages]); // Scroll on every update (including typewriter ticks)
 
-    // ... (rest of useEffects for textarea)
+    const handleCopy = (text, id) => {
+        navigator.clipboard.writeText(text);
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
 
     const handleSend = async () => {
         if (!inputText.trim()) return;
@@ -224,7 +246,13 @@ const Copilot = ({ stage, currentStageLabel, goalContext, onUpdateContext, exter
             const aiDecision = data.json?.ai_decision;
 
             // Mark message as 'isTyping' to trigger effect
-            setMessages(prev => [...prev, { role: 'assistant', text: aiText, isTyping: true }]);
+            setMessages(prev => [...prev, { 
+                role: 'assistant', 
+                text: aiText, 
+                isTyping: true,
+                thought_process: aiDecision?.thought_process,
+                references: aiDecision?.references
+            }]);
 
             if (aiDecision && onUpdateContext) {
                 onUpdateContext(aiDecision);
@@ -238,16 +266,28 @@ const Copilot = ({ stage, currentStageLabel, goalContext, onUpdateContext, exter
         }
     };
 
-    // ... (handleKeyDown and other helpers) ...
-
     return (
         <div className="h-full flex flex-col">
-            {/* ... Header ... */}
-            <div className="flex items-center gap-2 mb-4 shrink-0">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-200">
-                    <Activity size={16} />
+            {/* Header with Reasoning Toggle */}
+            <div className="flex items-center justify-between mb-4 shrink-0">
+                <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+                        <Activity size={16} />
+                    </div>
+                    <span className="font-bold text-slate-900 text-sm">FinTwin Copilot</span>
                 </div>
-                <span className="font-bold text-slate-900 text-sm">FinTwin Copilot</span>
+                
+                <button 
+                    onClick={() => setShowReasoning(!showReasoning)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold transition-all ${
+                        showReasoning 
+                        ? 'bg-brand-500 text-white shadow-md shadow-brand-100' 
+                        : 'bg-slate-100 text-slate-400'
+                    }`}
+                >
+                    <Brain size={12} />
+                    {showReasoning ? 'Reasoning ON' : 'Reasoning OFF'}
+                </button>
             </div>
             
             <div 
@@ -255,24 +295,69 @@ const Copilot = ({ stage, currentStageLabel, goalContext, onUpdateContext, exter
                 className="flex-1 bg-slate-50 rounded-2xl p-4 mb-4 overflow-y-auto border border-slate-100 flex flex-col gap-3 min-h-0"
             >
                 {messages.map((msg, i) => (
-                    <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} group`}>
+                    <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} group w-full`}>
+                        {/* Thought Process (CoT) */}
+                        {msg.role === 'assistant' && msg.thought_process && showReasoning && (
+                            <div className="max-w-[85%] mb-1 animate-fade-in">
+                                <div className="bg-slate-100/50 border border-slate-200/60 rounded-2xl rounded-bl-none p-3 text-[11px] text-slate-500 leading-relaxed italic">
+                                    <div className="flex items-center gap-1 mb-1 font-bold uppercase tracking-wider text-[9px] text-brand-600">
+                                        <Brain size={10} /> Thought Process
+                                    </div>
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                        {msg.thought_process}
+                                    </ReactMarkdown>
+                                </div>
+                            </div>
+                        )}
+
                         <div className={`
                             relative max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed pr-8 break-words
                             ${msg.role === 'user' 
                                 ? 'bg-slate-900 text-white rounded-br-none' 
                                 : 'bg-white border border-slate-200 text-slate-600 rounded-tl-none shadow-sm'}
                         `}>
-                            {/* Render Typewriter only for the latest AI message that is marked 'isTyping' */}
-                            {msg.role === 'assistant' && msg.isTyping && i === messages.length - 1 ? (
-                                <TypewriterMessage 
-                                    text={msg.text} 
-                                    onComplete={() => {
-                                        // Optional: Disable typing flag after completion to prevent re-run
-                                        // For now, simpler to just leave it as Typewriter handles stability
-                                    }} 
-                                />
-                            ) : (
-                                msg.text
+                            {/* Main Message Content with Markdown */}
+                            <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert text-white' : 'text-slate-600'}`}>
+                                {msg.role === 'assistant' && msg.isTyping && i === messages.length - 1 ? (
+                                    <TypewriterMessage 
+                                        text={msg.text} 
+                                        onComplete={() => {
+                                            const newMessages = [...messages];
+                                            newMessages[i].isTyping = false;
+                                            setMessages(newMessages);
+                                        }} 
+                                    />
+                                ) : (
+                                    <ReactMarkdown 
+                                        remarkPlugins={[remarkGfm]}
+                                        components={{
+                                            table: ({node, ...props}) => (
+                                                <div className="overflow-x-auto my-4 w-full border border-slate-100 rounded-lg no-scrollbar">
+                                                    <table className="min-w-full divide-y divide-slate-100" {...props} />
+                                                </div>
+                                            )
+                                        }}
+                                    >
+                                        {msg.text}
+                                    </ReactMarkdown>
+                                )}
+                            </div>
+
+                            {/* References */}
+                            {msg.role === 'assistant' && msg.references && msg.references.length > 0 && (
+                                <div className="mt-3 pt-2 border-t border-slate-100 flex flex-wrap gap-2">
+                                    {msg.references.map((ref, idx) => (
+                                        <a 
+                                            key={idx}
+                                            href={ref.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-1 px-2 py-0.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-[10px] text-slate-500 transition-colors"
+                                        >
+                                            <ExternalLink size={10} /> {ref.source || 'Source'}: {ref.title}
+                                        </a>
+                                    ))}
+                                </div>
                             )}
 
                             {/* Copy Button */}
@@ -297,12 +382,16 @@ const Copilot = ({ stage, currentStageLabel, goalContext, onUpdateContext, exter
                 )}
             </div>
 
-            {/* ... Input Area ... */}
+            {/* Input Area */}
             <div className="relative shrink-0">
                 <textarea 
                     ref={textareaRef}
                     value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
+                    onChange={(e) => {
+                        setInputText(e.target.value);
+                        e.target.style.height = 'auto';
+                        e.target.style.height = `${e.target.scrollHeight}px`;
+                    }}
                     onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
@@ -332,6 +421,12 @@ const GoalEnginePage = () => {
   const [goalContext, setGoalContext] = useState({});
   const [submitting, setSubmitting] = useState(false);
   
+  // Resizable Sidebar State (Pixels instead of percentage for better precision)
+  const [leftWidth, setLeftWidth] = useState(450); 
+  const [isResizing, setIsResizing] = useState(false);
+  
+  const containerRef = useRef(null);
+
   // NEW: Track loading state for stage transitions
   const [isLoadingAI, setIsLoadingAI] = useState(false);
   const [copilotSystemMsg, setCopilotSystemMsg] = useState(null);
@@ -342,8 +437,6 @@ const GoalEnginePage = () => {
       { id: 'product', label: 'Product', icon: ShoppingBag },
       { id: 'simulation', label: 'Simulation', icon: Activity },
   ];
-
-  // Helper to trigger AI Analysis when entering a stage
   const runStageAnalysis = async (stageId, context) => {
       setIsLoadingAI(true);
       try {
@@ -480,6 +573,45 @@ const GoalEnginePage = () => {
       }
   };
 
+  // Dragging Logic
+  const startResizing = (e) => {
+    setIsResizing(true);
+    e.preventDefault();
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isResizing || !containerRef.current) return;
+      
+      // Get container position to calculate relative X
+      const containerRect = containerRef.current.getBoundingClientRect();
+      let newWidth = e.clientX - containerRect.left;
+      
+      // Add constraints (e.g., 320px to 800px)
+      if (newWidth < 320) newWidth = 320;
+      if (newWidth > containerRect.width * 0.6) newWidth = containerRect.width * 0.6;
+      
+      setLeftWidth(newWidth);
+    };
+
+    const stopResizing = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', stopResizing);
+      document.body.style.cursor = 'col-resize';
+    } else {
+      document.body.style.cursor = 'default';
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', stopResizing);
+    };
+  }, [isResizing]);
+
   return (
     <MainLayout>
       <div className="max-w-[2400px] mx-auto p-4 md:p-6 h-[calc(100vh-64px)] flex flex-col animate-fade-in">
@@ -520,17 +652,22 @@ const GoalEnginePage = () => {
             <div className="w-12 md:w-24"></div> {/* Spacer */}
         </div>
 
-        {/* Main Split View - RESPONSIVE LAYOUT */}
-        <div className="flex-1 grid grid-cols-1 xl:grid-cols-12 gap-6 min-h-0 overflow-hidden">
+        {/* Main Split View - RESIZABLE LAYOUT */}
+        <div 
+            ref={containerRef}
+            className={`flex-1 flex flex-col lg:flex-row gap-0 min-h-0 overflow-hidden relative ${isResizing ? 'select-none' : ''}`}
+        >
             
-            {/* LEFT COPILOT (Responsive Cols) */}
-            <div className="
-                order-2 xl:order-1
-                h-[400px] xl:h-full 
-                xl:col-span-4 2xl:col-span-3
-                bg-white/50 border border-slate-100 rounded-[2rem] p-4 backdrop-blur-sm 
-                flex flex-col overflow-hidden min-w-0
-            ">
+            {/* LEFT COPILOT */}
+            <div 
+                className="
+                    order-2 lg:order-1
+                    h-[400px] lg:h-full 
+                    bg-white/50 border border-slate-100 rounded-[2rem] p-4 backdrop-blur-sm 
+                    flex flex-col overflow-hidden
+                "
+                style={{ width: window.innerWidth >= 1024 ? `${leftWidth}px` : '100%' }}
+            >
                 <Copilot 
                     stage={currentStage} 
                     currentStageLabel={STAGES[currentStage].id}
@@ -540,14 +677,29 @@ const GoalEnginePage = () => {
                 />
             </div>
 
+            {/* RESIZER HANDLE (Overlay to remove gap) */}
+            <div 
+                onMouseDown={startResizing}
+                className="
+                    hidden lg:flex 
+                    absolute top-0 bottom-0 z-20
+                    w-2 cursor-col-resize items-center justify-center
+                    transition-all hover:bg-brand-500/10
+                "
+                style={{ left: `${leftWidth - 4}px` }}
+            >
+                <div className={`w-1 rounded-full transition-all ${isResizing ? 'bg-brand-500 h-24 w-1.5' : 'bg-slate-200 h-12 group-hover:bg-brand-300'}`}></div>
+            </div>
+
             {/* RIGHT CANVAS */}
-            <div className="
-                order-1 xl:order-2
-                flex-1 xl:h-full 
-                xl:col-span-8 2xl:col-span-9
-                bg-white border border-slate-100 rounded-[2rem] shadow-sm p-6 md:p-8 
-                flex flex-col overflow-hidden
-            ">
+            <div 
+                className="
+                    order-1 lg:order-2
+                    flex-1 lg:h-full 
+                    bg-white border border-slate-100 rounded-[2rem] shadow-sm p-6 md:p-8 
+                    flex flex-col overflow-hidden min-w-0
+                "
+            >
                 <div className="flex-1 overflow-y-auto no-scrollbar">
                     {currentStage === 0 && (
                         <div className="max-w-2xl mx-auto py-2">
