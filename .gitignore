@@ -51,3 +51,39 @@ backend/coverage/
 # #######################################
 backend/data/raw/*.csv
 backend/data/processed/*.json
+*.csv
+backend/*.csv
+backend/products_final.json
+
+# #######################################
+# Python (Virtual Environments & Cache)
+# #######################################
+# Virtual environments
+.venv/
+venv/
+env/
+.env/
+ENV/
+virtualenv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Python build/dist
+pip-log.txt
+pip-delete-this-directory.txt
+*.egg-info/
+.eggs/
+*.egg
+
+# Python tools
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/

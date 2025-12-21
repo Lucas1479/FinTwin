@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout';
-import { buildProfile, fetchCurrentUserProfile, fetchProducts } from '../services/api';
+import api, { fetchCurrentUserProfile, fetchProducts } from '../utils/api';
 import { scoreProduct } from '../utils/scoring';
 
 const formatCurrency = (value, digits = 0) =>

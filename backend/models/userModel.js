@@ -113,7 +113,8 @@ function generateRandomString(length = 4) {
 }
 
 // Pre-validate Hook: Automatically generate a unique username if not provided
-UserSchema.pre('validate', async function(next) {
+
+UserSchema.pre('validate', async function() {
     const user = this;
 
     // Only run this logic if the document is new and no username was manually provided
@@ -144,12 +145,9 @@ UserSchema.pre('validate', async function(next) {
 
         // If we failed to find a unique username after maximum attempts, throw an error
         if (!isUnique) {
-            return next(new Error('Failed to generate a unique username after multiple attempts.'));
+            throw new Error('Failed to generate a unique username after multiple attempts.');
         }
     }
-    
-    // Proceed with the save operation
-    next();
 });
 
 // Match user entered password to hashed password in database

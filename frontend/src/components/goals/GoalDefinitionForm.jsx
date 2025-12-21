@@ -1,197 +1,209 @@
-import { useState } from 'react';
-import { ArrowRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowRight, Sparkles } from 'lucide-react';
 
-const DEFAULT_FORM = {
-  goal_name: '',
-  category: 'custom',
-  priority: 'need',
-  riskTolerance: 'middle-risk',
-  target_amount: '',
-  due_date: '',
-  notes: '',
-};
+import RetirementGoalForm from './forms/RetirementGoalForm';
+import HomeGoalForm from './forms/HomeGoalForm';
+import DynamicFormRenderer from './forms/DynamicFormRenderer';
+import goalEngineService from '../../services/goalEngineService';
+import api from '../../utils/api'; // Keep for other API calls if needed
 
-const GoalDefinitionForm = ({
-  initialValues = {},
-  onSubmit,
-  submitting = false,
-  submitLabel = 'Create Goal',
+/**
+ * The Master Form Component (Stage 1)
+ * Decides which specific form to render based on the Category.
+ * Manages the connection to the backend LLM for form schema generation.
+ */
+
+const GoalDefinitionForm = ({ 
+    initialValues = {}, 
+    onSubmit, 
+    submitting = false,
+    submitLabel = "Continue to Strategy"
 }) => {
-  const [form, setForm] = useState({ ...DEFAULT_FORM, ...initialValues });
-  const [error, setError] = useState('');
+    
+    // 1. Central State for the entire form (Stage 1 Context)
+    const [goalContext, setGoalContext] = useState({
+        goal_name: '',
+        category: 'custom', 
+        priority: 'want',
+        target_amount: 0,
+        due_date: '',
+        goal_details: {}, // Polymorphic details
+        ...initialValues
+    });
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
+    const [formSchema, setFormSchema] = useState(null);
+    const [loadingSchema, setLoadingSchema] = useState(false);
+    const [aiError, setAiError] = useState('');
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
+    // SYNC: Update internal state when parent props change (e.g. Copilot updates context)
+    useEffect(() => {
+        console.log("DEBUG: GoalDefinitionForm received new initialValues:", initialValues); // DEBUG LOG 5
+        if (initialValues) {
+            setGoalContext(prev => {
+                const newState = {
+                    ...prev,
+                    ...initialValues,
+                    // Ensure goal_details is merged carefully, preferring new values
+                    goal_details: {
+                        ...prev.goal_details,
+                        ...(initialValues.goal_details || {})
+                    }
+                };
+                console.log("DEBUG: GoalDefinitionForm updating state to:", newState); // DEBUG LOG 6
+                return newState;
+            });
+        }
+    }, [initialValues]);
 
-    if (!form.goal_name || !form.target_amount || !form.due_date) {
-      setError('Please fill in goal name, target amount, and target date.');
-      return;
-    }
+    // 2. Fetch Schema when Category Changes (or on Mount)
+    useEffect(() => {
+        const fetchSchema = async () => {
+            // Only fetch dynamic schema for non-hardcoded types or if we want AI defaults
+            // For MVP, we use hardcoded components for 'retirement' and 'home'
+            // and DynamicFormRenderer for others.
+            
+            const category = goalContext.category;
+            console.log("DEBUG: GoalDefinitionForm category changed to:", category); // DEBUG LOG 7
 
-    const payload = {
-      goal_name: form.goal_name,
-      category: form.category,
-      priority: form.priority,
-      riskTolerance: form.riskTolerance,
-      target_amount: Number(form.target_amount),
-      due_date: form.due_date,
-      notes: form.notes || undefined,
-      // funding_mix, contribution_plan etc. can be added later in dedicated stages
+            // Known hardcoded types don't need a schema fetch (frontend handles UI)
+            if (['retirement', 'home'].includes(category)) {
+                setFormSchema(null);
+                return;
+            }
+
+            // For other types, ask backend for the schema
+            setLoadingSchema(true);
+            try {
+                // Call Real API via Service
+                const data = await goalEngineService.generateDecision({ 
+                    stage: 'definition',
+                    goalContext: { category }
+                });
+                
+                if (data && data.json && data.json.form_schema) {
+                    setFormSchema(data.json.form_schema);
+                    setAiError('');
+                } else {
+                    throw new Error("Invalid response format from AI");
+                }
+
+            } catch (err) {
+                console.error("Failed to fetch form schema", err);
+                setAiError("Could not load form. Using default.");
+                // Fallback basic schema if API fails entirely
+                setFormSchema({
+                    fields: [
+                        { name: 'goal_name', label: 'Goal Name', type: 'text', required: true },
+                        { name: 'target_amount', label: 'Target Amount ($)', type: 'currency', required: true },
+                        { name: 'due_date', label: 'Target Date', type: 'date', required: true }
+                    ]
+                });
+            } finally {
+                setLoadingSchema(false);
+            }
+        };
+
+        fetchSchema();
+    }, [goalContext.category]);
+
+
+    // 3. Handlers
+    const handleFormChange = (newValues) => {
+        setGoalContext(prev => ({ ...prev, ...newValues }));
     };
 
-    try {
-      await onSubmit(payload);
-    } catch (err) {
-      console.error(err);
-      setError(err?.response?.data?.message || 'Failed to create goal.');
-    }
-  };
+    const handleCategoryChange = (e) => {
+        const newCategory = e.target.value;
+        
+        // Only reset details if actually changing category manually
+        if (newCategory !== goalContext.category) {
+             setGoalContext(prev => ({ 
+                ...prev, 
+                category: newCategory,
+                goal_details: {} // Reset details on category switch
+            }));
+        }
+    };
 
-  return (
-    <form onSubmit={handleSubmit} className="space-y-6 mt-6">
-      {error && (
-        <div className="bg-red-50 border border-red-100 text-red-700 text-sm px-4 py-3 rounded-xl">
-          {error}
-        </div>
-      )}
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSubmit(goalContext);
+    };
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            Goal name
-          </label>
-          <input
-            type="text"
-            name="goal_name"
-            value={form.goal_name}
-            onChange={handleChange}
-            className="input-rounded w-full bg-slate-50"
-            placeholder="Buy first home, Retirement, Travel to Japan..."
-            required
-          />
-        </div>
+    // 4. Render Logic
+    const renderSpecificForm = () => {
+        console.log("DEBUG: renderSpecificForm called with category:", goalContext.category); // DEBUG LOG 8
+        switch (goalContext.category) {
+            case 'retirement':
+                return (
+                    <RetirementGoalForm 
+                        initialValues={goalContext} 
+                        onChange={handleFormChange} 
+                    />
+                );
+            case 'home':
+                return (
+                    <HomeGoalForm 
+                        initialValues={goalContext} 
+                        onChange={handleFormChange} 
+                    />
+                );
+            default:
+                // Fallback to Dynamic Renderer
+                if (loadingSchema) return <div className="p-8 text-center text-slate-400">Loading AI Form...</div>;
+                return (
+                    <DynamicFormRenderer 
+                        schema={formSchema} 
+                        value={goalContext} 
+                        onChange={handleFormChange} 
+                    />
+                );
+        }
+    };
 
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            Category
-          </label>
-          <select
-            name="category"
-            value={form.category}
-            onChange={handleChange}
-            className="input-rounded w-full bg-slate-50"
-          >
-            <option value="retirement">Retirement</option>
-            <option value="home">Home</option>
-            <option value="education">Education</option>
-            <option value="wealth">Wealth</option>
-            <option value="travel">Travel</option>
-            <option value="vehicle">Vehicle</option>
-            <option value="big_purchase">Big purchase</option>
-            <option value="emergency">Emergency</option>
-            <option value="custom">Custom</option>
-          </select>
-        </div>
+    return (
+        <form onSubmit={handleSubmit} className="space-y-8 mt-6">
+            
+            {/* Category Switcher (Always Visible) */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                    Goal Category
+                </label>
+                <select 
+                    value={goalContext.category} 
+                    onChange={handleCategoryChange}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-900 font-bold focus:ring-2 focus:ring-slate-900 outline-none"
+                >
+                    <option value="custom">Custom Goal</option>
+                    <option value="retirement">Retirement</option>
+                    <option value="home">Home Ownership</option>
+                    <option value="vehicle">Vehicle</option>
+                    <option value="travel">Travel</option>
+                    <option value="emergency">Emergency Fund</option>
+                    <option value="education">Education</option>
+                    <option value="wealth">Wealth Growth</option>
+                </select>
+            </div>
 
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            Priority
-          </label>
-          <select
-            name="priority"
-            value={form.priority}
-            onChange={handleChange}
-            className="input-rounded w-full bg-slate-50"
-          >
-            <option value="need">Need</option>
-            <option value="want">Want</option>
-            <option value="wish">Wish</option>
-          </select>
-        </div>
+            {/* The Specific Form Area */}
+            <div className="min-h-[300px]">
+                {renderSpecificForm()}
+            </div>
 
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            Risk tolerance
-          </label>
-          <select
-            name="riskTolerance"
-            value={form.riskTolerance}
-            onChange={handleChange}
-            className="input-rounded w-full bg-slate-50"
-          >
-            <option value="low-risk">Low risk</option>
-            <option value="middle-risk">Middle risk</option>
-            <option value="high-risk">High risk</option>
-          </select>
-        </div>
-      </div>
+            {/* Footer Actions */}
+            <div className="flex justify-end pt-6 border-t border-slate-100">
+                <button
+                    type="submit"
+                    disabled={submitting}
+                    className="btn-primary-rounded flex items-center gap-2 px-8 py-4 text-lg shadow-xl shadow-brand-200 hover:shadow-2xl hover:shadow-brand-300 transition-all"
+                >
+                    {submitting ? 'Analyzing...' : submitLabel}
+                    {!submitting && <ArrowRight className="w-5 h-5" />}
+                </button>
+            </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            Target amount (NZD)
-          </label>
-          <input
-            type="number"
-            name="target_amount"
-            value={form.target_amount}
-            onChange={handleChange}
-            min="0"
-            className="input-rounded w-full bg-slate-50"
-            placeholder="50000"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            Target date
-          </label>
-          <input
-            type="date"
-            name="due_date"
-            value={form.due_date}
-            onChange={handleChange}
-            className="input-rounded w-full bg-slate-50"
-            required
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">
-          Notes (optional)
-        </label>
-        <textarea
-          name="notes"
-          value={form.notes}
-          onChange={handleChange}
-          rows={3}
-          className="input-rounded w-full bg-slate-50 resize-none"
-          placeholder="Why is this goal important to you?"
-        />
-      </div>
-
-      <div className="flex justify-end">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="btn-primary-rounded flex items-center gap-2 px-6"
-        >
-          {submitLabel}
-          <ArrowRight className="w-4 h-4" />
-        </button>
-      </div>
-    </form>
-  );
+        </form>
+    );
 };
 
 export default GoalDefinitionForm;
-
-
