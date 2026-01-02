@@ -50,26 +50,28 @@ What you must do:
 Stage: 2 · Strategic Guardrails (Risk & Structure)
 
 Goal:
-- Recommend an appropriate ASSET ALLOCATION (Stocks/Bonds/Cash) and FUNDING STRUCTURE (Product Types) based on the goal context AND simulated user profile.
+- Recommend an appropriate ECONOMIC EXPOSURE (growth / defensive / liquidity) and CONTRIBUTION STRUCTURE based on the goal context AND simulated user profile. Do NOT pick specific products here.
 
 Analysis Logic:
-1. Context Check: Look at 'context.goalContext.simulation_data' for 'user_profile' (existing assets, surplus) and 'market_products'.
-2. Time Horizon & Risk: 
-   - < 3 years: Defensive.
-   - 10+ years: Growth.
-3. Structure (The "How"):
-   - Utilize existing assets first if applicable.
-   - If 'retirement': Prioritise 'KiwiSaver' (Tax efficient, locked) + 'Managed Funds' (Liquidity).
-   - If 'home': 'KiwiSaver' (First Home Grant) + 'Term Deposits' or 'Savings' (Stable capital).
-   - If 'wealth'/'custom': 'Managed Funds' or 'ETFs'.
-   - If 'emergency': 'Savings' (High liquidity).
-   - Match products from 'market_products' list to the buckets.
+1. Use context.goalContext.simulation_data (user_profile, financials, target_exposure, contribution_strategy_hint).
+2. Respect goal-level risk guardrails: volatility_tolerance_pct, max_drawdown_allowed_pct, goal priority & horizon.
+3. Exposure-first: propose economic_exposure { growth, defensive, liquidity } summing to ~100%. If horizon permits, include glide_path (when to start de-risking, end_state exposure).
+4. Contribution: propose contribution_strategy (mode: lump_sum / recurring / hybrid; monthly_amount; lump_sum_amount; income_linked; escalation_rate_pct).
+5. Implementation_notes: only hint wrappers (e.g., kiwisaver / managed_fund / cash) and product_count_hint; DO NOT list specific funds.
 
 What you must do:
-- Populate 'ai_decision.strategy_recommendation'.
-- Suggest 'allocation' percentages (Asset Class Mix: Stocks/Bonds/Cash).
-- Suggest 'funding_structure' (Product Type Mix): e.g. 50% KiwiSaver, 50% Managed Fund.
-- Explain WHY in 'rationale', referencing the user's specific assets or surplus if relevant (e.g., "Use your $1200 monthly surplus to fund...").
+- Populate 'ai_decision.strategy_recommendation':
+   - economic_exposure (growth/defensive/liquidity).
+   - allocation (stocks/bonds/cash) consistent with economic_exposure.
+   - glide_path if applicable.
+   - contribution_strategy with explicit mode (lump_sum / recurring / hybrid) and the relevant amounts:
+       * recurring: monthly_amount (numeric).
+       * lump_sum: lump_sum_amount (numeric).
+       * hybrid: both monthly_amount and lump_sum_amount.
+     Also specify income_linked (true/false) and escalation_rate_pct if recurring/hybrid.
+     Include reserve_for_other_goals_pct if provided in context.
+   - implementation_notes and consistency_check (note if exposure vs surplus/liquidity seems feasible).
+- Explain WHY in 'rationale', referencing surplus, liquidity reserve for other goals, and horizon-fit.
 `.trim();
 
     case GOAL_ENGINE_STAGES.PRODUCT:
@@ -112,53 +114,20 @@ What you must do:
 // Minimal JSON schema for dynamic forms + AI decision payload.
 // This is intentionally simple; can be expanded as the UI matures.
 function getStageResponseSchema(stage) {
-  // For now, all stages share the same outer schema: { form_schema, ai_decision }
+  // For now, all stages share the same outer schema: { ai_decision, form_schema }
+  // We put ai_decision first to ensure reasoning is streamed first.
   return {
     type: 'object',
     properties: {
-      form_schema: {
-        type: 'object',
-        description:
-          'Dynamic form description for the frontend. Each field controls one input widget on the canvas.',
-        properties: {
-          fields: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                name: { type: 'string' },
-                label: { type: 'string' },
-                type: {
-                  type: 'string',
-                  enum: ['number', 'text', 'select', 'date', 'slider', 'toggle', 'currency', 'textarea'],
-                },
-                required: { type: 'boolean' },
-                min: { type: 'number' },
-                max: { type: 'number' },
-                step: { type: 'number' },
-                options: {
-                  type: 'array',
-                  items: { type: 'string' },
-                },
-                helpText: { type: 'string' },
-                placeholder: { type: 'string' },
-                defaultValue: { type: 'string' }
-              },
-              required: ['name', 'label', 'type'],
-            },
-          },
-        },
-        required: ['fields'],
-      },
       ai_decision: {
         type: 'object',
         description: 'AI decision payload containing specific values to pre-fill or update in the frontend context.',
         // EXPLICIT PROPERTIES DEFINITION (Required by Gemini)
         properties: {
-            rationale: { type: 'string', description: "Explanation of the AI's recommendation. Use Markdown for formatting (tables, lists)." },
+            // CRITICAL: thought_process and rationale are first for streaming UX
+            thought_process: { type: 'string', description: "Internal step-by-step reasoning (Chain of Thought). MUST be the first field." },
+            rationale: { type: 'string', description: "Explanation of the AI's recommendation. MUST be the second field. Use Markdown." },
             
-            // --- NEW: Reasoning & References (Optional for compatibility) ---
-            thought_process: { type: 'string', description: "Internal step-by-step reasoning (Chain of Thought). Optional." },
             references: {
                 type: 'array',
                 items: {
@@ -169,6 +138,17 @@ function getStageResponseSchema(stage) {
                         source: { type: 'string' }
                     },
                     required: ['title']
+                }
+            },
+
+            // Risk Profile (goal-level)
+            risk_profile: {
+                type: 'object',
+                properties: {
+                    attitude: { type: 'string', description: "conservative | balanced | growth | high growth" },
+                    volatility_tolerance_pct: { type: 'number' },
+                    max_drawdown_allowed_pct: { type: 'number' },
+                    notes: { type: 'string' }
                 }
             },
 
@@ -210,6 +190,55 @@ function getStageResponseSchema(stage) {
                             },
                             required: ['type', 'percentage']
                         }
+                    },
+                    economic_exposure: {
+                        type: 'object',
+                        properties: {
+                            growth: { type: 'number', description: "Growth/equity-like exposure %" },
+                            defensive: { type: 'number', description: "Defensive/fixed-income exposure %" },
+                            liquidity: { type: 'number', description: "Cash/liquidity exposure %" }
+                        }
+                    },
+                    glide_path: {
+                        type: 'object',
+                        properties: {
+                            enabled: { type: 'boolean' },
+                            start_years_before_goal: { type: 'number' },
+                            end_state: {
+                                type: 'object',
+                                properties: {
+                                    growth: { type: 'number' },
+                                    defensive: { type: 'number' },
+                                    liquidity: { type: 'number' }
+                                }
+                            }
+                        }
+                    },
+                    contribution_strategy: {
+                        type: 'object',
+                        properties: {
+                            mode: { type: 'string', enum: ['lump_sum', 'recurring', 'hybrid'] },
+                            monthly_amount: { type: 'number' },
+                            lump_sum_amount: { type: 'number' },
+                            income_linked: { type: 'boolean' },
+                            escalation_rate_pct: { type: 'number' }
+                        }
+                    },
+                    implementation_notes: {
+                        type: 'object',
+                        properties: {
+                            expected_wrappers: { type: 'array', items: { type: 'string' } },
+                            product_count_hint: { type: 'string' },
+                            approximation_allowed: { type: 'boolean' },
+                            liquidity_requirement: { type: 'string' }
+                        }
+                    },
+                    consistency_check: {
+                        type: 'object',
+                        properties: {
+                            exposure_vs_products_ok: { type: 'boolean' },
+                            notes: { type: 'string' }
+                        }
                     }
                 },
                 required: ['recommended_risk', 'allocation', 'funding_structure']
@@ -227,10 +256,44 @@ function getStageResponseSchema(stage) {
             // Generic fallback for unmapped fields (JSON string)
             other_details_json: { type: 'string', description: "Stringified JSON for any other goal_details" }
         },
-        required: ['rationale']
+        required: ['thought_process', 'rationale']
+      },
+      form_schema: {
+        type: 'object',
+        description:
+          'Dynamic form description for the frontend. Each field controls one input widget on the canvas.',
+        properties: {
+          fields: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                label: { type: 'string' },
+                type: {
+                  type: 'string',
+                  enum: ['number', 'text', 'select', 'date', 'slider', 'toggle', 'currency', 'textarea'],
+                },
+                required: { type: 'boolean' },
+                min: { type: 'number' },
+                max: { type: 'number' },
+                step: { type: 'number' },
+                options: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                helpText: { type: 'string' },
+                placeholder: { type: 'string' },
+                defaultValue: { type: 'string' }
+              },
+              required: ['name', 'label', 'type'],
+            },
+          },
+        },
+        required: ['fields'],
       },
     },
-    required: ['form_schema', 'ai_decision'],
+    required: ['ai_decision', 'form_schema'],
   };
 }
 

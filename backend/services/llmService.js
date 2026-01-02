@@ -71,6 +71,114 @@ class LLMService {
     throw new AppError(`Unsupported LLM provider: ${this.provider}`, 500, 'LLM_PROVIDER_INVALID');
   }
 
+  /**
+   * Generate a streaming response.
+   * @param {string} prompt 
+   * @param {object} context 
+   * @param {Function} onChunk - Callback for each text chunk
+   */
+  async *generateStream(prompt, context = {}) {
+    this._ensureInitialized();
+    
+    if (this.provider === 'gemini') {
+      yield* this.generateStreamWithGemini(prompt, context);
+    } else if (this.provider === 'deepseek') {
+      yield* this.generateStreamWithDeepSeek(prompt, context);
+    } else {
+      throw new AppError(`Streaming not supported for provider: ${this.provider}`, 501);
+    }
+  }
+
+  async *generateStreamWithGemini(prompt, context) {
+    console.log("[LLMService] 🚀 Generating with Gemini (Stream Mode)...");
+    const { responseSchema, ...restContext } = context || {};
+    const contextText = restContext && Object.keys(restContext).length > 0
+        ? `\n\nContext (JSON):\n${JSON.stringify(restContext, null, 2)}`
+        : '';
+    const fullPrompt = `${prompt}${contextText}`;
+
+    const generationConfig = responseSchema && Object.keys(responseSchema).length > 0
+        ? { responseMimeType: 'application/json', responseSchema }
+        : {};
+
+    const result = await this.generativeModel.generateContentStream({
+      contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
+      generationConfig,
+    });
+
+    for await (const chunk of result.stream) {
+      const chunkText = chunk.text();
+      if (chunkText) {
+        yield { type: 'text', content: chunkText };
+      }
+    }
+  }
+
+  async *generateStreamWithDeepSeek(prompt, context) {
+      console.log("[LLMService] 🚀 Generating with DeepSeek (Stream Mode)...");
+      const apiKey = process.env.DEEPSEEK_API_KEY;
+      const baseUrl = process.env.DEEPSEEK_BASE_URL?.replace(/\/$/, '') || 'https://api.deepseek.com';
+      const apiUrl = `${baseUrl}/chat/completions`;
+      const model = process.env.DEEPSEEK_MODEL_NAME || 'deepseek-chat';
+
+      const { responseSchema, ...restContext } = context || {};
+      const contextText = Object.keys(restContext).length > 0 
+        ? `\n\nContext:\n${JSON.stringify(restContext, null, 2)}` 
+        : '';
+
+      let finalPrompt = prompt + contextText;
+      if (responseSchema) {
+          finalPrompt += "\n\nCRITICAL: Output MUST be valid JSON strictly adhering to the following schema:\n";
+          finalPrompt += JSON.stringify(responseSchema, null, 2);
+          finalPrompt += "\n\nDo NOT wrap the JSON in markdown code blocks. Return raw JSON.";
+      }
+
+      const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+              model: model,
+              messages: [{ role: "user", content: finalPrompt }],
+              stream: true,
+              response_format: responseSchema ? { type: "json_object" } : undefined,
+              temperature: 0.7
+          })
+      });
+
+      if (!response.ok) throw new Error(`DeepSeek stream error: ${response.status}`);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+              const cleanedLine = line.replace(/^data: /, '').trim();
+              if (!cleanedLine || cleanedLine === '[DONE]') continue;
+
+              try {
+                  const json = JSON.parse(cleanedLine);
+                  const content = json.choices?.[0]?.delta?.content;
+                  if (content) {
+                      yield { type: 'text', content };
+                  }
+              } catch (e) {
+                  // Ignore partial JSON parse errors
+              }
+          }
+      }
+  }
+
   isConfigured() {
     try {
         this._ensureInitialized();

@@ -16,6 +16,7 @@ import api from '../../utils/api'; // Keep for other API calls if needed
 const GoalDefinitionForm = ({ 
     initialValues = {}, 
     onSubmit, 
+    onChange,
     submitting = false,
     submitLabel = "Continue to Strategy"
 }) => {
@@ -37,7 +38,6 @@ const GoalDefinitionForm = ({
 
     // SYNC: Update internal state when parent props change (e.g. Copilot updates context)
     useEffect(() => {
-        console.log("DEBUG: GoalDefinitionForm received new initialValues:", initialValues); // DEBUG LOG 5
         if (initialValues) {
             setGoalContext(prev => {
                 const newState = {
@@ -49,7 +49,6 @@ const GoalDefinitionForm = ({
                         ...(initialValues.goal_details || {})
                     }
                 };
-                console.log("DEBUG: GoalDefinitionForm updating state to:", newState); // DEBUG LOG 6
                 return newState;
             });
         }
@@ -63,7 +62,6 @@ const GoalDefinitionForm = ({
             // and DynamicFormRenderer for others.
             
             const category = goalContext.category;
-            console.log("DEBUG: GoalDefinitionForm category changed to:", category); // DEBUG LOG 7
 
             // Known hardcoded types don't need a schema fetch (frontend handles UI)
             if (['retirement', 'home'].includes(category)) {
@@ -110,6 +108,11 @@ const GoalDefinitionForm = ({
     // 3. Handlers
     const handleFormChange = (newValues) => {
         setGoalContext(prev => ({ ...prev, ...newValues }));
+        
+        // Report back to parent immediately to keep state in sync
+        if (onChange) {
+            onChange(newValues);
+        }
     };
 
     const handleCategoryChange = (e) => {
@@ -132,7 +135,6 @@ const GoalDefinitionForm = ({
 
     // 4. Render Logic
     const renderSpecificForm = () => {
-        console.log("DEBUG: renderSpecificForm called with category:", goalContext.category); // DEBUG LOG 8
         switch (goalContext.category) {
             case 'retirement':
                 return (

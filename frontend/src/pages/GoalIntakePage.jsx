@@ -183,8 +183,14 @@ const TypewriterMessage = ({ text, onComplete, role }) => {
 };
 
 // Copilot Component - NOW ACTIVE AND CONNECTED
-const Copilot = ({ stage, currentStageLabel, goalContext, onUpdateContext, externalMessage }) => {
-    const [messages, setMessages] = useState([]);
+const Copilot = ({ 
+    stage, 
+    currentStageLabel, 
+    goalContext, 
+    onUpdateContext, 
+    messages, 
+    setMessages 
+}) => {
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [copiedId, setCopiedId] = useState(null); 
@@ -193,30 +199,11 @@ const Copilot = ({ stage, currentStageLabel, goalContext, onUpdateContext, exter
     const scrollRef = useRef(null);
     const textareaRef = useRef(null); 
 
-    // Initial greeting based on stage
-    useEffect(() => {
-        const greetings = {
-            0: "Let's define your target. I can help you calculate how much you need or check if your plan is feasible.",
-            1: "Now for the strategy. I'll analyze your goal timeline and suggest an asset allocation mix.",
-            2: "Let's pick a product. I can filter funds by fees or past performance.",
-            3: "Final check. Ready to launch?"
-        };
-        // Reset messages on stage change
-        setMessages([{ role: 'system', text: greetings[stage] || "How can I help?" }]);
-    }, [stage]);
-
-    // Handle external messages (auto-trigger)
-    useEffect(() => {
-        if (externalMessage) {
-            setMessages(prev => [...prev, { role: 'assistant', text: externalMessage, isTyping: true }]);
-        }
-    }, [externalMessage]);
-
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-    }, [messages]); // Scroll on every update (including typewriter ticks)
+    }, [messages]); 
 
     const handleCopy = (text, id) => {
         navigator.clipboard.writeText(text);
@@ -234,30 +221,106 @@ const Copilot = ({ stage, currentStageLabel, goalContext, onUpdateContext, exter
         
         setIsLoading(true);
 
+        // Add a placeholder assistant message that we will update with the stream
+        const aiMsgIndex = messages.length + 1;
+        setMessages(prev => [...prev, { 
+            role: 'assistant', 
+            text: '', 
+            isTyping: true,
+            isStreaming: true 
+        }]);
+
         try {
-            const data = await goalEngineService.generateDecision({
+            let accumulatedRaw = '';
+            
+            // Helper to extract field content from incomplete JSON stream
+            const extractField = (field, jsonStr) => {
+                const marker = `"${field}": "`;
+                const startIdx = jsonStr.indexOf(marker);
+                if (startIdx === -1) return '';
+                
+                const contentStart = startIdx + marker.length;
+                let contentEnd = jsonStr.length;
+                
+                // Track if we are inside an escaped sequence
+                let escaped = false;
+                for (let i = contentStart; i < jsonStr.length; i++) {
+                    if (escaped) {
+                        escaped = false;
+                        continue;
+                    }
+                    if (jsonStr[i] === '\\') {
+                        escaped = true;
+                        continue;
+                    }
+                    if (jsonStr[i] === '"') {
+                        contentEnd = i;
+                        break;
+                    }
+                }
+                
+                return jsonStr.slice(contentStart, contentEnd)
+                    .replace(/\\n/g, '\n')
+                    .replace(/\\"/g, '"')
+                    .replace(/\\r/g, '')
+                    .replace(/\\t/g, '\t');
+            };
+
+            const finalData = await goalEngineService.generateDecisionStream({
                 stage: currentStageLabel,
                 goalContext,
                 userInput: { text: userMsg.text },
                 previousDecisions: [] 
+            }, (chunk) => {
+                accumulatedRaw += chunk;
+                
+                const streamingThought = extractField('thought_process', accumulatedRaw);
+                const streamingRationale = extractField('rationale', accumulatedRaw);
+
+                setMessages(prev => {
+                    const newMessages = [...prev];
+                    if (newMessages[aiMsgIndex]) {
+                        // Priority: Rationale > Thought Process > Loading State
+                        let displayBtn = "";
+                        if (streamingRationale) {
+                            displayBtn = streamingRationale;
+                        } else if (streamingThought) {
+                            displayBtn = "Analyzing context..."; 
+                        }
+
+                        newMessages[aiMsgIndex] = {
+                            ...newMessages[aiMsgIndex],
+                            text: displayBtn,
+                            thought_process: streamingThought,
+                        };
+                    }
+                    return newMessages;
+                });
             });
             
-            const aiText = data.text || "I've updated the plan based on your request.";
-            const aiDecision = data.json?.ai_decision;
+            if (finalData) {
+                const aiDecision = finalData.ai_decision;
+                const aiText = finalData.text || aiDecision?.rationale || "I've updated the plan based on your request.";
 
-            // Mark message as 'isTyping' to trigger effect
-            setMessages(prev => [...prev, { 
-                role: 'assistant', 
-                text: aiText, 
-                isTyping: true,
-                thought_process: aiDecision?.thought_process,
-                references: aiDecision?.references
-            }]);
+                setMessages(prev => {
+                    const newMessages = [...prev];
+                    if (newMessages[aiMsgIndex]) {
+                        newMessages[aiMsgIndex] = {
+                            ...newMessages[aiMsgIndex],
+                            text: aiText,
+                            isTyping: false,
+                            isStreaming: false,
+                            thought_process: aiDecision?.thought_process,
+                            references: aiDecision?.references
+                        };
+                    }
+                    return newMessages;
+                });
 
-            if (aiDecision && onUpdateContext) {
-                onUpdateContext(aiDecision);
+                if (aiDecision && onUpdateContext) {
+                    onUpdateContext(aiDecision);
+                }
             }
-
         } catch (err) {
             console.error(err);
             setMessages(prev => [...prev, { role: 'system', text: "Sorry, I'm having trouble connecting to the brain." }]);
@@ -310,69 +373,73 @@ const Copilot = ({ stage, currentStageLabel, goalContext, onUpdateContext, exter
                             </div>
                         )}
 
-                        <div className={`
-                            relative max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed pr-8 break-words
-                            ${msg.role === 'user' 
-                                ? 'bg-slate-900 text-white rounded-br-none' 
-                                : 'bg-white border border-slate-200 text-slate-600 rounded-tl-none shadow-sm'}
-                        `}>
-                            {/* Main Message Content with Markdown */}
-                            <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert text-white' : 'text-slate-600'}`}>
-                                {msg.role === 'assistant' && msg.isTyping && i === messages.length - 1 ? (
-                                    <TypewriterMessage 
-                                        text={msg.text} 
-                                        onComplete={() => {
-                                            const newMessages = [...messages];
-                                            newMessages[i].isTyping = false;
-                                            setMessages(newMessages);
-                                        }} 
-                                    />
-                                ) : (
-                                    <ReactMarkdown 
-                                        remarkPlugins={[remarkGfm]}
-                                        components={{
-                                            table: ({node, ...props}) => (
-                                                <div className="overflow-x-auto my-4 w-full border border-slate-100 rounded-lg no-scrollbar">
-                                                    <table className="min-w-full divide-y divide-slate-100" {...props} />
-                                                </div>
-                                            )
-                                        }}
-                                    >
-                                        {msg.text}
-                                    </ReactMarkdown>
-                                )}
-                            </div>
-
-                            {/* References */}
-                            {msg.role === 'assistant' && msg.references && msg.references.length > 0 && (
-                                <div className="mt-3 pt-2 border-t border-slate-100 flex flex-wrap gap-2">
-                                    {msg.references.map((ref, idx) => (
-                                        <a 
-                                            key={idx}
-                                            href={ref.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="flex items-center gap-1 px-2 py-0.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-[10px] text-slate-500 transition-colors"
+                        {msg.text && (
+                            <div className={`
+                                relative max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed pr-8 break-words
+                                ${msg.role === 'user' 
+                                    ? 'bg-slate-900 text-white rounded-br-none' 
+                                    : 'bg-white border border-slate-200 text-slate-600 rounded-tl-none shadow-sm'}
+                            `}>
+                                {/* Main Message Content with Markdown */}
+                                <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert text-white' : 'text-slate-600'}`}>
+                                    {msg.role === 'assistant' && msg.isTyping && !msg.isStreaming && i === messages.length - 1 ? (
+                                        <TypewriterMessage 
+                                            text={msg.text} 
+                                            onComplete={() => {
+                                                const newMessages = [...messages];
+                                                if (newMessages[i]) {
+                                                    newMessages[i].isTyping = false;
+                                                    setMessages(newMessages);
+                                                }
+                                            }} 
+                                        />
+                                    ) : (
+                                        <ReactMarkdown 
+                                            remarkPlugins={[remarkGfm]}
+                                            components={{
+                                                table: ({node, ...props}) => (
+                                                    <div className="overflow-x-auto my-4 w-full border border-slate-100 rounded-lg no-scrollbar">
+                                                        <table className="min-w-full divide-y divide-slate-100" {...props} />
+                                                    </div>
+                                                )
+                                            }}
                                         >
-                                            <ExternalLink size={10} /> {ref.source || 'Source'}: {ref.title}
-                                        </a>
-                                    ))}
+                                            {msg.text}
+                                        </ReactMarkdown>
+                                    )}
                                 </div>
-                            )}
 
-                            {/* Copy Button */}
-                            <button 
-                                onClick={() => handleCopy(msg.text, i)}
-                                className={`
-                                    absolute top-2 right-2 p-1 rounded-md transition-all duration-200
-                                    ${msg.role === 'user' ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-300 hover:text-slate-600 hover:bg-slate-100'}
-                                    ${copiedId === i ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
-                                `}
-                                title="Copy text"
-                            >
-                                {copiedId === i ? <Check size={12} /> : <Copy size={12} />}
-                            </button>
-                        </div>
+                                {/* References */}
+                                {msg.role === 'assistant' && msg.references && msg.references.length > 0 && (
+                                    <div className="mt-3 pt-2 border-t border-slate-100 flex flex-wrap gap-2">
+                                        {msg.references.map((ref, idx) => (
+                                            <a 
+                                                key={idx}
+                                                href={ref.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex items-center gap-1 px-2 py-0.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-[10px] text-slate-500 transition-colors"
+                                            >
+                                                <ExternalLink size={10} /> {ref.source || 'Source'}: {ref.title}
+                                            </a>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Copy Button */}
+                                <button 
+                                    onClick={() => handleCopy(msg.text, i)}
+                                    className={`
+                                        absolute top-2 right-2 p-1 rounded-md transition-all duration-200
+                                        ${msg.role === 'user' ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-300 hover:text-slate-600 hover:bg-slate-100'}
+                                        ${copiedId === i ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
+                                    `}
+                                    title="Copy text"
+                                >
+                                    {copiedId === i ? <Check size={12} /> : <Copy size={12} />}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 ))}
                 {isLoading && (
@@ -420,6 +487,7 @@ const GoalEnginePage = () => {
   const [currentStage, setCurrentStage] = useState(0);
   const [goalContext, setGoalContext] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [messages, setMessages] = useState([]);
   
   // Resizable Sidebar State (Pixels instead of percentage for better precision)
   const [leftWidth, setLeftWidth] = useState(450); 
@@ -429,7 +497,6 @@ const GoalEnginePage = () => {
 
   // NEW: Track loading state for stage transitions
   const [isLoadingAI, setIsLoadingAI] = useState(false);
-  const [copilotSystemMsg, setCopilotSystemMsg] = useState(null);
 
   const STAGES = [
       { id: 'definition', label: 'Definition', icon: Target },
@@ -437,24 +504,129 @@ const GoalEnginePage = () => {
       { id: 'product', label: 'Product', icon: ShoppingBag },
       { id: 'simulation', label: 'Simulation', icon: Activity },
   ];
-  const runStageAnalysis = async (stageId, context) => {
+
+  const getGreeting = (stageIdx) => {
+    const greetings = {
+        0: "Let's define your target. I can help you calculate how much you need or check if your plan is feasible.",
+        1: "Now for the strategy. I'll analyze your goal timeline and suggest an asset allocation mix.",
+        2: "Let's pick a product. I can filter funds by fees or past performance.",
+        3: "Final check. Ready to launch?"
+    };
+    return { role: 'system', text: greetings[stageIdx] || "How can I help?" };
+  };
+
+  // Initialize greeting on mount
+  useEffect(() => {
+      if (messages.length === 0) {
+          setMessages([getGreeting(0)]);
+      }
+  }, []);
+
+  const runStageAnalysis = async (stageId, context, stageIdx) => {
       setIsLoadingAI(true);
+      
+      // Atomic update: Set greeting AND analyzing message together to avoid race conditions
+      const greeting = getGreeting(stageIdx);
+      const analyzingMsg = { 
+          role: 'assistant', 
+          text: 'Analyzing your goal...', 
+          isTyping: true,
+          isStreaming: true 
+      };
+
+      setMessages([greeting, analyzingMsg]);
+      const aiMsgIndex = 1; // It's always the second message in a fresh stage analysis
+
       try {
-          const data = await goalEngineService.generateDecision({
+          let accumulatedRaw = "";
+          
+          const extractField = (field, jsonStr) => {
+                const marker = `"${field}": "`;
+                const startIdx = jsonStr.indexOf(marker);
+                if (startIdx === -1) return '';
+                
+                const contentStart = startIdx + marker.length;
+                let contentEnd = jsonStr.length;
+                
+                let escaped = false;
+                for (let i = contentStart; i < jsonStr.length; i++) {
+                    if (escaped) { escaped = false; continue; }
+                    if (jsonStr[i] === '\\') { escaped = true; continue; }
+                    if (jsonStr[i] === '"') { contentEnd = i; break; }
+                }
+                
+                return jsonStr.slice(contentStart, contentEnd)
+                    .replace(/\\n/g, '\n')
+                    .replace(/\\"/g, '"');
+          };
+
+          // Inject lightweight mock of other goals for transparency (used by AI and UI)
+          const mockOtherGoals = context?.simulation_data?.other_goals && context.simulation_data.other_goals.length > 0
+            ? context.simulation_data.other_goals
+            : [
+                { name: 'Emergency Fund', monthly_allocation: 800, priority: 'need' },
+                { name: 'New Car', monthly_allocation: 300, priority: 'want' }
+              ];
+
+          const contextWithOthers = {
+            ...context,
+            simulation_data: {
+              ...(context?.simulation_data || {}),
+              other_goals: mockOtherGoals
+            }
+          };
+
+          // Ensure UI state also sees the other goals list for display
+          setGoalContext(prev => ({
+            ...prev,
+            simulation_data: {
+              ...(prev.simulation_data || {}),
+              other_goals: mockOtherGoals
+            }
+          }));
+
+          const data = await goalEngineService.generateDecisionStream({
               stage: stageId,
-              goalContext: context
+              goalContext: contextWithOthers
+          }, (chunk) => {
+              accumulatedRaw += chunk;
+              const streamingThought = extractField('thought_process', accumulatedRaw);
+              const streamingRationale = extractField('rationale', accumulatedRaw);
+
+              setMessages(prev => {
+                  const newMessages = [...prev];
+                  if (newMessages[aiMsgIndex]) {
+                      newMessages[aiMsgIndex] = {
+                          ...newMessages[aiMsgIndex],
+                          text: streamingRationale || (streamingThought ? "Structuring strategy..." : "Analyzing..."),
+                          thought_process: streamingThought,
+                      };
+                  }
+                  return newMessages;
+              });
           });
           
-          console.log("DEBUG: Auto-Analysis Result:", data);
-          
-          if (data.json?.ai_decision) {
-              handleContextUpdate(data.json.ai_decision);
-          }
-          if (data.text) {
-              setCopilotSystemMsg(data.text);
+          if (data?.ai_decision) {
+              handleContextUpdate(data.ai_decision);
+              
+              setMessages(prev => {
+                  const newMessages = [...prev];
+                  if (newMessages[aiMsgIndex]) {
+                      newMessages[aiMsgIndex] = {
+                          ...newMessages[aiMsgIndex],
+                          text: data.text || data.ai_decision.rationale,
+                          isTyping: false,
+                          isStreaming: false,
+                          thought_process: data.ai_decision.thought_process,
+                          references: data.ai_decision.references
+                      };
+                  }
+                  return newMessages;
+              });
           }
       } catch (err) {
           console.error("Auto-Analysis Failed:", err);
+          setMessages(prev => [...prev, { role: 'system', text: "Strategy analysis failed. You can continue manually." }]);
       } finally {
           setIsLoadingAI(false);
       }
@@ -469,18 +641,18 @@ const GoalEnginePage = () => {
           
           // Auto-trigger analysis for Strategy stage
           if (nextStageId === 'strategy') {
-              // We pass current goalContext, but wait a tick for any pending state updates? 
-              // Actually React state updates are batched, so safe to use current 'goalContext' 
-              // IF it was updated by the definition form submit.
-              // Better: pass the merged context if we just updated it.
-              runStageAnalysis(nextStageId, goalContext);
+              runStageAnalysis(nextStageId, goalContext, nextStageIndex);
+          } else {
+              setMessages([getGreeting(nextStageIndex)]);
           }
       }
   };
 
   const handleBack = () => {
       if (currentStage > 0) {
-          setCurrentStage(prev => prev - 1);
+          const prevStageIdx = currentStage - 1;
+          setCurrentStage(prevStageIdx);
+          setMessages([getGreeting(prevStageIdx)]);
       }
   };
 
@@ -496,17 +668,25 @@ const GoalEnginePage = () => {
     
     // Trigger Analysis with FRESH context
     if (STAGES[nextStageIndex]?.id === 'strategy') {
-        runStageAnalysis('strategy', updatedContext);
+        runStageAnalysis('strategy', updatedContext, nextStageIndex);
+    } else {
+        setMessages([getGreeting(nextStageIndex)]);
     }
   };
 
   // Helper to allow Copilot to update context (e.g. AI fills form)
   // Also normalizes flat AI response fields back into goal_details structure
   const handleContextUpdate = (updates) => {
-      console.log("DEBUG: handleContextUpdate triggered with:", updates); // DEBUG LOG 3
       if (!updates) return;
 
       const normalized = { ...updates };
+      const isAiDecisionPayload = Boolean(
+          normalized.strategy_recommendation ||
+          normalized.thought_process ||
+          normalized.rationale ||
+          normalized.allocation ||
+          normalized.funding_structure
+      );
       
       // Safety: ensure category is lowercase if present
       if (normalized.category) {
@@ -538,7 +718,27 @@ const GoalEnginePage = () => {
       });
 
       setGoalContext(prev => {
-          const nextState = { ...prev, ...normalized };
+          const nextState = { ...prev };
+
+          // Preserve full AI decision payload for downstream stages (strategy/product/simulation)
+          if (isAiDecisionPayload) {
+              nextState.ai_decision = {
+                  ...prev.ai_decision,
+                  ...normalized
+              };
+          }
+
+          // Also surface flattened fields to root to keep definition stage prefill behavior
+          Object.assign(nextState, normalized);
+          
+          // CRITICAL FIX: If we are in a goal type with complex frontend logic (like retirement),
+          // IGNORE the AI's simplified target_amount. Let the frontend component's formula be the source of truth.
+          if (nextState.category === 'retirement' || nextState.category === 'home') {
+              if (prev.target_amount && !updates.target_amount_manual_override) {
+                  nextState.target_amount = prev.target_amount; 
+              }
+          }
+
           if (detailsFound) {
               nextState.goal_details = {
                   ...prev.goal_details,
@@ -553,7 +753,6 @@ const GoalEnginePage = () => {
              }
           }
 
-          console.log("DEBUG: New GoalContext State:", nextState); // DEBUG LOG 4
           return nextState;
       });
   };
@@ -673,7 +872,8 @@ const GoalEnginePage = () => {
                     currentStageLabel={STAGES[currentStage].id}
                     goalContext={goalContext}
                     onUpdateContext={handleContextUpdate}
-                    externalMessage={copilotSystemMsg}
+                    messages={messages}
+                    setMessages={setMessages}
                 />
             </div>
 
@@ -707,6 +907,7 @@ const GoalEnginePage = () => {
                              <p className="text-slate-500 mb-6">Start by setting the basic parameters. Copilot will help check feasibility.</p>
                              <GoalDefinitionForm 
                                 onSubmit={handleCreate}
+                                onChange={handleContextUpdate}
                                 submitLabel="Continue to Strategy"
                                 initialValues={goalContext}
                              />

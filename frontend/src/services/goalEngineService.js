@@ -30,6 +30,65 @@ const goalEngineService = {
       throw error;
     }
   },
+
+  /**
+   * Stream a prompt from the AI Goal Engine.
+   * @param {Object} params
+   * @param {Function} onChunk - Callback for each text chunk (for reasoning)
+   * @returns {Promise<Object>} - The final complete JSON data
+   */
+  generateDecisionStream: async ({ stage, goalContext, userInput, previousDecisions = [] }, onChunk) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/goals/engine/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+          // Note: Add auth header if needed, assuming the standard 'api' util handles it usually
+          // But fetch needs it manually if not using the wrapper
+          'Authorization': `Bearer ${localStorage.getItem('token')}` 
+        },
+        body: JSON.stringify({
+          stage,
+          goalContext,
+          userInput,
+          previousDecisions,
+          stream: true
+        })
+      });
+
+      if (!response.ok) throw new Error('Network response was not ok');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullJson = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6));
+            if (data.chunk && onChunk) {
+              onChunk(data.chunk);
+            }
+            if (data.done) {
+              fullJson = data.json;
+            }
+          }
+        }
+      }
+
+      return fullJson;
+    } catch (error) {
+      console.error('GoalEngineService Stream Error:', error);
+      throw error;
+    }
+  }
 };
 
 export default goalEngineService;
