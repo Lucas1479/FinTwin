@@ -74,11 +74,12 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
 
       // Derive age & risk
       const age = (() => {
-          if (!userDoc?.dob) return 30;
-          const diff = Date.now() - new Date(userDoc.dob).getTime();
+          const dob = userDoc?.household?.dob || userDoc?.dob; // Support migration
+          if (!dob) return 30;
+          const diff = Date.now() - new Date(dob).getTime();
           return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24 * 365.25)));
       })();
-      const overallRisk = (userDoc?.riskTolerance || 'Balanced').toLowerCase();
+      const overallRisk = (userDoc?.riskProfile?.level || userDoc?.riskTolerance || 'Balanced').toLowerCase();
 
       // Standardized risk profile for LLM
       const riskProfile = {
@@ -136,7 +137,8 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
               income_pa: Math.round(annualIncome),
               monthly_surplus: Math.round(monthlySurplus),
               risk_profile: riskProfile,
-              existing_assets: existingAssets
+              existing_assets: existingAssets,
+              vision_statement: userDoc?.household?.statement || ''
           },
           financials: {
               net_worth: totalAssets - totalLiabilities,
