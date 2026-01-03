@@ -53,7 +53,7 @@ Goal:
 - Recommend an appropriate ECONOMIC EXPOSURE (growth / defensive / liquidity) and CONTRIBUTION STRUCTURE based on the goal context AND simulated user profile. Do NOT pick specific products here.
 
 Analysis Logic:
-1. Use context.goalContext.simulation_data (user_profile, financials, target_exposure, contribution_strategy_hint).
+1. Use context.goalContext.simulation_data (user_profile, financials, target_exposure, contribution_strategy_hint). Pay special attention to 'user_profile.vision_statement' to ensure strategy aligns with user's life philosophy.
 2. Respect goal-level risk guardrails: volatility_tolerance_pct, max_drawdown_allowed_pct, goal priority & horizon.
 3. Exposure-first: propose economic_exposure { growth, defensive, liquidity } summing to ~100%. If horizon permits, include glide_path (when to start de-risking, end_state exposure).
 4. Contribution: propose contribution_strategy (mode: lump_sum / recurring / hybrid; monthly_amount; lump_sum_amount; income_linked; escalation_rate_pct).

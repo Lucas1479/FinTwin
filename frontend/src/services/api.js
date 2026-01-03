@@ -95,3 +95,13 @@ export const fetchCurrentUserProfile = async () => {
   }
 };
 
+export const updateUserProfile = async (profileData) => {
+  try {
+    const { data } = await api.put('/users/profile', profileData);
+    return data;
+  } catch (error) {
+    console.error('[services/api] updateUserProfile failed:', error);
+    throw error;
+  }
+};
+

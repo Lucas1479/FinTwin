@@ -12,6 +12,7 @@ import GoalIntakePage from './pages/GoalIntakePage';
 import GoalGalleryPage from './pages/GoalGalleryPage';
 import ScenarioLobby from './pages/Playground/ScenarioLobby';
 import ScenarioWorkspace from './pages/Playground/ScenarioWorkspace';
+import SettingsPage from './pages/SettingsPage';
 import { SidebarProvider } from './context/SidebarContext';
 
 
@@ -35,6 +36,7 @@ function App() {
           {/* <Route path="/playground" element={<PlaygroundPage />} /> */}
           <Route path="/playground" element={<ScenarioLobby />} />
           <Route path="/playground/scenario/:id" element={<ScenarioWorkspace />} /> 
+          <Route path="/settings" element={<SettingsPage />} />
           
 
           {/* Fallback */}

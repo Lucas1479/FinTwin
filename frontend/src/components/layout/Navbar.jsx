@@ -94,12 +94,20 @@ const Navbar = () => {
                       {displayEmail || 'Unknown user'}
                     </p>
                   </div>
-                  <a href="#" className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors">
+                  <Link 
+                    to="/settings" 
+                    onClick={() => setIsProfileOpen(false)}
+                    className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                  >
                     <User size={18} /> Your Profile
-                  </a>
-                  <a href="#" className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors">
+                  </Link>
+                  <Link 
+                    to="/settings" 
+                    onClick={() => setIsProfileOpen(false)}
+                    className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                  >
                     <Settings size={18} /> Settings
-                  </a>
+                  </Link>
                   <div className="border-t border-slate-50 my-1"></div>
                   <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 text-left transition-colors">
                     <LogOut size={18} /> Sign out
