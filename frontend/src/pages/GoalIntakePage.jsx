@@ -6,6 +6,7 @@ import MainLayout from '../components/layout/MainLayout';
 import GoalDefinitionForm from '../components/goals/GoalDefinitionForm';
 import StageStrategy from '../components/goals/StageStrategy';
 import goalEngineService from '../services/goalEngineService';
+import productService from '../services/productService';
 import { 
     MessageSquare, 
     Send, 
@@ -36,60 +37,345 @@ import {
 // --- STAGE COMPONENTS ---
 
 
-// Stage 3: Product Selection (Vehicle)
+// Stage 3: Product Selection (Vehicle) - Multiple Portfolio Options
 const StageProduct = ({ goalContext, onSelect }) => {
-    const [selectedProduct, setSelectedProduct] = useState(null);
+    const [selectedOption, setSelectedOption] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [portfolioOptions, setPortfolioOptions] = useState([]);
+    const [detailProduct, setDetailProduct] = useState(null); // 产品详情模态框
 
-    const products = [
-        { id: 1, name: 'Simplicity Growth Fund', type: 'KiwiSaver', fees: '0.31%', return: '8.5%', match: 95 },
-        { id: 2, name: 'Milford Active Growth', type: 'Managed Fund', fees: '1.05%', return: '9.2%', match: 88 },
-        { id: 3, name: 'ANZ Serious Saver', type: 'Savings', fees: '0%', return: '4.5%', match: 60 },
-    ];
+    // 获取 AI 返回的投资组合选项
+    const aiOptions = goalContext.ai_decision?.portfolio_options 
+        || goalContext.ai_decision?.strategy_recommendation?.portfolio_options
+        || [];
+    
+    // 兼容旧的单一 product_selection 格式
+    const legacySelection = goalContext.ai_decision?.product_selection 
+        || goalContext.ai_decision?.strategy_recommendation?.product_selection
+        || [];
+
+    // 验证 MongoDB ObjectId 格式 (24位十六进制字符串)
+    const isValidObjectId = (id) => /^[a-f0-9]{24}$/i.test(id);
+
+    // 收集所有产品ID (只保留有效的 MongoDB ObjectId)
+    const allProductIds = (aiOptions.length > 0
+        ? [...new Set(aiOptions.flatMap(opt => opt.products?.map(p => p.product_id) || []))]
+        : legacySelection.map(p => p.product_id)
+    ).filter(id => id && isValidObjectId(id));
+    
+    // 检查是否有无效的 product_id (AI 可能编造了假 ID)
+    const allRawIds = aiOptions.length > 0
+        ? [...new Set(aiOptions.flatMap(opt => opt.products?.map(p => p.product_id) || []))]
+        : legacySelection.map(p => p.product_id);
+    const invalidIds = allRawIds.filter(id => id && !isValidObjectId(id));
+    if (invalidIds.length > 0) {
+        console.warn('[StageProduct] ⚠️ Invalid product IDs (AI may have fabricated them):', invalidIds);
+    }
+    
+    const productIdsKey = allProductIds.filter(Boolean).join(',');
+
+    console.log('[StageProduct] Portfolio options:', aiOptions.length);
+    console.log('[StageProduct] Legacy selection:', legacySelection.length);
+    console.log('[StageProduct] Valid product IDs:', allProductIds);
+
+    useEffect(() => {
+        let active = true;
+        
+        const fetchProducts = async () => {
+            if (allProductIds.length === 0) {
+                if (active) setPortfolioOptions([]);
+                return;
+            }
+            setLoading(true);
+            try {
+                const ids = allProductIds.filter(Boolean);
+                console.log('[StageProduct] Fetching products by IDs:', ids);
+                
+                const query = ids.length ? { ids: ids.join(',') } : { limit: 50 };
+                const res = await productService.getProducts(query);
+                console.log('[StageProduct] Backend returned:', res.products?.length || 0, 'products');
+                
+                const backendMap = new Map((res.products || []).map(p => [p.id, p]));
+                
+                // 如果有多个组合选项
+                if (aiOptions.length > 0) {
+                    const enrichedOptions = aiOptions.map(opt => ({
+                        ...opt,
+                        products: (opt.products || []).map(sel => {
+                            const bp = backendMap.get(sel.product_id);
+                            if (!bp) {
+                                console.warn('[StageProduct] Product not found:', sel.product_id);
+                                return null;
+                            }
+                            return {
+                                ...bp,
+                                id: sel.product_id,
+                                weight_pct: sel.weight_pct,
+                                rationale: sel.rationale
+                            };
+                        }).filter(Boolean)
+                    }));
+                    if (active) setPortfolioOptions(enrichedOptions);
+                } else {
+                    // 兼容旧格式：转换为单个组合
+                    const products = legacySelection.map(sel => {
+                        const bp = backendMap.get(sel.product_id);
+                        if (!bp) return null;
+                        return {
+                            ...bp,
+                            id: sel.product_id,
+                            weight_pct: sel.weight_pct,
+                            rationale: sel.rationale
+                        };
+                    }).filter(Boolean);
+                    
+                    if (products.length > 0) {
+                        if (active) setPortfolioOptions([{
+                            option_id: 'recommended',
+                            option_name: 'AI Recommended Portfolio',
+                            description: 'Optimized for your strategy',
+                            products
+                        }]);
+                    }
+                }
+            } catch (e) {
+                console.error(e);
+                if (active) setPortfolioOptions([]);
+            } finally {
+                if (active) setLoading(false);
+            }
+        };
+        
+        fetchProducts();
+        return () => { active = false; };
+    }, [productIdsKey]);
+
+    const handleSelectOption = (option) => {
+        setSelectedOption(option.option_id);
+        onSelect(option);
+    };
 
     return (
         <div className="space-y-6">
-            {/* Filter Chips */}
-            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                <span className="px-3 py-1 rounded-full bg-slate-900 text-white text-xs font-bold">Growth Strategy</span>
-                <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">Low Fees</span>
-                <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">ESG Friendly</span>
-            </div>
-
-            <div className="grid gap-4">
-                {products.map(p => (
-                    <div 
-                        key={p.id}
-                        onClick={() => { setSelectedProduct(p.id); onSelect(p); }}
-                        className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${
-                            selectedProduct === p.id 
-                            ? 'border-brand-500 bg-brand-50/50 shadow-md' 
-                            : 'border-slate-100 bg-white hover:border-brand-200'
-                        }`}
-                    >
-                        <div className="flex justify-between items-start mb-2">
-                            <div>
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{p.type}</span>
-                                <h4 className="font-bold text-slate-900">{p.name}</h4>
-                            </div>
-                            {p.match > 90 && (
-                                <span className="px-2 py-1 bg-green-100 text-green-700 text-[10px] font-bold rounded-lg flex items-center gap-1">
-                                    <Zap size={12} /> Best Match
-                                </span>
-                            )}
-                        </div>
-                        <div className="flex items-center gap-4 text-sm">
-                            <div>
-                                <span className="block text-xs text-slate-400 font-bold">Fees</span>
-                                <span className="font-medium text-slate-700">{p.fees}</span>
-                            </div>
-                            <div>
-                                <span className="block text-xs text-slate-400 font-bold">Hist. Return</span>
-                                <span className="font-medium text-green-600">{p.return}</span>
-                            </div>
+            {loading && <div className="text-sm text-slate-500">Loading portfolio options…</div>}
+            
+            {/* 警告：检测到无效的产品 ID */}
+            {!loading && invalidIds.length > 0 && allProductIds.length === 0 && (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                    <div className="flex items-start gap-3">
+                        <AlertCircle className="text-amber-500 shrink-0 mt-0.5" size={18} />
+                        <div>
+                            <p className="text-sm font-medium text-amber-800">
+                                AI generated invalid product IDs. Please try again.
+                            </p>
+                            <p className="text-xs text-amber-600 mt-1">
+                                The AI may have fabricated product codes. Click "Retry" to search for real products.
+                            </p>
                         </div>
                     </div>
-                ))}
-            </div>
+                </div>
+            )}
+            
+            {!loading && portfolioOptions.length > 0 && (
+                <div className="space-y-6">
+                    {portfolioOptions.map((option, idx) => (
+                        <div 
+                            key={option.option_id || idx}
+                            onClick={() => handleSelectOption(option)}
+                            className={`rounded-2xl border-2 overflow-hidden cursor-pointer transition-all ${
+                                selectedOption === option.option_id 
+                                ? 'border-brand-500 shadow-lg ring-2 ring-brand-100' 
+                                : 'border-slate-200 hover:border-brand-200 hover:shadow-md'
+                            }`}
+                        >
+                            {/* 组合头部 */}
+                            <div className={`px-5 py-4 ${
+                                selectedOption === option.option_id 
+                                ? 'bg-brand-50' 
+                                : 'bg-slate-50'
+                            }`}>
+                                <div className="flex justify-between items-start">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="font-bold text-slate-900">{option.option_name || `Option ${idx + 1}`}</h3>
+                                            {selectedOption === option.option_id && (
+                                                <span className="px-2 py-0.5 bg-brand-500 text-white text-[10px] font-bold rounded-full">
+                                                    SELECTED
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-sm text-slate-600 mt-1">{option.description}</p>
+                                        
+                                        {/* 显示计算后的资产配置 */}
+                                        {option.calculated_exposure && (
+                                            <div className="flex items-center gap-3 mt-2">
+                                                <span className="text-[10px] font-bold uppercase text-slate-400">Exposure:</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-semibold rounded">
+                                                        {option.calculated_exposure.growth || 0}% Growth
+                                                    </span>
+                                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-semibold rounded">
+                                                        {option.calculated_exposure.defensive || 0}% Defensive
+                                                    </span>
+                                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-semibold rounded">
+                                                        {option.calculated_exposure.liquidity || 0}% Liquidity
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                    {option.total_fees_estimate !== undefined && (
+                                        <div className="text-right shrink-0 ml-4">
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase">Est. Fees</span>
+                                            <div className="text-lg font-bold text-slate-900">{option.total_fees_estimate}%</div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* 产品列表 */}
+                            <div className="divide-y divide-slate-100">
+                                {option.products?.map(p => (
+                                    <div 
+                                        key={p.id} 
+                                        onClick={(e) => { e.stopPropagation(); setDetailProduct(p); }}
+                                        className="px-5 py-3 bg-white cursor-pointer transition-all duration-200 hover:bg-slate-50 group"
+                                    >
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{p.category || 'Product'}</span>
+                                                    <span className="text-[10px] text-brand-500 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                                                        <ExternalLink size={10} /> View Details
+                                                    </span>
+                                                </div>
+                                                <h4 className="font-semibold text-slate-900 text-sm group-hover:text-brand-600 transition-colors">{p.name || 'Product'}</h4>
+                                                <p className="text-[11px] text-slate-500">{p.provider || ''}</p>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <div className="text-right">
+                                                    <span className="text-[10px] text-slate-400">Fees</span>
+                                                    <div className="text-sm font-medium text-slate-700">{p.fees ?? '—'}%</div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="text-[10px] text-slate-400">Risk</span>
+                                                    <div className="text-sm font-medium text-slate-700">{p.riskLevel || p.strategy || '—'}</div>
+                                                </div>
+                                                <span className="px-2 py-1 bg-green-100 text-green-700 text-[10px] font-bold rounded-lg flex items-center gap-1">
+                                                    <Zap size={10} /> {p.weight_pct}%
+                                                </span>
+                                            </div>
+                                        </div>
+                                        {p.rationale && (
+                                            <p className="text-[11px] text-slate-500 mt-1">{p.rationale}</p>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+            
+            {!loading && portfolioOptions.length === 0 && (
+                <div className="text-sm text-slate-500 text-center py-8">
+                    No portfolio options yet. AI is searching for suitable products...
+                </div>
+            )}
+
+            {/* 产品详情悬浮卡片 */}
+            {detailProduct && (
+                <div className="fixed bottom-6 right-6 z-50 w-[420px] max-h-[70vh] overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200 animate-fade-in">
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-3 px-5 py-4 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100">
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
+                            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
+                                {(detailProduct.provider ?? "PF").slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{detailProduct.category}</span>
+                                <h2 className="text-sm font-bold text-slate-900 truncate">{detailProduct.name}</h2>
+                                <p className="text-[11px] text-slate-500 truncate">{detailProduct.provider}</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setDetailProduct(null)}
+                            className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                        >
+                            <span className="text-lg leading-none">×</span>
+                        </button>
+                    </div>
+
+                    {/* Content */}
+                    <div className="px-5 py-4 space-y-4 max-h-[50vh] overflow-y-auto">
+                        {/* 关键指标 */}
+                        <div className="grid grid-cols-4 gap-2">
+                            <div className="p-2.5 bg-slate-50 rounded-lg text-center">
+                                <span className="text-[9px] font-bold uppercase text-slate-400 block">Fees</span>
+                                <div className="text-base font-bold text-slate-900">{detailProduct.fees ?? '—'}%</div>
+                            </div>
+                            <div className="p-2.5 bg-slate-50 rounded-lg text-center">
+                                <span className="text-[9px] font-bold uppercase text-slate-400 block">Risk</span>
+                                <div className="text-xs font-bold text-slate-900">{detailProduct.riskLevel || detailProduct.strategy || '—'}</div>
+                            </div>
+                            <div className="p-2.5 bg-slate-50 rounded-lg text-center">
+                                <span className="text-[9px] font-bold uppercase text-slate-400 block">1Y</span>
+                                <div className="text-base font-bold text-slate-900">
+                                    {detailProduct.returns?.['1y'] != null ? `${detailProduct.returns['1y'].toFixed(1)}%` : '—'}
+                                </div>
+                            </div>
+                            <div className="p-2.5 bg-slate-50 rounded-lg text-center">
+                                <span className="text-[9px] font-bold uppercase text-slate-400 block">5Y</span>
+                                <div className="text-base font-bold text-slate-900">
+                                    {detailProduct.returns?.['5y'] != null ? `${detailProduct.returns['5y'].toFixed(1)}%` : '—'}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 资产配置 */}
+                        {detailProduct.allocation && (
+                            <div>
+                                <span className="text-[10px] font-bold uppercase text-slate-400">Asset Allocation</span>
+                                <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-100 mt-2">
+                                    {detailProduct.allocation.growth > 0 && (
+                                        <div style={{ width: `${detailProduct.allocation.growth}%` }} className="bg-indigo-500" />
+                                    )}
+                                    {detailProduct.allocation.defensive > 0 && (
+                                        <div style={{ width: `${detailProduct.allocation.defensive}%` }} className="bg-purple-400" />
+                                    )}
+                                    {detailProduct.allocation.cash > 0 && (
+                                        <div style={{ width: `${detailProduct.allocation.cash}%` }} className="bg-teal-400" />
+                                    )}
+                                </div>
+                                <div className="flex gap-3 mt-1.5 text-[10px] text-slate-500">
+                                    <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>{detailProduct.allocation.growth || 0}%</span>
+                                    <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-purple-400"></div>{detailProduct.allocation.defensive || 0}%</span>
+                                    <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-teal-400"></div>{detailProduct.allocation.cash || 0}%</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* AI 推荐理由 */}
+                        {detailProduct.rationale && (
+                            <div className="p-3 bg-brand-50/50 border border-brand-100 rounded-xl">
+                                <div className="flex items-center gap-1.5 mb-1">
+                                    <Brain size={12} className="text-brand-600" />
+                                    <span className="text-[9px] font-bold uppercase tracking-wider text-brand-600">Why Selected</span>
+                                </div>
+                                <p className="text-[12px] text-slate-700 leading-relaxed">{detailProduct.rationale}</p>
+                            </div>
+                        )}
+
+                        {/* 组合中的权重 */}
+                        {detailProduct.weight_pct !== undefined && (
+                            <div className="flex items-center justify-between p-3 bg-green-50 border border-green-100 rounded-xl">
+                                <span className="text-[12px] font-medium text-slate-600">Portfolio Weight</span>
+                                <span className="text-xl font-bold text-green-600">{detailProduct.weight_pct}%</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -509,7 +795,7 @@ const GoalEnginePage = () => {
     const greetings = {
         0: "Let's define your target. I can help you calculate how much you need or check if your plan is feasible.",
         1: "Now for the strategy. I'll analyze your goal timeline and suggest an asset allocation mix.",
-        2: "Let's pick a product. I can filter funds by fees or past performance.",
+        2: "I'm searching for investment products that match your strategy. This may take a moment...",
         3: "Final check. Ready to launch?"
     };
     return { role: 'system', text: greetings[stageIdx] || "How can I help?" };
@@ -632,6 +918,145 @@ const GoalEnginePage = () => {
       }
   };
 
+  // Product Stage Analysis - Uses Function Calling with SSE Progress
+  const runProductAnalysis = async (context, stageIdx) => {
+      setIsLoadingAI(true);
+      
+      const greeting = getGreeting(stageIdx);
+      const analyzingMsg = { 
+          role: 'assistant', 
+          text: 'Initializing product search...', 
+          isTyping: true,
+          isStreaming: true,
+          thought_process: 'Preparing to search for investments matching your strategy...'
+      };
+
+      setMessages([greeting, analyzingMsg]);
+      const aiMsgIndex = 1;
+
+      try {
+          let accumulatedThought = '';
+          
+          // Helper to extract thought_process from streaming JSON chunks
+          const extractField = (field, jsonStr) => {
+              const marker = `"${field}": "`;
+              const startIdx = jsonStr.indexOf(marker);
+              if (startIdx === -1) return '';
+              
+              const contentStart = startIdx + marker.length;
+              let contentEnd = jsonStr.length;
+              
+              let escaped = false;
+              for (let i = contentStart; i < jsonStr.length; i++) {
+                  if (escaped) { escaped = false; continue; }
+                  if (jsonStr[i] === '\\') { escaped = true; continue; }
+                  if (jsonStr[i] === '"') { contentEnd = i; break; }
+              }
+              
+              return jsonStr.slice(contentStart, contentEnd)
+                  .replace(/\\n/g, '\n')
+                  .replace(/\\"/g, '"');
+          };
+
+          // Use streaming API to show Function Calling progress
+          const data = await goalEngineService.generateDecisionStream({
+              stage: 'product',
+              goalContext: context
+          }, (chunk) => {
+              // Extract thought_process from chunks for CoT display
+              const thought = extractField('thought_process', chunk);
+              const rationale = extractField('rationale', chunk);
+              
+              if (thought && thought !== accumulatedThought) {
+                  accumulatedThought = thought;
+                  setMessages(prev => {
+                      const newMessages = [...prev];
+                      if (newMessages[aiMsgIndex]) {
+                          newMessages[aiMsgIndex] = {
+                              ...newMessages[aiMsgIndex],
+                              text: rationale || 'Searching for products...',
+                              thought_process: thought,
+                          };
+                      }
+                      return newMessages;
+                  });
+              }
+              
+              if (rationale) {
+                  setMessages(prev => {
+                      const newMessages = [...prev];
+                      if (newMessages[aiMsgIndex]) {
+                          newMessages[aiMsgIndex] = {
+                              ...newMessages[aiMsgIndex],
+                              text: rationale,
+                          };
+                      }
+                      return newMessages;
+                  });
+              }
+          });
+          
+          console.log('[Product Analysis] Stream complete:', data);
+          
+          // Handle final response
+          const aiDecision = data?.ai_decision;
+          const displayText = data?.text || aiDecision?.rationale || "I've found some suitable products for your goal.";
+          
+          console.log('[Product Analysis] AI Decision:', aiDecision);
+          console.log('[Product Analysis] Product Selection:', 
+              aiDecision?.product_selection || aiDecision?.strategy_recommendation?.product_selection);
+          
+          if (aiDecision) {
+              handleContextUpdate(aiDecision);
+              
+              setMessages(prev => {
+                  const newMessages = [...prev];
+                  if (newMessages[aiMsgIndex]) {
+                      newMessages[aiMsgIndex] = {
+                          ...newMessages[aiMsgIndex],
+                          text: displayText,
+                          isTyping: false,
+                          isStreaming: false,
+                          thought_process: aiDecision.thought_process,
+                          references: aiDecision.references
+                      };
+                  }
+                  return newMessages;
+              });
+          } else {
+              console.warn('[Product Analysis] No ai_decision in response');
+              setMessages(prev => {
+                  const newMessages = [...prev];
+                  if (newMessages[aiMsgIndex]) {
+                      newMessages[aiMsgIndex] = {
+                          ...newMessages[aiMsgIndex],
+                          text: displayText || "Product search complete. Please review the options below.",
+                          isTyping: false,
+                          isStreaming: false
+                      };
+                  }
+                  return newMessages;
+              });
+          }
+      } catch (err) {
+          console.error("Product Analysis Failed:", err);
+          setMessages(prev => {
+              const newMessages = [...prev];
+              if (newMessages[aiMsgIndex]) {
+                  newMessages[aiMsgIndex] = {
+                      ...newMessages[aiMsgIndex],
+                      text: "Product search encountered an issue. Please try again or select products manually.",
+                      isTyping: false,
+                      isStreaming: false
+                  };
+              }
+              return newMessages;
+          });
+      } finally {
+          setIsLoadingAI(false);
+      }
+  };
+
   const handleNext = async () => {
       if (currentStage < STAGES.length - 1) {
           const nextStageIndex = currentStage + 1;
@@ -639,9 +1064,11 @@ const GoalEnginePage = () => {
           
           setCurrentStage(nextStageIndex);
           
-          // Auto-trigger analysis for Strategy stage
+          // Auto-trigger analysis for Strategy and Product stages
           if (nextStageId === 'strategy') {
               runStageAnalysis(nextStageId, goalContext, nextStageIndex);
+          } else if (nextStageId === 'product') {
+              runProductAnalysis(goalContext, nextStageIndex);
           } else {
               setMessages([getGreeting(nextStageIndex)]);
           }
@@ -685,7 +1112,11 @@ const GoalEnginePage = () => {
           normalized.thought_process ||
           normalized.rationale ||
           normalized.allocation ||
-          normalized.funding_structure
+          normalized.funding_structure ||
+          normalized.portfolio_options ||  // Stage 3: Multiple portfolio options
+          normalized.product_selection ||  // Stage 3: Legacy single selection
+          normalized.strategy_recommendation?.portfolio_options ||
+          normalized.strategy_recommendation?.product_selection
       );
       
       // Safety: ensure category is lowercase if present

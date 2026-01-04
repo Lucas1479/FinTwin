@@ -177,6 +177,7 @@ const MarketplacePage = () => {
   });
   const [compareList, setCompareList] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
   // ... (Load logic unchanged) ...
   const loadPage = useCallback(async (page) => {
@@ -250,6 +251,23 @@ const MarketplacePage = () => {
   const handleDisplayPageChange = (newPage) => { setDisplayPage(newPage); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const handleSortChange = (field) => setFilters(f => ({ ...f, sortField: field }));
   const handleSortDirChange = (dir) => setFilters(f => ({ ...f, sortDir: dir }));
+
+  // Detail fetch on demand to keep list payload light
+  const handleViewDetails = useCallback(async (product) => {
+    if (!product?.id) return;
+    // Optimistically show the list-level data first
+    setSelectedProduct(product);
+    setDetailsLoading(true);
+    try {
+      const full = await productService.getProductById(product.id);
+      setSelectedProduct(full || product);
+    } catch (err) {
+      console.error("[Marketplace] Failed to load product detail", err);
+      // keep the basic data but stop loading
+    } finally {
+      setDetailsLoading(false);
+    }
+  }, []);
 
   // ==========================================
   // Render (UPDATED RESPONSIVE UI)
@@ -349,7 +367,7 @@ const MarketplacePage = () => {
                   compareList={compareList}
                   onToggleCompare={handleToggleCompare}
                   viewMode={viewMode}
-                  onViewDetails={setSelectedProduct}
+                  onViewDetails={handleViewDetails}
                   userInvestmentAmount={maxTicketSize}
                 />
 
@@ -364,7 +382,12 @@ const MarketplacePage = () => {
         </div>
 
         <ComparisonDock compareList={compareList} products={products} onClear={() => setCompareList([])} />
-        <ProductDetailsModal product={selectedProduct} open={Boolean(selectedProduct)} onClose={() => setSelectedProduct(null)} />
+        <ProductDetailsModal 
+          product={selectedProduct} 
+          loading={detailsLoading}
+          open={Boolean(selectedProduct)} 
+          onClose={() => { setSelectedProduct(null); setDetailsLoading(false); }} 
+        />
       </div>
     </MainLayout>
   );

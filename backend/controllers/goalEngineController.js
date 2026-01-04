@@ -7,6 +7,10 @@ import { logDecision } from '../utils/memoryLogger.js';
 import FinancialAsset from '../models/financialAssetModel.js';
 import CashFlow from '../models/cashFlowModel.js';
 import User from '../models/userModel.js';
+import Plan from '../models/planModel.js';
+import Goal from '../models/goalModel.js';
+import Product from '../models/productModel.js';
+import productTools from '../services/productTools.js';
 
 // ==========================================
 // Goal Engine / LLM decision entrypoint
@@ -50,10 +54,12 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
       const TO_ANNUAL = { Weekly: 52, Fortnightly: 26, Monthly: 12, Yearly: 1, 'One-Off': 0 };
       const toAnnual = (amount, frequency) => amount * (TO_ANNUAL[frequency] || 0);
 
-      const [assets, cashFlows, userDoc] = await Promise.all([
+      const [assets, cashFlows, userDoc, plans, goals] = await Promise.all([
           FinancialAsset.find({ user_id: userId }).lean(),
           CashFlow.find({ user_id: userId }).lean(),
-          User.findById(userId).lean()
+          User.findById(userId).lean(),
+          Plan.find({ user_id: userId }).lean(),
+          Goal.find({ user_id: userId }).lean()
       ]);
 
       const totalAssets = assets.filter(a => a.record_type === 'Asset').reduce((sum, a) => sum + (a.value || 0), 0);
@@ -83,10 +89,10 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
 
       // Standardized risk profile for LLM
       const riskProfile = {
-          attitude: overallRisk, // conservative | balanced | growth | high growth
-          volatility_tolerance_pct: overallRisk.includes('high') ? 22 : overallRisk.includes('growth') ? 18 : overallRisk.includes('balanced') ? 12 : 8,
-          max_drawdown_allowed_pct: overallRisk.includes('high') ? 30 : overallRisk.includes('growth') ? 25 : overallRisk.includes('balanced') ? 15 : 10,
-          notes: 'Derived from user profile; tighten if goal priority is high.'
+          attitude: (userDoc?.riskProfile?.level || overallRisk),
+          volatility_tolerance_pct: userDoc?.riskProfile?.volatilityTolerance ?? (overallRisk.includes('high') ? 22 : overallRisk.includes('growth') ? 18 : overallRisk.includes('balanced') ? 12 : 8),
+          max_drawdown_allowed_pct: userDoc?.riskProfile?.maxDrawdown ?? (overallRisk.includes('high') ? 30 : overallRisk.includes('growth') ? 25 : overallRisk.includes('balanced') ? 15 : 10),
+          notes: userDoc?.riskProfile?.notes || 'Derived from user profile; tighten if goal priority is high.'
       };
 
       // Existing assets snapshot for context
@@ -130,6 +136,28 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
           liquidity: 5
       };
 
+      // Build other_goals from existing Plans (monthly normalized), excluding current goal if id known
+      const toMonthly = (amount, freq) => {
+          const annual = toAnnual(amount, freq);
+          return annual / 12;
+      };
+      const currentGoalId = goalContext?._id || goalContext?.goal_id;
+      const otherGoals = plans.map(p => {
+          const goal = goals.find(g => g._id.toString() === p.goal_id.toString());
+          const name = goal?.goal_name || 'Goal';
+          const priority = goal?.priority || 'want';
+          const monthly = p.contribution?.amount ? toMonthly(p.contribution.amount, p.contribution.frequency) : 0;
+          return {
+              goal_id: p.goal_id,
+              name,
+              priority,
+              monthly_allocation: Math.round(monthly)
+          };
+      }).filter(g => g.monthly_allocation > 0 && (!currentGoalId || g.goal_id.toString() !== currentGoalId.toString()));
+
+      const reservedOtherGoals = otherGoals.reduce((sum, g) => sum + (g.monthly_allocation || 0), 0);
+      const allocatableSurplus = Math.max(0, monthlySurplus - reservedOtherGoals);
+
       enrichedContext.simulation_data = {
           ...(goalContext?.simulation_data || {}),
           user_profile: {
@@ -146,12 +174,13 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
               monthly_income: Math.round(monthlyIncome),
               monthly_expense: Math.round(monthlyExpense),
               monthly_surplus_total: Math.round(monthlySurplus),
-              monthly_surplus_allocatable: Math.round(maxAllocatableSurplus),
-              reserve_for_other_goals_pct: 40
+              monthly_surplus_allocatable: Math.round(allocatableSurplus),
+              reserve_for_other_goals_pct: 40,
+              reserved_other_goals: reservedOtherGoals
           },
           target_exposure: targetExposure,
           contribution_strategy_hint: contributionStrategy,
-          other_goals: goalContext?.simulation_data?.other_goals || [],
+          other_goals: (goalContext?.simulation_data?.other_goals?.length ? goalContext.simulation_data.other_goals : otherGoals),
           implementation_notes: implementationNotes,
           // Keep a minimal product list as hint; real selection happens in Stage 3.
           market_products: [
@@ -159,6 +188,27 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
               { type: 'Managed Fund', category: 'Global Index', avg_return: 0.07, liquidity: 'high', description: 'Liquid diversified fund' },
               { type: 'Cash', category: 'Savings', rate: 0.045, liquidity: 'immediate', description: 'Emergency buffer' }
           ]
+      };
+  }
+
+  // --- PRODUCT STAGE: Use Function Calling (NOT loading all products!) ---
+  // Instead of loading 300+ products into context (expensive!),
+  // we let AI call search_products() tool to find relevant products.
+  // This is the "AI负责想参数，代码负责跑逻辑" architecture.
+  if (stage === GOAL_ENGINE_STAGES.PRODUCT) {
+      // We'll handle this with Function Calling below, not context injection
+      console.log(`[Goal Engine] Product stage will use Function Calling for product search`);
+      
+      // Add strategy context for AI to reference when searching
+      enrichedContext.strategy_summary = {
+          target_exposure: goalContext.ai_decision?.strategy_recommendation?.economic_exposure || 
+                          goalContext.simulation_data?.target_exposure,
+          risk_profile: goalContext.ai_decision?.risk_profile,
+          goal_horizon_years: goalContext.due_date 
+              ? Math.max(0, (new Date(goalContext.due_date).getFullYear() - new Date().getFullYear()))
+              : null,
+          is_retirement: goalContext.category === 'retirement',
+          contribution_mode: goalContext.ai_decision?.strategy_recommendation?.contribution_strategy?.mode
       };
   }
 
@@ -177,8 +227,139 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
   
   let result;
   try {
-      // Check if client supports streaming (we can look for a specific flag in body or header)
-      if (req.headers.accept === 'text/event-stream' || req.body.stream) {
+      // ==========================================
+      // PRODUCT STAGE: Use Function Calling with SSE Progress
+      // ==========================================
+      if (stage === GOAL_ENGINE_STAGES.PRODUCT) {
+          console.log(`[Goal Engine] 🔧 Product Stage: Using Function Calling architecture`);
+          console.log(`[Goal Engine] → Available tools: ${productTools.definitions.map(t => t.name).join(', ')}`);
+          
+          // Use SSE to stream progress updates during Function Calling
+          const useSSE = req.headers.accept === 'text/event-stream' || req.body.stream;
+          
+          if (useSSE) {
+              res.setHeader('Content-Type', 'text/event-stream');
+              res.setHeader('Cache-Control', 'no-cache');
+              res.setHeader('Connection', 'keep-alive');
+              
+              // Send initial progress
+              res.write(`data: ${JSON.stringify({ 
+                  chunk: '{"thought_process": "Analyzing your strategy to find matching products..."}' 
+              })}\n\n`);
+          }
+          
+        // Create a tool executor with progress updates
+        const toolExecutorWithProgress = async (toolName, args) => {
+            // Send progress update before tool execution
+            if (useSSE) {
+                const progressMsg = toolName === 'build_optimized_portfolios'
+                    ? `Building optimized portfolios for ${args.target_growth_pct}% growth / ${args.target_defensive_pct}% defensive / ${args.target_liquidity_pct}% liquidity...`
+                    : toolName === 'search_portfolio_candidates' 
+                    ? `Searching products for ${args.target_growth_pct}% growth / ${args.target_defensive_pct}% defensive / ${args.target_liquidity_pct}% liquidity...`
+                    : toolName === 'optimize_portfolio_weights'
+                    ? `Optimizing weights for ${args.product_ids?.length || 0} products...`
+                    : toolName === 'calculate_portfolio_exposure'
+                    ? `Calculating portfolio exposure...`
+                    : toolName === 'search_products'
+                    ? `Searching ${args.category || args.strategy || 'products'}...`
+                    : `Fetching product details...`;
+                  
+                  res.write(`data: ${JSON.stringify({ 
+                      chunk: `{"thought_process": "${progressMsg}"}`,
+                      toolCall: { name: toolName, args, status: 'executing' }
+                  })}\n\n`);
+              }
+              
+              // Execute the actual tool
+              const result = await productTools.execute(toolName, args);
+              
+            // Send completion update
+            if (useSSE) {
+                const resultSummary = result?.portfolio_options?.length
+                    ? `Built ${result.portfolio_options.length} optimized portfolios from ${result.summary?.candidates_searched || 0} products`
+                    : result?.summary 
+                    ? `Found ${result.summary.total_candidates} products (${result.summary.growth_count} growth, ${result.summary.defensive_count} defensive, ${result.summary.liquidity_count} liquidity)`
+                    : result?.optimized_products?.length
+                    ? `Optimized ${result.optimized_products.length} products`
+                    : Array.isArray(result) 
+                    ? `Found ${result.length} products`
+                    : 'Search complete';
+                  
+                const resultCountNum = result?.portfolio_options?.length 
+                    || result?.summary?.total_candidates 
+                    || result?.optimized_products?.length 
+                    || result?.length 
+                    || 0;
+                res.write(`data: ${JSON.stringify({ 
+                    chunk: `{"thought_process": "${resultSummary}"}`,
+                    toolCall: { name: toolName, status: 'complete', resultCount: resultCountNum }
+                })}\n\n`);
+              }
+              
+              return result;
+          };
+          
+          result = await llmService.generateWithTools(
+              prompt,
+              context,
+              productTools.definitions,
+              toolExecutorWithProgress  // Tool executor with progress updates
+          );
+          
+        console.log(`[Goal Engine] ✅ Function Calling complete. Tool calls made: ${result.toolCalls?.length || 0}`);
+        if (result.toolCalls?.length > 0) {
+            console.log(`[Goal Engine] Tool call summary:`);
+            result.toolCalls.forEach((tc, i) => {
+                // 根据不同工具类型正确计算结果数量
+                const resultCount = tc.result?.portfolio_options?.length 
+                    ? `${tc.result.portfolio_options.length} portfolios`
+                    : tc.result?.summary?.total_candidates 
+                    ? `${tc.result.summary.total_candidates} products`
+                    : tc.result?.optimized_products?.length
+                    ? `${tc.result.optimized_products.length} optimized`
+                    : tc.result?.length || 0;
+                console.log(`   ${i + 1}. ${tc.name}(${JSON.stringify(tc.args)}) → ${resultCount} results`);
+            });
+        }
+          
+          // If using SSE, send the final result and return
+          if (useSSE) {
+              // Send final rationale as streaming content
+              if (result.json?.ai_decision?.rationale) {
+                  res.write(`data: ${JSON.stringify({ 
+                      chunk: `{"rationale": "${result.json.ai_decision.rationale.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"}`
+                  })}\n\n`);
+              }
+              
+              // Log to memory
+              logDecision({
+                  stage,
+                  category: goalContext?.category,
+                  input: userInput,
+                  output: result.json
+              });
+              
+            // Send final complete message
+            res.write(`data: ${JSON.stringify({ 
+                done: true, 
+                json: result.json,
+                toolCalls: result.toolCalls?.map(tc => ({ 
+                    name: tc.name, 
+                    resultCount: tc.result?.portfolio_options?.length 
+                        || tc.result?.summary?.total_candidates 
+                        || tc.result?.optimized_products?.length 
+                        || tc.result?.length 
+                        || 0 
+                }))
+            })}\n\n`);
+              res.end();
+              return;
+          }
+      }
+      // ==========================================
+      // OTHER STAGES: Normal streaming/non-streaming
+      // ==========================================
+      else if (req.headers.accept === 'text/event-stream' || req.body.stream) {
           console.log(`[Goal Engine] Entering Stream Mode (SSE)`);
           res.setHeader('Content-Type', 'text/event-stream');
           res.setHeader('Cache-Control', 'no-cache');
@@ -226,12 +407,12 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
           res.write(`data: ${JSON.stringify({ done: true, fullText, json: finalJson })}\n\n`);
           res.end();
           return;
+      } else {
+          // Legacy non-streaming path
+          result = await llmService.generate(prompt, context);
+          console.log(`[Goal Engine] Non-streaming Response JSON:`);
+          console.log(JSON.stringify(result.json, null, 2));
       }
-
-      // Legacy non-streaming path
-      result = await llmService.generate(prompt, context);
-      console.log(`[Goal Engine] Non-streaming Response JSON:`);
-      console.log(JSON.stringify(result.json, null, 2));
   } catch (err) {
       console.error("LLM Generation Failed:", err);
       // Fallback: If LLM fails but we have a static schema, return that at least.

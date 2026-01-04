@@ -113,14 +113,41 @@ async function importProducts() {
   // 7. Import products
   console.log('\n📥 Importing products...');
   
+  // Pre-process products to add aggregated allocation fields
+  const processedProducts = products.map(p => {
+    // Basic allocation calculation
+    let allocation = p.allocation ? { ...p.allocation } : {};
+
+    // Special handling for Term Deposits: ensure they are 100% cash if not specified
+    if (p.category === 'TermDeposit') {
+      allocation.cash = allocation.cash || 100;
+      allocation.equities = allocation.equities || 0;
+      allocation.property = allocation.property || 0;
+      allocation.bonds = allocation.bonds || 0;
+    }
+
+    if (p.allocation || p.category === 'TermDeposit') {
+      return {
+        ...p,
+        allocation: {
+          ...allocation,
+          growth: (allocation.equities || 0) + (allocation.property || 0),
+          defensive: allocation.bonds || 0,
+          cash: allocation.cash || 0
+        }
+      };
+    }
+    return p;
+  });
+
   let successCount = 0;
   let errorCount = 0;
   const errors = [];
   
   // Use insertMany for better performance, but handle errors individually
   const BATCH_SIZE = 100;
-  for (let i = 0; i < products.length; i += BATCH_SIZE) {
-    const batch = products.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < processedProducts.length; i += BATCH_SIZE) {
+    const batch = processedProducts.slice(i, i + BATCH_SIZE);
     
     try {
       // Use ordered: false to continue on error

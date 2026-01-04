@@ -76,14 +76,55 @@ What you must do:
 
     case GOAL_ENGINE_STAGES.PRODUCT:
       return `
-Stage: 3 · Product Selection (Vehicle)
+Stage: 3 · Product Selection (Vehicle) - FUNCTION CALLING MODE
 
-Goal:
-- Suggest what types of financial products or account types could implement this strategy (concept-level only, not specific issuers).
+Goal: Present 2-3 portfolio options that match the strategy's economic exposure.
 
-What you must do:
-- Suggest 1–3 product_types (e.g. "KiwiSaver Growth Fund", "High-yield savings", "Managed fund").
-- For each product_type, give short pros/cons and how well it matches the strategy and time horizon.
+**PRIMARY TOOL:**
+
+build_optimized_portfolios(target_growth_pct, target_defensive_pct, target_liquidity_pct, is_retirement_goal)
+→ Returns 3 PRE-OPTIMIZED portfolio options (lowest_cost, diversified, balanced)
+→ Each portfolio already has optimal weights and calculated exposure
+→ Just call it ONCE and use the results!
+
+**WORKFLOW:**
+
+Step 1: Get target exposure from context.strategy_summary.economic_exposure
+Step 2: Call build_optimized_portfolios({ 
+  target_growth_pct: X, 
+  target_defensive_pct: Y, 
+  target_liquidity_pct: Z,
+  is_retirement_goal: true/false 
+})
+Step 3: The tool returns ready-to-use portfolio_options
+Step 4: Copy the portfolio_options to your response
+Step 5: Add your AI value:
+  - Explain which portfolio is BEST for this specific user's situation
+  - Explain trade-offs between the options
+  - Personalize rationale based on user's goal, timeline, and preferences
+
+**YOUR ROLE AS AI ADVISOR:**
+
+The tool does the heavy lifting (product selection + weight optimization).
+Your job is to:
+1. EXPLAIN why each portfolio suits different needs
+2. RECOMMEND the best option for this user's specific context
+3. HIGHLIGHT key trade-offs (fees vs diversification vs performance)
+4. ADD CONTEXT from user's goal (e.g., "Since you're 20 years from retirement, the diversified option gives you time to recover from volatility")
+
+**RESPONSE FORMAT:**
+{
+  "thought_process": "1. Called build_optimized_portfolios. 2. Analyzed 3 options. 3. Recommended X because...",
+  "rationale": "**My Recommendation:** [Explain which portfolio suits this user best]...",
+  "portfolio_options": [
+    // Copy directly from tool output, with enhanced rationale
+  ]
+}
+
+**RULES:**
+- ALWAYS call build_optimized_portfolios() first
+- DO NOT modify the weights or products - they are already optimized
+- Focus on explanation and personalization, not calculation
 `.trim();
 
     case GOAL_ENGINE_STAGES.SIMULATION:
@@ -111,60 +152,128 @@ What you must do:
   }
 }
 
-// Minimal JSON schema for dynamic forms + AI decision payload.
-// This is intentionally simple; can be expanded as the UI matures.
-function getStageResponseSchema(stage) {
-  // For now, all stages share the same outer schema: { ai_decision, form_schema }
-  // We put ai_decision first to ensure reasoning is streamed first.
-  return {
-    type: 'object',
-    properties: {
-      ai_decision: {
-        type: 'object',
-        description: 'AI decision payload containing specific values to pre-fill or update in the frontend context.',
-        // EXPLICIT PROPERTIES DEFINITION (Required by Gemini)
-        properties: {
-            // CRITICAL: thought_process and rationale are first for streaming UX
-            thought_process: { type: 'string', description: "Internal step-by-step reasoning (Chain of Thought). MUST be the first field." },
-            rationale: { type: 'string', description: "Explanation of the AI's recommendation. MUST be the second field. Use Markdown." },
-            
-            references: {
-                type: 'array',
-                items: {
-                    type: 'object',
-                    properties: {
-                        title: { type: 'string' },
-                        url: { type: 'string' },
-                        source: { type: 'string' }
-                    },
-                    required: ['title']
-                }
-            },
+// ==========================================
+// STAGE-SPECIFIC JSON SCHEMAS
+// Each stage has its own schema to prevent AI from filling unrelated fields
+// ==========================================
 
-            // Risk Profile (goal-level)
+// Common fields shared across all stages
+const commonAiDecisionFields = {
+    thought_process: { type: 'string', description: "Internal step-by-step reasoning (Chain of Thought). MUST be the first field." },
+    rationale: { type: 'string', description: "Explanation of the AI's recommendation. MUST be the second field. Use Markdown." },
+    references: {
+        type: 'array',
+        items: {
+            type: 'object',
+            properties: {
+                title: { type: 'string' },
+                url: { type: 'string' },
+                source: { type: 'string' }
+            },
+            required: ['title']
+        }
+    }
+};
+
+// Form schema structure (shared)
+const formSchemaDefinition = {
+    type: 'object',
+    description: 'Dynamic form description for the frontend.',
+    properties: {
+        fields: {
+            type: 'array',
+            items: {
+                type: 'object',
+                properties: {
+                    name: { type: 'string' },
+                    label: { type: 'string' },
+                    type: { type: 'string', enum: ['number', 'text', 'select', 'date', 'slider', 'toggle', 'currency', 'textarea'] },
+                    required: { type: 'boolean' },
+                    min: { type: 'number' },
+                    max: { type: 'number' },
+                    step: { type: 'number' },
+                    options: { type: 'array', items: { type: 'string' } },
+                    helpText: { type: 'string' },
+                    placeholder: { type: 'string' },
+                    defaultValue: { type: 'string' }
+                },
+                required: ['name', 'label', 'type'],
+            },
+        },
+    },
+    required: ['fields'],
+};
+
+function getStageResponseSchema(stage) {
+  // STAGE 1: DEFINITION - Only goal definition fields
+  if (stage === GOAL_ENGINE_STAGES.DEFINITION) {
+    return {
+      type: 'object',
+      properties: {
+        ai_decision: {
+          type: 'object',
+          description: 'AI decision for goal definition. DO NOT include strategy or product fields.',
+          properties: {
+            ...commonAiDecisionFields,
+            // Risk Profile (initial assessment)
             risk_profile: {
                 type: 'object',
                 properties: {
-                    attitude: { type: 'string', description: "conservative | balanced | growth | high growth" },
+                    attitude: { type: 'string', description: "conservative | balanced | growth" },
                     volatility_tolerance_pct: { type: 'number' },
                     max_drawdown_allowed_pct: { type: 'number' },
                     notes: { type: 'string' }
                 }
             },
-
-            // Core Fields
-            goal_name: { type: 'string' },
-            category: { type: 'string' },
+            // Core Goal Fields - ONLY THESE for Stage 1
+            goal_name: { type: 'string', description: 'Extracted goal name from user input' },
+            category: { type: 'string', description: 'MUST be one of: retirement, home, education, wealth, travel, vehicle, emergency, custom' },
             priority: { type: 'string', enum: ['need', 'want', 'wish'] },
-            target_amount: { type: 'number' },
-            current_amount: { type: 'number' },
-            due_date: { type: 'string', description: "ISO Date String YYYY-MM-DD" },
-            
-            // Strategy Fields
+            target_amount: { type: 'number', description: 'Target amount in NZD' },
+            current_amount: { type: 'number', description: 'Current savings towards this goal' },
+            due_date: { type: 'string', description: 'ISO Date String YYYY-MM-DD' },
             riskTolerance: { type: 'string', enum: ['low-risk', 'middle-risk', 'high-risk'] },
             inflationAdjust: { type: 'boolean' },
-            
-            // NEW: Strategy Recommendation Object
+            // Retirement-specific fields
+            retirement_age: { type: 'number' },
+            life_expectancy: { type: 'number' },
+            living_expense_pa: { type: 'number', description: 'Annual living expense in NZD' },
+            // Home-specific fields
+            property_price_estimate: { type: 'number' },
+            deposit_percentage: { type: 'number' },
+            location: { type: 'string' }
+          },
+          required: ['thought_process', 'rationale', 'goal_name', 'category']
+        },
+        form_schema: formSchemaDefinition
+      },
+      required: ['ai_decision', 'form_schema'],
+    };
+  }
+
+  // STAGE 2: STRATEGY - Only strategy fields
+  if (stage === GOAL_ENGINE_STAGES.STRATEGY) {
+    return {
+      type: 'object',
+      properties: {
+        ai_decision: {
+          type: 'object',
+          description: 'AI decision for investment strategy. DO NOT include product selection.',
+          properties: {
+            ...commonAiDecisionFields,
+            risk_profile: {
+                type: 'object',
+                properties: {
+                    attitude: { type: 'string' },
+                    volatility_tolerance_pct: { type: 'number' },
+                    max_drawdown_allowed_pct: { type: 'number' },
+                    notes: { type: 'string' }
+                }
+            },
+            // Carry forward goal info
+            goal_name: { type: 'string' },
+            category: { type: 'string' },
+            // Strategy Recommendation - MAIN OUTPUT for Stage 2
             strategy_recommendation: {
                 type: 'object',
                 properties: {
@@ -180,12 +289,11 @@ function getStageResponseSchema(stage) {
                     },
                     funding_structure: {
                         type: 'array',
-                        description: "Recommended split across product types (buckets)",
                         items: {
                             type: 'object',
                             properties: {
                                 type: { type: 'string', enum: ['KiwiSaver', 'Managed Fund', 'Term Deposit', 'Savings Account', 'ETF', 'Shares'] },
-                                percentage: { type: 'number', description: "0-100" },
+                                percentage: { type: 'number' },
                                 rationale: { type: 'string' }
                             },
                             required: ['type', 'percentage']
@@ -194,9 +302,9 @@ function getStageResponseSchema(stage) {
                     economic_exposure: {
                         type: 'object',
                         properties: {
-                            growth: { type: 'number', description: "Growth/equity-like exposure %" },
-                            defensive: { type: 'number', description: "Defensive/fixed-income exposure %" },
-                            liquidity: { type: 'number', description: "Cash/liquidity exposure %" }
+                            growth: { type: 'number' },
+                            defensive: { type: 'number' },
+                            liquidity: { type: 'number' }
                         }
                     },
                     glide_path: {
@@ -206,11 +314,7 @@ function getStageResponseSchema(stage) {
                             start_years_before_goal: { type: 'number' },
                             end_state: {
                                 type: 'object',
-                                properties: {
-                                    growth: { type: 'number' },
-                                    defensive: { type: 'number' },
-                                    liquidity: { type: 'number' }
-                                }
+                                properties: { growth: { type: 'number' }, defensive: { type: 'number' }, liquidity: { type: 'number' } }
                             }
                         }
                     },
@@ -235,65 +339,95 @@ function getStageResponseSchema(stage) {
                     },
                     consistency_check: {
                         type: 'object',
-                        properties: {
-                            exposure_vs_products_ok: { type: 'boolean' },
-                            notes: { type: 'string' }
-                        }
+                        properties: { exposure_vs_products_ok: { type: 'boolean' }, notes: { type: 'string' } }
                     }
                 },
-                required: ['recommended_risk', 'allocation', 'funding_structure']
-            },
-
-            // Goal Details (Flattened or specific common fields)
-            // Note: Gemini struggles with 'mixed' types, so we define common specific fields here
-            retirement_age: { type: 'number' },
-            life_expectancy: { type: 'number' },
-            living_expense_pa: { type: 'number' },
-            property_price_estimate: { type: 'number' },
-            deposit_percentage: { type: 'number' },
-            location: { type: 'string' },
-            
-            // Generic fallback for unmapped fields (JSON string)
-            other_details_json: { type: 'string', description: "Stringified JSON for any other goal_details" }
-        },
-        required: ['thought_process', 'rationale']
-      },
-      form_schema: {
-        type: 'object',
-        description:
-          'Dynamic form description for the frontend. Each field controls one input widget on the canvas.',
-        properties: {
-          fields: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                name: { type: 'string' },
-                label: { type: 'string' },
-                type: {
-                  type: 'string',
-                  enum: ['number', 'text', 'select', 'date', 'slider', 'toggle', 'currency', 'textarea'],
-                },
-                required: { type: 'boolean' },
-                min: { type: 'number' },
-                max: { type: 'number' },
-                step: { type: 'number' },
-                options: {
-                  type: 'array',
-                  items: { type: 'string' },
-                },
-                helpText: { type: 'string' },
-                placeholder: { type: 'string' },
-                defaultValue: { type: 'string' }
-              },
-              required: ['name', 'label', 'type'],
-            },
+                required: ['recommended_risk', 'allocation', 'economic_exposure']
+            }
           },
+          required: ['thought_process', 'rationale', 'strategy_recommendation']
         },
-        required: ['fields'],
+        form_schema: formSchemaDefinition
       },
+      required: ['ai_decision'],
+    };
+  }
+
+  // STAGE 3: PRODUCT - Portfolio options
+  if (stage === GOAL_ENGINE_STAGES.PRODUCT) {
+    return {
+      type: 'object',
+      properties: {
+        ai_decision: {
+          type: 'object',
+          description: 'AI decision for product selection. Return 2-3 portfolio options.',
+          properties: {
+            ...commonAiDecisionFields,
+            goal_name: { type: 'string' },
+            category: { type: 'string' },
+            // Portfolio Options - MAIN OUTPUT for Stage 3
+            portfolio_options: {
+                type: 'array',
+                description: '2-3 different portfolio options for user to choose from',
+                items: {
+                    type: 'object',
+                    properties: {
+                        option_id: { type: 'string', description: 'Unique ID: lowest_cost, diversified, performance' },
+                        option_name: { type: 'string', description: 'Display name for the portfolio option' },
+                        description: { type: 'string', description: 'Key advantage of this portfolio' },
+                        total_fees_estimate: { type: 'number', description: 'Estimated total weighted fees %' },
+                        calculated_exposure: {
+                            type: 'object',
+                            description: 'CALCULATED weighted exposure = Σ(weight × product.allocation). Must match target ±5%',
+                            properties: {
+                                growth: { type: 'number', description: 'Weighted growth exposure %' },
+                                defensive: { type: 'number', description: 'Weighted defensive exposure %' },
+                                liquidity: { type: 'number', description: 'Weighted liquidity/cash exposure %' }
+                            }
+                        },
+                        products: {
+                            type: 'array',
+                            items: {
+                                type: 'object',
+                                properties: {
+                                    product_id: { type: 'string', description: 'Product ID (24-char hex) from search results' },
+                                    weight_pct: { type: 'number', description: 'Allocation percentage 0-100, must sum to 100' },
+                                    rationale: { type: 'string', description: 'Brief reason for selection' }
+                                },
+                                required: ['product_id', 'weight_pct']
+                            }
+                        }
+                    },
+                    required: ['option_id', 'option_name', 'calculated_exposure', 'products']
+                }
+            }
+          },
+          required: ['thought_process', 'rationale', 'portfolio_options']
+        }
+      },
+      required: ['ai_decision'],
+    };
+  }
+
+  // STAGE 4: SIMULATION - Plausibility check
+  return {
+    type: 'object',
+    properties: {
+      ai_decision: {
+        type: 'object',
+        properties: {
+          ...commonAiDecisionFields,
+          plausible: { type: 'boolean', description: 'Is the goal achievable with current settings?' },
+          impacts: { 
+            type: 'array', 
+            items: { type: 'string' },
+            description: '2-3 bullet-style impacts on the overall plan'
+          }
+        },
+        required: ['thought_process', 'rationale', 'plausible']
+      }
     },
-    required: ['ai_decision', 'form_schema'],
+    required: ['ai_decision'],
   };
 }
 

@@ -3,6 +3,7 @@ import { AppError } from '../utils/errors.js';
 
 // LLMService: thin abstraction over different LLM providers (Gemini, Bedrock, DeepSeek, etc.)
 // Uses structured output when possible and always returns a unified shape.
+// Now with Function Calling support for tool-based workflows.
 
 class LLMService {
   constructor() {
@@ -87,6 +88,329 @@ class LLMService {
     } else {
       throw new AppError(`Streaming not supported for provider: ${this.provider}`, 501);
     }
+  }
+
+  // ==========================================
+  // Function Calling Support (Tool-based AI)
+  // ==========================================
+
+  /**
+   * Generate with Function Calling support.
+   * AI can call tools, and we execute them locally, then continue the conversation.
+   * 
+   * @param {string} prompt - Main prompt
+   * @param {object} context - Context (goalContext, responseSchema, etc.)
+   * @param {Array} tools - Tool definitions (name, description, parameters)
+   * @param {Function} toolExecutor - Function to execute tools: (toolName, args) => Promise<result>
+   * @param {number} maxIterations - Max tool call iterations (default 5)
+   * @returns {Promise<{ provider: string, text: string, json: any, toolCalls: Array }>}
+   */
+  async generateWithTools(prompt, context = {}, tools = [], toolExecutor, maxIterations = 5) {
+    this._ensureInitialized();
+
+    if (this.provider === 'gemini') {
+      return this.generateWithToolsGemini(prompt, context, tools, toolExecutor, maxIterations);
+    }
+
+    // Fallback: For providers without native function calling, simulate with structured output
+    console.warn(`[LLMService] Function Calling not natively supported for ${this.provider}, falling back to prompt-based approach`);
+    return this.generateWithToolsFallback(prompt, context, tools, toolExecutor, maxIterations);
+  }
+
+  /**
+   * Gemini Function Calling implementation
+   */
+  async generateWithToolsGemini(prompt, context, tools, toolExecutor, maxIterations) {
+    console.log(`[LLMService] 🔧 Starting Function Calling flow with ${tools.length} tools...`);
+
+    const { responseSchema, ...restContext } = context || {};
+    const contextText = restContext && Object.keys(restContext).length > 0
+      ? `\n\nContext (JSON):\n${JSON.stringify(restContext, null, 2)}`
+      : '';
+    const fullPrompt = `${prompt}${contextText}`;
+
+    // Convert our tool definitions to Gemini's format
+    const geminiTools = [{
+      functionDeclarations: tools.map(tool => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: this._convertToGeminiSchema(tool.parameters)
+      }))
+    }];
+
+    // Build generation config
+    const generationConfig = responseSchema && Object.keys(responseSchema).length > 0
+      ? { responseMimeType: 'application/json', responseSchema }
+      : {};
+
+    // Start chat session for multi-turn tool calling
+    const chat = this.generativeModel.startChat({
+      tools: geminiTools,
+      generationConfig
+    });
+
+    let allToolCalls = [];
+    let finalResponse = null;
+    let iteration = 0;
+
+    // Initial message
+    let result = await chat.sendMessage(fullPrompt);
+    let response = result.response;
+
+    while (iteration < maxIterations) {
+      iteration++;
+      
+      // Check if AI wants to call a function
+      const functionCalls = response.functionCalls();
+      
+      if (!functionCalls || functionCalls.length === 0) {
+        // No more function calls, we have the final response
+        finalResponse = response;
+        break;
+      }
+
+      console.log(`[LLMService] 🔧 Iteration ${iteration}: AI requested ${functionCalls.length} tool call(s)`);
+
+      // Execute each function call
+      const functionResponses = [];
+      for (const call of functionCalls) {
+        console.log(`[LLMService] → Calling: ${call.name}(${JSON.stringify(call.args)})`);
+        
+        try {
+          const toolResult = await toolExecutor(call.name, call.args);
+          allToolCalls.push({
+            name: call.name,
+            args: call.args,
+            result: toolResult
+          });
+
+          functionResponses.push({
+            name: call.name,
+            response: { result: toolResult }
+          });
+
+          console.log(`[LLMService] ← Result: ${JSON.stringify(toolResult).slice(0, 200)}...`);
+        } catch (err) {
+          console.error(`[LLMService] Tool execution error:`, err);
+          functionResponses.push({
+            name: call.name,
+            response: { error: err.message }
+          });
+        }
+      }
+
+      // Send tool results back to AI
+      result = await chat.sendMessage(functionResponses.map(fr => ({
+        functionResponse: fr
+      })));
+      response = result.response;
+    }
+
+    if (!finalResponse) {
+      finalResponse = response;
+    }
+
+    // Parse final response
+    const text = finalResponse.text();
+    let parsedJson = null;
+    try {
+      parsedJson = JSON.parse(text);
+    } catch {
+      // Try to extract JSON from text
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          parsedJson = JSON.parse(jsonMatch[0]);
+        } catch {}
+      }
+    }
+
+    console.log(`[LLMService] ✅ Function Calling complete. ${allToolCalls.length} tool calls made.`);
+
+    return {
+      provider: 'gemini',
+      text,
+      json: parsedJson,
+      toolCalls: allToolCalls,
+      raw: finalResponse
+    };
+  }
+
+  /**
+   * Fallback for providers without native function calling
+   * Uses a two-phase approach: 
+   * Phase 1: Force AI to call tools to get real products
+   * Phase 2: AI builds portfolio from tool results
+   */
+  async generateWithToolsFallback(prompt, context, tools, toolExecutor, maxIterations) {
+    const toolDescriptions = tools.map(t => 
+      `- ${t.name}: ${t.description}\n  Parameters: ${JSON.stringify(t.parameters.properties, null, 2)}`
+    ).join('\n\n');
+
+    // PHASE 1: Force AI to call the search tool first
+    const phase1Prompt = `You are building an investment portfolio. Before you can recommend products, you MUST search the database.
+
+Available Tools:
+${toolDescriptions}
+
+Your task: Analyze the strategy context and call search_portfolio_candidates to find real products.
+
+Strategy Context:
+${JSON.stringify(context.goalContext?.strategy_summary || context.goalContext?.ai_decision?.strategy_recommendation?.economic_exposure || { growth: 60, defensive: 30, liquidity: 10 }, null, 2)}
+
+CRITICAL: You MUST respond with ONLY a tool_calls array. Example:
+{
+  "tool_calls": [
+    { 
+      "name": "search_portfolio_candidates", 
+      "args": { 
+        "target_growth_pct": 60, 
+        "target_defensive_pct": 30, 
+        "target_liquidity_pct": 10,
+        "max_fees": 2.0,
+        "is_retirement_goal": true,
+        "products_per_category": 10
+      } 
+    }
+  ]
+}
+
+DO NOT make up product IDs. You MUST call the tool first.`;
+
+    let allToolCalls = [];
+    let toolResults = null;
+
+    // Execute Phase 1: Get tool calls
+    console.log(`[LLMService] Fallback Phase 1: Requesting tool calls from AI...`);
+    const phase1Result = await this.generate(phase1Prompt, { responseSchema: {
+      type: 'object',
+      properties: {
+        tool_calls: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              args: { type: 'object' }
+            }
+          }
+        }
+      },
+      required: ['tool_calls']
+    }});
+
+    if (phase1Result.json?.tool_calls && phase1Result.json.tool_calls.length > 0) {
+      console.log(`[LLMService] Fallback Phase 1: AI requested ${phase1Result.json.tool_calls.length} tool call(s)`);
+      
+      toolResults = [];
+      for (const call of phase1Result.json.tool_calls) {
+        console.log(`[LLMService] → Calling: ${call.name}(${JSON.stringify(call.args)})`);
+        try {
+          const toolResult = await toolExecutor(call.name, call.args);
+          allToolCalls.push({ name: call.name, args: call.args, result: toolResult });
+          toolResults.push({ tool: call.name, result: toolResult });
+          
+          // 根据不同工具类型正确计算结果数量
+          const resultCount = toolResult?.portfolio_options?.length 
+            ? `${toolResult.portfolio_options.length} portfolios (${toolResult.summary?.candidates_searched || 0} products searched)`
+            : toolResult?.summary?.total_candidates 
+            ? `${toolResult.summary.total_candidates} products`
+            : toolResult?.length 
+            ? `${toolResult.length} products`
+            : toolResult?.optimized_products?.length
+            ? `${toolResult.optimized_products.length} optimized products`
+            : '0 results';
+          console.log(`[LLMService] ← Found ${resultCount}`);
+        } catch (err) {
+          console.error(`[LLMService] Tool error:`, err);
+          toolResults.push({ tool: call.name, error: err.message });
+        }
+      }
+    } else {
+      // AI didn't call tools, force a default search
+      console.warn(`[LLMService] Fallback: AI didn't request tools, forcing default search...`);
+      const exposure = context.goalContext?.strategy_summary?.target_exposure || 
+                      context.goalContext?.ai_decision?.strategy_recommendation?.economic_exposure ||
+                      { growth: 60, defensive: 30, liquidity: 10 };
+      
+      const defaultArgs = {
+        target_growth_pct: exposure.growth || 60,
+        target_defensive_pct: exposure.defensive || 30,
+        target_liquidity_pct: exposure.liquidity || 10,
+        max_fees: 2.0,
+        is_retirement_goal: context.goalContext?.category === 'retirement',
+        products_per_category: 10
+      };
+      
+      console.log(`[LLMService] → Forcing call: search_portfolio_candidates(${JSON.stringify(defaultArgs)})`);
+      try {
+        const toolResult = await toolExecutor('search_portfolio_candidates', defaultArgs);
+        allToolCalls.push({ name: 'search_portfolio_candidates', args: defaultArgs, result: toolResult });
+        toolResults = [{ tool: 'search_portfolio_candidates', result: toolResult }];
+        console.log(`[LLMService] ← Found ${toolResult?.summary?.total_candidates || 0} products`);
+      } catch (err) {
+        console.error(`[LLMService] Forced tool call failed:`, err);
+        toolResults = [{ tool: 'search_portfolio_candidates', error: err.message }];
+      }
+    }
+
+    // PHASE 2: Build portfolio from tool results
+    console.log(`[LLMService] Fallback Phase 2: Building portfolio from ${allToolCalls.length} tool results...`);
+    
+    const phase2Prompt = `${prompt}
+
+REAL PRODUCTS FROM DATABASE (use these EXACT product IDs):
+${JSON.stringify(toolResults, null, 2)}
+
+CRITICAL INSTRUCTIONS:
+1. You MUST use ONLY the product IDs from the search results above (they look like "69421fb6337142418749b75a")
+2. DO NOT make up product IDs like "KS-GROWTH-LOWFEE" - these are INVALID
+3. Build 2-3 portfolio options using ONLY the real products provided above
+4. Each portfolio's weights must sum to 100%
+
+Return your final answer as JSON with portfolio_options.`;
+
+    const phase2Result = await this.generate(phase2Prompt, context);
+
+    return {
+      ...phase2Result,
+      toolCalls: allToolCalls
+    };
+  }
+
+  /**
+   * Convert our schema format to Gemini's FunctionDeclarationSchema format
+   */
+  _convertToGeminiSchema(schema) {
+    if (!schema) return undefined;
+    
+    // Gemini uses slightly different schema format
+    const converted = {
+      type: schema.type?.toUpperCase() || 'OBJECT',
+      properties: {},
+      required: schema.required || []
+    };
+
+    if (schema.properties) {
+      for (const [key, prop] of Object.entries(schema.properties)) {
+        converted.properties[key] = {
+          type: prop.type?.toUpperCase() || 'STRING',
+          description: prop.description || ''
+        };
+
+        if (prop.enum) {
+          converted.properties[key].enum = prop.enum;
+        }
+
+        if (prop.items) {
+          converted.properties[key].items = {
+            type: prop.items.type?.toUpperCase() || 'STRING'
+          };
+        }
+      }
+    }
+
+    return converted;
   }
 
   async *generateStreamWithGemini(prompt, context) {

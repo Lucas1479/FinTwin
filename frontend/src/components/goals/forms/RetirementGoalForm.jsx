@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
     Clock, 
     Heart, 
@@ -13,49 +13,69 @@ import {
 const RetirementGoalForm = ({ initialValues, onChange }) => {
     // 1. Local state initialized from parent
     const [details, setDetails] = useState({
-        retirement_age: initialValues.goal_details?.retirement_age || 65,
-        life_expectancy: initialValues.goal_details?.life_expectancy || 95,
-        living_expense_pa: initialValues.goal_details?.living_expense_pa || 52000,
-        include_superannuation: initialValues.goal_details?.include_superannuation ?? true
+        retirement_age: initialValues?.goal_details?.retirement_age || 65,
+        life_expectancy: initialValues?.goal_details?.life_expectancy || 95,
+        living_expense_pa: initialValues?.goal_details?.living_expense_pa || 52000,
+        include_superannuation: initialValues?.goal_details?.include_superannuation ?? true
     });
 
     const [meta, setMeta] = useState({
-        goal_name: initialValues.goal_name || 'My Retirement',
-        due_date: initialValues.due_date || ''
+        goal_name: initialValues?.goal_name || 'My Retirement',
+        due_date: initialValues?.due_date || ''
     });
 
     const [frequency, setFrequency] = useState('weekly');
-    const [inflationAdjust, setInflationAdjust] = useState(initialValues.inflationAdjust ?? true);
+    const [inflationAdjust, setInflationAdjust] = useState(initialValues?.inflationAdjust ?? true);
 
-    // Ref to prevent feedback loop during AI streaming
-    const lastInitialValues = React.useRef(null);
+    // Refs to track previous values and prevent infinite loops
+    const lastSentPayloadRef = useRef(null);
+    const isInternalChangeRef = useRef(false);
+    const lastReceivedDataRef = useRef('');
 
-    // SYNC: Incoming updates from AI (Copilot)
+    // SYNC: Incoming updates from AI (Copilot) - only when AI provides NEW data
     useEffect(() => {
         if (!initialValues) return;
         
-        // Prevent update if the incoming data is identical to what we already have
-        const currentDataStr = JSON.stringify({
-            goal_name: meta.goal_name,
-            goal_details: details,
-            inflationAdjust
-        });
-        const incomingDataStr = JSON.stringify({
+        // Skip if this update was triggered by our own onChange
+        if (isInternalChangeRef.current) {
+            isInternalChangeRef.current = false;
+            return;
+        }
+
+        // Create a stable comparison key from incoming data (only fields we care about)
+        const incomingKey = JSON.stringify({
             goal_name: initialValues.goal_name,
-            goal_details: initialValues.goal_details,
-            inflationAdjust: initialValues.inflationAdjust
+            due_date: initialValues.due_date,
+            inflationAdjust: initialValues.inflationAdjust,
+            retirement_age: initialValues.goal_details?.retirement_age,
+            life_expectancy: initialValues.goal_details?.life_expectancy,
+            living_expense_pa: initialValues.goal_details?.living_expense_pa,
+            include_superannuation: initialValues.goal_details?.include_superannuation
         });
 
-        if (currentDataStr === incomingDataStr) return;
+        // Skip if incoming data is the same as last received
+        if (incomingKey === lastReceivedDataRef.current) {
+            return;
+        }
+        lastReceivedDataRef.current = incomingKey;
 
+        console.log('[RetirementGoalForm] Syncing from AI:', initialValues.goal_details);
+
+        // Update details from AI
         if (initialValues.goal_details) {
             setDetails(prev => ({
                 ...prev,
-                ...initialValues.goal_details
+                retirement_age: initialValues.goal_details.retirement_age ?? prev.retirement_age,
+                life_expectancy: initialValues.goal_details.life_expectancy ?? prev.life_expectancy,
+                living_expense_pa: initialValues.goal_details.living_expense_pa ?? prev.living_expense_pa,
+                include_superannuation: initialValues.goal_details.include_superannuation ?? prev.include_superannuation
             }));
         }
         if (initialValues.goal_name) {
             setMeta(prev => ({ ...prev, goal_name: initialValues.goal_name }));
+        }
+        if (initialValues.due_date) {
+            setMeta(prev => ({ ...prev, due_date: initialValues.due_date }));
         }
         if (initialValues.inflationAdjust !== undefined) {
             setInflationAdjust(initialValues.inflationAdjust);
@@ -76,9 +96,9 @@ const RetirementGoalForm = ({ initialValues, onChange }) => {
     const calculatedTarget = adjustedIncome * multiplier;
 
     // Reporting back to parent (The "Source of Truth" hook)
+    // Uses a ref to compare and prevent unnecessary updates
     useEffect(() => {
         const payload = {
-            ...initialValues,
             goal_name: meta.goal_name,
             target_amount: calculatedTarget,
             due_date: meta.due_date,
@@ -90,12 +110,22 @@ const RetirementGoalForm = ({ initialValues, onChange }) => {
             }
         };
 
+        // Create a stable comparison key (excluding functions and refs)
+        const payloadKey = JSON.stringify({
+            goal_name: payload.goal_name,
+            target_amount: payload.target_amount,
+            due_date: payload.due_date,
+            inflationAdjust: payload.inflationAdjust,
+            goal_details: payload.goal_details
+        });
+
         // Only notify parent if values are actually different to stop the loop
-        const payloadStr = JSON.stringify(payload);
-        if (payloadStr !== JSON.stringify(initialValues)) {
+        if (payloadKey !== lastSentPayloadRef.current) {
+            lastSentPayloadRef.current = payloadKey;
+            isInternalChangeRef.current = true; // Mark that we're triggering this
             onChange(payload);
         }
-    }, [details, meta, calculatedTarget, inflationAdjust, multiplier, onChange]);
+    }, [details, meta.goal_name, meta.due_date, calculatedTarget, inflationAdjust, multiplier, onChange]);
 
     // Handlers
     const handleDetailChange = (key, value) => {
