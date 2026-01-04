@@ -42,6 +42,7 @@ const transformProduct = (backendProduct) => {
     name: name || 'Unknown Fund',
     code,
     provider: provider || 'Unknown Provider',
+    fundManager: provider || 'Unknown Provider',
     description,
 
     // Category mapping (Backend → Frontend)
@@ -91,6 +92,10 @@ const transformProduct = (backendProduct) => {
     // Metadata
     isActive: isActive ?? true,
     lastUpdated,
+    asOfDate: backendProduct.asOfDate || null,
+    topHoldingsAsOf: backendProduct.topHoldingsAsOf || backendProduct.asOfDate || null,
+    dataSource: backendProduct.dataSource || 'Disclose Register',
+    documents: Array.isArray(backendProduct.documents) ? backendProduct.documents : [],
 
     // Minimum investment (for eligibility filtering)
     // Note: Backend doesn't have this field yet, default to 0 (no minimum)

@@ -1,6 +1,7 @@
 import asyncHandler from 'express-async-handler';
 import Goal from '../models/goalModel.js';
 import Plan from '../models/planModel.js';
+import GoalDecisionLog from '../models/goalDecisionLogModel.js';
 import { BadRequestError, NotFoundError } from '../utils/errors.js';
 
 // ==========================================
@@ -35,7 +36,14 @@ export const createGoal = asyncHandler(async (req, res) => {
     contribution,     // { amount, frequency }
     funding_source,
     initial_allocations,
-    ai_rationale
+    ai_rationale,
+    
+    // --- Enhanced Plan Fields (from Goal Engine) ---
+    target_exposure,
+    glide_path,
+    contribution_strategy,
+    selected_portfolio,
+    decision_session_id
   } = req.body;
 
   if (!goal_name || !category || !priority || !riskTolerance || !target_amount || !due_date) {
@@ -61,30 +69,65 @@ export const createGoal = asyncHandler(async (req, res) => {
   });
 
   // 2. Create the Plan (The "How")
-  // Note: We map frontend keys to backend Schema keys here
   const plan = await Plan.create({
     goal_id: goal._id,
     user_id: req.user._id,
     strategy_profile: strategyType || 'balanced',
+    
+    // Target exposure (from AI strategy recommendation)
+    target_exposure: target_exposure || { growth: 60, defensive: 30, liquidity: 10 },
+    
+    // Glide path configuration
+    glide_path: glide_path || { enabled: false },
+    
     settings: {
         inflation_adjusted: granularSettings?.inflationAdjust ?? true,
         tax_optimized: granularSettings?.taxOptimized ?? false,
         reinvest_dividends: granularSettings?.reinvestDividends ?? true,
         liquidity_preference: granularSettings?.liquidity ?? 'flexible'
     },
+    
+    // Legacy product snapshot
     product_snapshot: product ? {
         name: product.name,
         provider: product.provider || 'Unknown',
         fees: product.fees,
         risk_level: product.risk_level || 'Medium'
     } : undefined,
+    
+    // Selected portfolio (from Stage 3)
+    selected_portfolio: selected_portfolio,
+    
+    // Contribution schedule
     contribution: contribution || { amount: 0, frequency: 'monthly' },
-    funding_source, // ObjectId if real, null if mock
-    initial_allocations,
-    ai_rationale
+    
+    // Enhanced contribution strategy
+    contribution_strategy: contribution_strategy || {
+      mode: 'recurring',
+      monthly_amount: contribution?.amount || 0,
+      lump_sum_amount: 0
+    },
+    
+    funding_source,
+    initial_allocations: initial_allocations || [],
+    ai_rationale,
+    decision_session_id
   });
 
-  // 3. Return Combined Result
+  // 3. If we have a session ID, update decision logs with the goal ID
+  if (decision_session_id) {
+    try {
+      await GoalDecisionLog.updateMany(
+        { session_id: decision_session_id, user_id: req.user._id },
+        { $set: { goal_id: goal._id, committed_to_goal: true } }
+      );
+    } catch (logErr) {
+      console.warn('[GoalController] Failed to update decision logs:', logErr.message);
+      // Don't fail the goal creation if log update fails
+    }
+  }
+
+  // 4. Return Combined Result
   res.status(201).json({
     ...goal.toObject(),
     plan: plan.toObject()
@@ -107,7 +150,9 @@ export const getGoals = asyncHandler(async (req, res) => {
   // 2. Fetch Plans for these goals
   // Optimization: Fetch all plans for this user in one go and map them in memory
   const goalIds = goals.map(g => g._id);
-  const plans = await Plan.find({ goal_id: { $in: goalIds } }).lean();
+  const plans = await Plan.find({ goal_id: { $in: goalIds } })
+    .populate('selected_portfolio.products.product_id')
+    .lean();
 
   // 3. Merge Plan into Goal
   const goalsWithPlans = goals.map(goal => {
@@ -128,7 +173,9 @@ export const getGoalById = asyncHandler(async (req, res) => {
     throw new NotFoundError('Goal not found');
   }
 
-  const plan = await Plan.findOne({ goal_id: goal._id }).lean();
+  const plan = await Plan.findOne({ goal_id: goal._id })
+    .populate('selected_portfolio.products.product_id')
+    .lean();
 
   res.json({ ...goal, plan: plan || null });
 });

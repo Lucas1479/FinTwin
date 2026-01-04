@@ -1,0 +1,525 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  ArrowUpCircle, ArrowDownCircle, Plus, DollarSign, 
+  Repeat, ShoppingBag, Briefcase, Zap, 
+  TrendingUp, Home, Car, Layers, Target, Activity,
+  ArrowUpRight, ChevronRight, Filter, Wallet, CreditCard, ArrowDownRight
+} from 'lucide-react';
+import { getCashFlows } from '../../services/cashFlowService';
+import { Loader2 } from 'lucide-react';
+import CashFlowProjectionChart from '../../components/wealth/CashFlowProjectionChart';
+import CashFlowFormModal from '../../components/wealth/CashFlowFormModal';
+import IncomeStructureCard from '../../components/wealth/IncomeStructureCard';
+import IncomeDetailModal from '../../components/wealth/IncomeDetailModal';
+import { 
+  startOfWeek, endOfWeek, startOfMonth, endOfMonth, 
+  eachDayOfInterval, getDate, getDay, format, differenceInDays
+} from 'date-fns';
+
+// ============ DESIGN SYSTEM CONSTANTS ============
+const CARD_BASE = "bg-white rounded-3xl border border-slate-100 shadow-sm transition-all hover:shadow-md";
+const BTN_ICON = "p-2 rounded-xl hover:bg-slate-50 text-slate-400 hover:text-indigo-600 transition-colors";
+const SECTION_TITLE = "text-base font-bold text-slate-900 flex items-center gap-2";
+
+const TO_ANNUAL = {
+  'Weekly': 52,
+  'Fortnightly': 26,
+  'Monthly': 12,
+  'Yearly': 1,
+  'One-Off': 0
+};
+
+const FREQUENCY_LABELS = {
+  'Weekly': '/ week',
+  'Fortnightly': '/ fortnight',
+  'Monthly': '/ month',
+  'Yearly': '/ year',
+};
+
+// ============ HELPER: FORMAT CURRENCY WITH SPLIT ============
+const formatCurrencySplit = (value) => {
+  const formatted = new Intl.NumberFormat('en-NZ', { 
+    minimumFractionDigits: 2, 
+    maximumFractionDigits: 2 
+  }).format(Math.abs(value));
+  const [integer, decimal] = formatted.split('.');
+  const sign = value < 0 ? '-' : '';
+  return { sign, integer, decimal };
+};
+
+const formatCurrency = (val) => new Intl.NumberFormat('en-NZ', { 
+  style: 'currency', 
+  currency: 'NZD' 
+}).format(val);
+
+// ============ HELPER: GET ICON FOR CATEGORY ============
+const getIconForCategory = (category) => {
+  switch (category) {
+    case 'Housing': return Home;
+    case 'Living': return ShoppingBag;
+    case 'Transport': return Car;
+    case 'Bills': 
+    case 'Utilities': return Zap;
+    case 'Salary': return Briefcase;
+    case 'Side Hustle': return Zap;
+    case 'Investment': return TrendingUp;
+    case 'Insurance': return Layers;
+    default: return DollarSign;
+  }
+};
+
+// ============ SUB-COMPONENT: SEGMENTED CONTROL ============
+const SegmentedControl = ({ options, value, onChange }) => (
+  <div className="flex bg-slate-100 p-1 rounded-xl">
+    {options.map((opt) => (
+      <button
+        key={opt.value}
+        onClick={() => onChange(opt.value)}
+        className={`
+          flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all
+          ${value === opt.value 
+            ? 'bg-white text-indigo-600 shadow-sm' 
+            : 'text-slate-400 hover:text-slate-600 hover:bg-slate-200/50'
+          }
+        `}
+      >
+        {opt.icon && <opt.icon size={12} />}
+        {opt.label}
+      </button>
+    ))}
+  </div>
+);
+
+// ============ SUB-COMPONENT: FLOW ITEM ============
+const FlowItem = ({ item, colorScheme, onEdit, displayAmount, frequencyLabel }) => {
+  const Icon = getIconForCategory(item.category);
+  const schemes = {
+    emerald: { bar: 'bg-emerald-500', iconBg: 'bg-emerald-50', iconText: 'text-emerald-600' },
+    rose: { bar: 'bg-rose-500', iconBg: 'bg-rose-50', iconText: 'text-rose-600' },
+    indigo: { bar: 'bg-indigo-500', iconBg: 'bg-indigo-50', iconText: 'text-indigo-600' },
+  };
+  const s = schemes[colorScheme] || schemes.indigo;
+
+  return (
+    <div 
+      onClick={() => onEdit(item)}
+      className="flex items-center justify-between px-5 py-4 bg-white border-b border-slate-50 last:border-0 hover:bg-slate-50 cursor-pointer transition-all group relative overflow-hidden"
+    >
+      <div className="flex items-center gap-4">
+        {/* Vertical Indicator Bar */}
+        <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full ${s.bar} opacity-0 group-hover:opacity-100 transition-opacity`}></div>
+        
+        {/* Icon */}
+        <div className={`w-10 h-10 ${s.iconBg} rounded-xl flex items-center justify-center ${s.iconText} group-hover:scale-105 transition-transform`}>
+          <Icon size={18} />
+        </div>
+        
+        <div>
+          <h4 className="font-bold text-slate-900 text-sm">{item.name}</h4>
+          <div className="flex gap-2 mt-1">
+            <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{item.frequency}</span>
+            {item.timing_mode === 'Daily_Spread' && (
+              <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">Spread</span>
+            )}
+            {item.is_variable && (
+              <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Variable</span>
+            )}
+            {item.anchor_date && (
+               <span className="text-[10px] font-medium text-slate-400">
+                 Day {item.anchor_date}
+               </span>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      <div className="text-right">
+        <div className="font-bold text-slate-900 text-base">{formatCurrency(displayAmount)}</div>
+        <div className="text-[10px] text-slate-400 font-medium">{frequencyLabel}</div>
+      </div>
+    </div>
+  );
+};
+
+// ============ SUB-COMPONENT: EMPTY STATE ============
+const EmptyState = ({ icon: Icon, title, actionLabel, onAction, colorClass = "text-slate-300" }) => (
+    <div className="p-10 text-center flex flex-col items-center justify-center min-h-[200px]">
+        <div className={`w-14 h-14 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100`}>
+            <Icon size={24} className={colorClass} />
+        </div>
+        <p className="text-sm font-bold text-slate-400 mb-1">{title}</p>
+        <button 
+            onClick={onAction} 
+            className="text-xs font-bold text-indigo-600 hover:text-indigo-700 hover:underline mt-2 transition-all"
+        >
+            {actionLabel}
+        </button>
+    </div>
+);
+
+// ============ MAIN COMPONENT ============
+const WealthCashflow = () => {
+  const [loading, setLoading] = useState(true);
+  const [incomes, setIncomes] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [subscriptions, setSubscriptions] = useState([]);
+  const [allFlows, setAllFlows] = useState([]);
+  const [viewMode, setViewMode] = useState('Weekly');
+  const [calcMode, setCalcMode] = useState('Planning');
+  
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalType, setModalType] = useState('Income');
+  const [editingFlow, setEditingFlow] = useState(null);
+  const [isIncomeDetailOpen, setIsIncomeDetailOpen] = useState(false);
+
+  const fetchFlows = async () => {
+    try {
+      const flows = await getCashFlows();
+      setAllFlows(flows);
+      setIncomes(flows.filter(f => f.type === 'Income'));
+      setExpenses(flows.filter(f => f.type === 'Expense'));
+      setSubscriptions(flows.filter(f => f.type === 'Subscription'));
+    } catch (err) {
+      console.error("Failed to fetch cash flows", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchFlows(); }, []);
+
+  const handleAdd = (type) => { setEditingFlow(null); setModalType(type); setIsModalOpen(true); };
+  const handleEdit = (flow) => { setEditingFlow(flow); setIsModalOpen(true); };
+
+  // --- Calculation Logic ---
+  const toAnnual = (amount, frequency) => amount * (TO_ANNUAL[frequency] || 0);
+  const fromAnnual = (annualAmount, targetMode) => {
+    const divider = TO_ANNUAL[targetMode] || 1;
+    return divider === 0 ? 0 : annualAmount / divider;
+  };
+
+  const getAverageAmount = (item) => fromAnnual(toAnnual(item.amount, item.frequency), viewMode);
+
+  const getActualAmount = (item) => {
+    const today = new Date();
+    let periodStart, periodEnd;
+
+    if (viewMode === 'Weekly') {
+      periodStart = startOfWeek(today, { weekStartsOn: 1 });
+      periodEnd = endOfWeek(today, { weekStartsOn: 1 });
+    } else if (viewMode === 'Fortnightly') {
+      periodStart = startOfWeek(today, { weekStartsOn: 1 });
+      periodEnd = new Date(periodStart);
+      periodEnd.setDate(periodEnd.getDate() + 13);
+    } else if (viewMode === 'Monthly') {
+      periodStart = startOfMonth(today);
+      periodEnd = endOfMonth(today);
+    } else {
+      periodStart = new Date(today.getFullYear(), 0, 1);
+      periodEnd = new Date(today.getFullYear(), 11, 31);
+    }
+
+    const daysInPeriod = differenceInDays(periodEnd, periodStart) + 1;
+
+    if (item.timing_mode === 'Daily_Spread') {
+      return (toAnnual(item.amount, item.frequency) / 365) * daysInPeriod;
+    }
+
+    let totalHits = 0;
+    eachDayOfInterval({ start: periodStart, end: periodEnd }).forEach(day => {
+      const dayOfMonth = getDate(day);
+      const dayOfWeek = getDay(day) || 7;
+      if (item.frequency === 'Monthly' && item.anchor_date === dayOfMonth) totalHits++;
+      else if (item.frequency === 'Weekly' && item.anchor_date === dayOfWeek) totalHits++;
+    });
+    return item.amount * totalHits;
+  };
+
+  const getDisplayAmount = (item) => calcMode === 'Planning' ? getAverageAmount(item) : getActualAmount(item);
+
+  const totalIncome = incomes.reduce((sum, item) => sum + getDisplayAmount(item), 0);
+  const totalExpenses = expenses.reduce((sum, item) => sum + getDisplayAmount(item), 0);
+  const totalSubs = subscriptions.reduce((sum, item) => sum + getDisplayAmount(item), 0);
+  const totalOutflow = totalExpenses + totalSubs;
+  const netFlow = totalIncome - totalOutflow;
+  const savingsRate = totalIncome > 0 ? (netFlow / totalIncome) * 100 : 0;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="animate-spin text-indigo-600" size={32} />
+      </div>
+    );
+  }
+
+  const { sign, integer, decimal } = formatCurrencySplit(netFlow);
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+      
+      {/* ============ ROW 1: HERO KPI & INCOME MIX ============ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Main Net Flow Card (2/3 width) */}
+        <div className={`${CARD_BASE} p-8 lg:col-span-2 relative overflow-hidden flex flex-col justify-between`}>
+          {/* Background Decoration */}
+          <div className="absolute right-0 top-0 w-64 h-full bg-gradient-to-l from-indigo-50 to-transparent pointer-events-none opacity-40"></div>
+          
+          {/* Header with Toggles */}
+          <div className="flex flex-wrap justify-between items-start gap-4 mb-6 relative z-10">
+            <div className="flex items-center gap-4">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mt-1.5">Net Cash Flow</h3>
+              <SegmentedControl 
+                options={[
+                   { value: 'Planning', label: 'Plan', icon: Target },
+                   { value: 'Actual', label: 'Real', icon: Activity }
+                ]}
+                value={calcMode}
+                onChange={setCalcMode}
+              />
+            </div>
+            
+            <SegmentedControl 
+                options={[
+                   { value: 'Weekly', label: 'Weekly' },
+                   { value: 'Fortnightly', label: 'F/N' },
+                   { value: 'Monthly', label: 'Monthly' },
+                   { value: 'Yearly', label: 'Yearly' },
+                ]}
+                value={viewMode}
+                onChange={setViewMode}
+            />
+          </div>
+
+          {/* Main Content */}
+          <div className="relative z-10">
+              <div className="flex items-baseline gap-1 mb-6">
+                <span className={`text-4xl font-bold tracking-tight ${netFlow >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
+                  {sign}${integer}
+                </span>
+                <span className="text-2xl font-bold text-slate-300">.{decimal}</span>
+                <span className={`ml-4 self-center text-xs font-bold px-3 py-1.5 rounded-xl border ${
+                  savingsRate >= 20 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
+                  savingsRate >= 0 ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-rose-50 text-rose-600 border-rose-100'
+                }`}>
+                  {savingsRate >= 0 ? '+' : ''}{savingsRate.toFixed(1)}% Savings Rate
+                </span>
+              </div>
+
+              {/* Income / Outflow Summary Row (Replaces text description) */}
+              <div className="flex items-center gap-12 mb-6">
+                 <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Income</p>
+                    <div className="flex items-center gap-2">
+                       <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
+                          <ArrowUpCircle size={18} />
+                       </div>
+                       <span className="text-xl font-bold text-slate-700">{formatCurrency(totalIncome)}</span>
+                    </div>
+                 </div>
+                 <div className="h-8 w-px bg-slate-200"></div>
+                 <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Outflow</p>
+                    <div className="flex items-center gap-2">
+                       <div className="w-8 h-8 rounded-full bg-rose-50 flex items-center justify-center text-rose-600">
+                          <ArrowDownCircle size={18} />
+                       </div>
+                       <span className="text-xl font-bold text-slate-700">{formatCurrency(totalOutflow)}</span>
+                    </div>
+                 </div>
+              </div>
+              
+              {/* Progress Bar */}
+              <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden flex mb-2">
+                 <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.min((totalOutflow / (totalIncome || 1)) * 100, 100)}%` }}></div>
+                 <div className="h-full bg-emerald-400 rounded-full -ml-1 border-l-2 border-white" style={{ width: `${Math.max(savingsRate, 0)}%` }}></div>
+              </div>
+              
+              <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <span>Expenses ({totalIncome > 0 ? ((totalOutflow / totalIncome) * 100).toFixed(0) : 0}%)</span>
+                <span>Surplus ({Math.max(savingsRate, 0).toFixed(0)}%)</span>
+              </div>
+          </div>
+        </div>
+
+        {/* Income Structure (1/3 width) - Moved Here */}
+        <div className="lg:col-span-1 h-full">
+           <IncomeStructureCard 
+              flows={allFlows} 
+              viewMode={viewMode}
+              onOpenDetail={() => setIsIncomeDetailOpen(true)}
+           />
+        </div>
+      </div>
+
+      {/* ============ ROW 2: PROJECTION CHART (Full Width) ============ */}
+      <div className={`${CARD_BASE} p-6`}>
+        <div className="flex items-center justify-between mb-4 px-2">
+          <div>
+            <h3 className={SECTION_TITLE}>
+              <TrendingUp size={18} className="text-indigo-600" />
+              30-Day Cash Projection
+            </h3>
+            <p className="text-xs text-slate-400 mt-1 pl-6.5">Forecasted balance based on your rules</p>
+          </div>
+          <button className={BTN_ICON}>
+            <Filter size={16} />
+          </button>
+        </div>
+        {/* Increased height for better visibility */}
+        <div className="h-[300px]">
+           <CashFlowProjectionChart flows={allFlows} />
+        </div>
+      </div>
+
+      {/* ============ ROW 3: LISTS GRID ============ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        {/* Income Streams */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-2">
+            <h3 className={SECTION_TITLE}>
+              <Wallet size={18} className="text-emerald-500" />
+              Income Streams
+            </h3>
+            <button 
+              onClick={() => handleAdd('Income')}
+              className="text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-xl transition-colors flex items-center gap-1.5"
+            >
+              <Plus size={14} /> Add
+            </button>
+          </div>
+
+          <div className={`${CARD_BASE} overflow-hidden min-h-[240px]`}>
+            {incomes.length === 0 ? (
+              <EmptyState 
+                icon={ArrowUpCircle} 
+                title="No income streams yet" 
+                actionLabel="+ Add your first income" 
+                onAction={() => handleAdd('Income')}
+                colorClass="text-emerald-300" 
+              />
+            ) : incomes.map((item) => (
+              <FlowItem 
+                key={item._id} 
+                item={item} 
+                colorScheme="emerald" 
+                onEdit={handleEdit} 
+                displayAmount={getDisplayAmount(item)}
+                frequencyLabel={FREQUENCY_LABELS[viewMode]}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Expenses & Subscriptions */}
+        <div className="space-y-8">
+          
+          {/* Expenses */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between px-2">
+              <h3 className={SECTION_TITLE}>
+                 <CreditCard size={18} className="text-rose-500" />
+                 Budgets & Expenses
+              </h3>
+              <button 
+                onClick={() => handleAdd('Expense')}
+                className="text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 px-4 py-2 rounded-xl transition-colors flex items-center gap-1.5"
+              >
+                <Plus size={14} /> Add
+              </button>
+            </div>
+
+            <div className={`${CARD_BASE} overflow-hidden min-h-[240px]`}>
+              {expenses.length === 0 ? (
+                <EmptyState 
+                  icon={ArrowDownCircle} 
+                  title="No expenses yet" 
+                  actionLabel="+ Add your first expense" 
+                  onAction={() => handleAdd('Expense')} 
+                  colorClass="text-rose-300"
+                />
+              ) : expenses.map((item) => (
+                <FlowItem 
+                  key={item._id} 
+                  item={item} 
+                  colorScheme="rose" 
+                  onEdit={handleEdit} 
+                  displayAmount={getDisplayAmount(item)}
+                  frequencyLabel={FREQUENCY_LABELS[viewMode]}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Subscriptions */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between px-2">
+                <h3 className={SECTION_TITLE}>
+                   <Repeat size={18} className="text-indigo-500" />
+                   Subscriptions
+                </h3>
+                <button 
+                    onClick={() => handleAdd('Subscription')}
+                    className="text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl transition-colors flex items-center gap-1.5"
+                >
+                    <Plus size={14} /> Add
+                </button>
+            </div>
+
+            <div className={`${CARD_BASE} overflow-hidden min-h-[240px]`}>
+               {/* Summary Header inside Card */}
+               <div className="bg-indigo-50/50 px-6 py-4 border-b border-indigo-50 flex justify-between items-center">
+                   <div className="flex items-center gap-2 text-indigo-900">
+                       <span className="text-xs font-bold uppercase tracking-wider">Recurring Total</span>
+                   </div>
+                   <div className="text-indigo-700 font-bold text-sm">
+                       {formatCurrency(totalSubs)} <span className="text-indigo-400 text-[10px] font-medium">{FREQUENCY_LABELS[viewMode]}</span>
+                   </div>
+               </div>
+
+               {subscriptions.length === 0 ? (
+                  <EmptyState 
+                    icon={Repeat} 
+                    title="No subscriptions tracked" 
+                    actionLabel="+ Add subscription" 
+                    onAction={() => handleAdd('Subscription')} 
+                    colorClass="text-indigo-300"
+                  />
+               ) : subscriptions.map((item) => (
+                  <FlowItem 
+                    key={item._id} 
+                    item={item} 
+                    colorScheme="indigo" 
+                    onEdit={handleEdit} 
+                    displayAmount={getDisplayAmount(item)}
+                    frequencyLabel={FREQUENCY_LABELS[viewMode]}
+                  />
+               ))}
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* Global Form Modal */}
+      <CashFlowFormModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onRefresh={fetchFlows}
+        itemToEdit={editingFlow}
+        defaultType={modalType}
+      />
+      
+      {/* Income Detail Modal */}
+      <IncomeDetailModal
+        isOpen={isIncomeDetailOpen}
+        onClose={() => setIsIncomeDetailOpen(false)}
+        flows={allFlows}
+      />
+    </div>
+  );
+};
+
+export default WealthCashflow;

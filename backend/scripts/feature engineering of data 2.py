@@ -17,6 +17,9 @@ INPUT_FILES = [
     {"file": "Disclose-Register-KiwiSaver-fund-updates-for-31-December-2022.xlsx", "category_hint": "KiwiSaver", "format": "xlsx"},
 ]
 OUTPUT_FILE = "products_final.json"
+# Global metadata for this batch (disclose register snapshot date)
+DISCLOSE_AS_OF_DATE = "2022-12-31"
+DATA_SOURCE = "Disclose Register (FMA)"
 
 
 def safe_float(val, default=0):
@@ -392,6 +395,11 @@ def process_single_file(file_path, category_hint, file_format):
                 'metrics': metrics,
                 'allocation': allocation,
                 'topHoldings': top_holdings,
+                # Metadata for transparency on staleness/source
+                'asOfDate': DISCLOSE_AS_OF_DATE,
+                'topHoldingsAsOf': DISCLOSE_AS_OF_DATE,
+                'dataSource': DATA_SOURCE,
+                'documents': []
             }
             
             records.append(product_doc)

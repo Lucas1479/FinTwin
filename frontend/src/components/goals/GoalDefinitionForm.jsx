@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowRight, Sparkles } from 'lucide-react';
 
 import RetirementGoalForm from './forms/RetirementGoalForm';
@@ -16,12 +16,13 @@ import api from '../../utils/api'; // Keep for other API calls if needed
 const GoalDefinitionForm = ({ 
     initialValues = {}, 
     onSubmit, 
+    onChange,
     submitting = false,
     submitLabel = "Continue to Strategy"
 }) => {
     
     // 1. Central State for the entire form (Stage 1 Context)
-    const [goalContext, setGoalContext] = useState({
+    const [goalContext, setGoalContext] = useState(() => ({
         goal_name: '',
         category: 'custom', 
         priority: 'want',
@@ -29,30 +30,57 @@ const GoalDefinitionForm = ({
         due_date: '',
         goal_details: {}, // Polymorphic details
         ...initialValues
-    });
+    }));
 
     const [formSchema, setFormSchema] = useState(null);
     const [loadingSchema, setLoadingSchema] = useState(false);
     const [aiError, setAiError] = useState('');
 
+    // Track child form updates to prevent loops
+    const isChildUpdateRef = useRef(false);
+    const lastReceivedDataRef = useRef('');
+
     // SYNC: Update internal state when parent props change (e.g. Copilot updates context)
     useEffect(() => {
-        console.log("DEBUG: GoalDefinitionForm received new initialValues:", initialValues); // DEBUG LOG 5
-        if (initialValues) {
-            setGoalContext(prev => {
-                const newState = {
-                    ...prev,
-                    ...initialValues,
-                    // Ensure goal_details is merged carefully, preferring new values
-                    goal_details: {
-                        ...prev.goal_details,
-                        ...(initialValues.goal_details || {})
-                    }
-                };
-                console.log("DEBUG: GoalDefinitionForm updating state to:", newState); // DEBUG LOG 6
-                return newState;
-            });
+        // Skip if this was triggered by child form update
+        if (isChildUpdateRef.current) {
+            isChildUpdateRef.current = false;
+            return;
         }
+        
+        if (!initialValues) return;
+
+        // Create a stable comparison key from incoming data
+        const incomingKey = JSON.stringify({
+            goal_name: initialValues.goal_name,
+            category: initialValues.category,
+            priority: initialValues.priority,
+            target_amount: initialValues.target_amount,
+            due_date: initialValues.due_date,
+            inflationAdjust: initialValues.inflationAdjust,
+            // Flatten goal_details for stable comparison
+            retirement_age: initialValues.goal_details?.retirement_age,
+            life_expectancy: initialValues.goal_details?.life_expectancy,
+            living_expense_pa: initialValues.goal_details?.living_expense_pa
+        });
+
+        // Skip if data hasn't changed
+        if (incomingKey === lastReceivedDataRef.current) {
+            return;
+        }
+        lastReceivedDataRef.current = incomingKey;
+
+        console.log('[GoalDefinitionForm] Syncing from parent:', initialValues.goal_details);
+        
+        setGoalContext(prev => ({
+            ...prev,
+            ...initialValues,
+            // Ensure goal_details is merged carefully, preferring new values
+            goal_details: {
+                ...prev.goal_details,
+                ...(initialValues.goal_details || {})
+            }
+        }));
     }, [initialValues]);
 
     // 2. Fetch Schema when Category Changes (or on Mount)
@@ -63,7 +91,6 @@ const GoalDefinitionForm = ({
             // and DynamicFormRenderer for others.
             
             const category = goalContext.category;
-            console.log("DEBUG: GoalDefinitionForm category changed to:", category); // DEBUG LOG 7
 
             // Known hardcoded types don't need a schema fetch (frontend handles UI)
             if (['retirement', 'home'].includes(category)) {
@@ -108,9 +135,15 @@ const GoalDefinitionForm = ({
 
 
     // 3. Handlers
-    const handleFormChange = (newValues) => {
+    const handleFormChange = useCallback((newValues) => {
+        isChildUpdateRef.current = true; // Mark that child is updating
         setGoalContext(prev => ({ ...prev, ...newValues }));
-    };
+        
+        // Report back to parent immediately to keep state in sync
+        if (onChange) {
+            onChange(newValues);
+        }
+    }, [onChange]);
 
     const handleCategoryChange = (e) => {
         const newCategory = e.target.value;
@@ -132,7 +165,6 @@ const GoalDefinitionForm = ({
 
     // 4. Render Logic
     const renderSpecificForm = () => {
-        console.log("DEBUG: renderSpecificForm called with category:", goalContext.category); // DEBUG LOG 8
         switch (goalContext.category) {
             case 'retirement':
                 return (

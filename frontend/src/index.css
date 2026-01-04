@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @plugin "daisyui";
+@plugin "@tailwindcss/typography";
 
 @theme {
   /* Brand Colors - Desaturated Purple */
@@ -25,16 +26,6 @@
 }
 
 @layer base {
-  @font-face {
-    font-family: 'Outfit';
-    font-style: normal;
-    font-weight: 300 700;
-    font-display: swap;
-    src: url(https://fonts.gstatic.com/s/outfit/v11/QGYyz_MVcBeNP4NjuGObqx1XmO1I4TC0C4G-StheGws.woff2) format('woff2');
-    /* Note: In a real prod env, we should download fonts or use a proper loader. 
-       For this demo, we will rely on Google Fonts import in index.html */
-  }
-
   body {
     font-family: 'Outfit', sans-serif;
     background-color: #f8f9fc;

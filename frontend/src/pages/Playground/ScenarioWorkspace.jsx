@@ -1,724 +1,563 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Trash2, TrendingUp, DollarSign, Calendar, Zap, AlertCircle } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
-import PlaygroundTools from './PlaygroundTools';
+import React, { useState, useEffect, useMemo } from 'react';
+import { ArrowLeft, Save, CheckCircle2, TrendingUp, Shield, ShoppingBag, Activity, Target, Zap, Info, ChevronRight, BarChart3, PieChart as PieChartIcon, RefreshCw, AlertCircle, Plus, Minus, ArrowRightLeft, Landmark, Wallet, Briefcase, TrendingDown } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Cell, Pie, ReferenceLine, BarChart, Bar } from 'recharts';
 
-// ============================================
-// MOCK DATA - Initial Scenario
-// ============================================
-const MOCK_INITIAL_SCENARIO = {
-  id: "sim_1",
-  name: "Early Retirement Plan",
-  parameters: {
-    monthlyContribution: 2000,
-    expectedReturn: 7.5,
-    retirementAge: 55,
-    lifeExpectancy: 90,
-    currentAge: 30,
-    currentNetWorth: 155400,
-    bigExpenses: [
-      { id: 1, name: "New Car", cost: 45000, year: 5 },
-      { id: 2, name: "World Trip", cost: 30000, year: 10 }
-    ]
-  }
-};
+// --- Constants & Enhanced Mock Data ---
 
-const EXPENSE_TEMPLATES = [
-  { name: "Buy House", cost: 800000 },
-  { name: "New Car", cost: 45000 },
-  { name: "Wedding", cost: 50000 },
-  { name: "World Trip", cost: 30000 },
-  { name: "MBA Degree", cost: 120000 },
-  { name: "Home Renovation", cost: 150000 }
+const MOCK_PRODUCTS = [
+  { id: 'prod_1', name: 'Vanguard Total Stock Market (VTI)', growth: 100, defensive: 0, liquidity: 0, fee: 0.03, risk: 'High' },
+  { id: 'prod_2', name: 'MSCI World Index Fund', growth: 95, defensive: 5, liquidity: 0, fee: 0.15, risk: 'High' },
+  { id: 'prod_3', name: 'NZ Top 50 Fund', growth: 90, defensive: 10, liquidity: 0, fee: 0.20, risk: 'High' },
+  { id: 'prod_4', name: 'Global Bond ETF (BND)', growth: 0, defensive: 100, liquidity: 0, fee: 0.04, risk: 'Low' },
+  { id: 'prod_5', name: 'NZ Fixed Interest Fund', growth: 5, defensive: 95, liquidity: 0, fee: 0.35, risk: 'Low' },
+  { id: 'prod_6', name: 'Term Deposit (6-month)', growth: 0, defensive: 0, liquidity: 100, fee: 0, risk: 'Minimal' },
+  { id: 'prod_7', name: 'High Interest Savings Account', growth: 0, defensive: 0, liquidity: 100, fee: 0, risk: 'Minimal' },
+  { id: 'prod_8', name: 'Smart Beta Alpha Fund', growth: 110, defensive: -10, liquidity: 0, fee: 0.85, risk: 'Very High' },
 ];
 
-// ============================================
-// CALCULATION ENGINE (Client-Side for Speed)
-// ============================================
-const calculateProjection = (params) => {
-  const {
-    monthlyContribution,
-    expectedReturn,
-    retirementAge,
-    lifeExpectancy,
-    currentAge,
-    currentNetWorth,
-    bigExpenses
-  } = params;
+const INITIAL_PORTFOLIOS = [
+  { 
+    id: 'p1', 
+    name: 'Smart Saver (Low Cost)', 
+    products: [
+      { productId: 'prod_1', weight: 50 },
+      { productId: 'prod_4', weight: 30 },
+      { productId: 'prod_7', weight: 20 }
+    ]
+  },
+  { 
+    id: 'p2', 
+    name: 'Global Diversifier', 
+    products: [
+      { productId: 'prod_2', weight: 60 },
+      { productId: 'prod_5', weight: 25 },
+      { productId: 'prod_6', weight: 15 }
+    ]
+  },
+  { 
+    id: 'p3', 
+    name: 'Alpha Growth (High Alpha)', 
+    products: [
+      { productId: 'prod_8', weight: 80 },
+      { productId: 'prod_3', weight: 20 }
+    ]
+  },
+];
 
-  const data = [];
-  let balance = currentNetWorth;
-  const annualReturn = expectedReturn / 100;
-  const annualContribution = monthlyContribution * 12;
+const MOCK_GOALS = [
+  { id: 'goal_1', name: 'Dream Home in Auckland', category: 'home', target_amount: 1200000, current_amount: 150000, due_date: '2030-12-31', icon: 'home' },
+  { id: 'goal_2', name: 'Comfortable Retirement', category: 'retirement', target_amount: 2500000, current_amount: 250000, due_date: '2055-01-01', icon: 'retirement' },
+  { id: 'goal_3', name: 'Child Education Fund', category: 'education', target_amount: 150000, current_amount: 20000, due_date: '2040-06-30', icon: 'education' },
+  { id: 'goal_4', name: 'Tesla Model S', category: 'vehicle', target_amount: 140000, current_amount: 5000, due_date: '2026-10-15', icon: 'vehicle' }
+];
+
+// --- Simulation Logic ---
+
+const runMonteCarlo = (params, exposure, years) => {
+  const iterations = 50;
+  const allProjections = [];
   
-  const expensesByYear = {};
-  bigExpenses.forEach(exp => {
-    expensesByYear[exp.year] = (expensesByYear[exp.year] || 0) + exp.cost;
-  });
+  const expectedReturn = (exposure.growth * 0.12) + (exposure.defensive * 0.04) + (exposure.liquidity * 0.02);
+  const volatility = (exposure.growth * 0.20) + (exposure.defensive * 0.05);
+  
+  for (let i = 0; i < iterations; i++) {
+    let balance = params.initialCapital + params.lumpSum;
+    const annualContribution = params.monthlyContribution * 12;
+    const yearlyData = [];
+    
+    for (let y = 0; y <= years; y++) {
+      const randomReturn = expectedReturn + (Math.random() - 0.5) * volatility * 2;
+      balance = (balance + annualContribution) * (1 + randomReturn / 100);
+      yearlyData.push(Math.round(balance));
+    }
+    allProjections.push(yearlyData);
+  }
 
-  for (let year = 0; year <= (lifeExpectancy - currentAge); year++) {
-    const age = currentAge + year;
-    
-    if (age < retirementAge) {
-      balance += annualContribution;
-    }
-    
-    if (expensesByYear[year]) {
-      balance -= expensesByYear[year];
-    }
-    
-    balance *= (1 + annualReturn);
-    
-    if (age >= retirementAge) {
-      const withdrawal = balance * 0.04;
-      balance -= withdrawal;
-    }
-    
-    data.push({
-      year,
-      age,
-      balance: Math.round(balance),
-      phase: age < retirementAge ? 'Accumulation' : 'Retirement'
+  const summaryData = [];
+  for (let y = 0; y <= years; y++) {
+    const yearValues = allProjections.map(proj => proj[y]).sort((a, b) => a - b);
+    summaryData.push({
+      year: y,
+      median: yearValues[Math.floor(iterations * 0.5)],
+      low: yearValues[Math.floor(iterations * 0.1)],
+      high: yearValues[Math.floor(iterations * 0.9)],
     });
-    
-    if (balance <= 0) break;
   }
-  
-  return data;
+  return { summaryData, expectedReturn, volatility };
 };
 
-const calculateSuccessProbability = (projectionData, lifeExpectancy, currentAge) => {
-  if (!projectionData || projectionData.length === 0) return 0;
-  
-  const finalAge = projectionData[projectionData.length - 1].age;
-  const finalBalance = projectionData[projectionData.length - 1].balance;
-  
-  if (finalAge < lifeExpectancy) {
-    const yearsShort = lifeExpectancy - finalAge;
-    const totalYears = lifeExpectancy - currentAge;
-    return Math.max(0, Math.round((1 - yearsShort / totalYears) * 100));
-  }
-  
-  if (finalBalance > 0) {
-    return 100;
-  }
-  
-  return 50;
-};
+// --- Sub-Components ---
 
-// ============================================
-// MAIN COMPONENT
-// ============================================
-const ScenarioWorkspace = () => {
-  const [scenario, setScenario] = useState(null);
-  const [params, setParams] = useState(null);
-  const [projectionData, setProjectionData] = useState([]);
-  const [successProbability, setSuccessProbability] = useState(0);
+const ConfigCard = ({ title, icon: Icon, children, isActive, badge }) => (
+  <div className={`bg-white p-6 rounded-[2.5rem] border transition-all duration-500 ${isActive ? 'border-indigo-200 shadow-xl shadow-indigo-500/5 ring-1 ring-indigo-50' : 'border-slate-100 shadow-sm'}`}>
+    <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center gap-3">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isActive ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'bg-slate-50 text-slate-400'}`}>
+          <Icon size={18} strokeWidth={2.5} />
+        </div>
+        <h3 className="text-base font-bold text-slate-900">{title}</h3>
+      </div>
+      {badge && (
+        <span className="text-[10px] font-bold bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full uppercase tracking-wider">
+          {badge}
+        </span>
+      )}
+    </div>
+    {children}
+  </div>
+);
+
+const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles }) => {
   const [loading, setLoading] = useState(true);
-  const [isDragging, setIsDragging] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const [activeProfile, setActiveProfile] = useState(null);
+  const [activeGoal, setActiveGoal] = useState(null);
+
+  // --- Stage 2 State: Strategy ---
+  const [exposure, setExposure] = useState({ growth: 50, defensive: 30, liquidity: 20 });
+  const [monthlyContribution, setMonthlyContribution] = useState(2000);
+  const [lumpSum, setLumpSum] = useState(10000);
+  const [isInflationAdjusted, setIsInflationAdjusted] = useState(true);
+
+  // --- Stage 3 State: Portfolio ---
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState('p1');
+  const [customPortfolios, setCustomPortfolios] = useState(INITIAL_PORTFOLIOS);
+  const [isSwapping, setIsSwapping] = useState(null); 
+
+  const activePortfolio = useMemo(() => 
+    customPortfolios.find(p => p.id === selectedPortfolioId), 
+    [customPortfolios, selectedPortfolioId]
+  );
+
+  const portfolioExposure = useMemo(() => {
+    if (!activePortfolio) return { growth: 0, defensive: 0, liquidity: 0 };
+    return activePortfolio.products.reduce((acc, item) => {
+      const prod = MOCK_PRODUCTS.find(p => p.id === item.productId);
+      const weightFactor = item.weight / 100;
+      acc.growth += prod.growth * weightFactor;
+      acc.defensive += prod.defensive * weightFactor;
+      acc.liquidity += prod.liquidity * weightFactor;
+      return acc;
+    }, { growth: 0, defensive: 0, liquidity: 0 });
+  }, [activePortfolio]);
 
   useEffect(() => {
-    const loadScenario = async () => {
+    setExposure({
+      growth: Math.round(portfolioExposure.growth),
+      defensive: Math.round(portfolioExposure.defensive),
+      liquidity: Math.round(portfolioExposure.liquidity)
+    });
+  }, [portfolioExposure]);
+
+  useEffect(() => {
+    const init = async () => {
       setLoading(true);
       await new Promise(resolve => setTimeout(resolve, 800));
       
-      setScenario(MOCK_INITIAL_SCENARIO);
-      setParams(MOCK_INITIAL_SCENARIO.parameters);
+      const profile = profiles.find(p => p.id === scenario?.profileId) || profiles[0];
+      const goal = MOCK_GOALS.find(g => g.id === scenario?.goalId) || MOCK_GOALS[1];
+      
+      setActiveProfile(profile);
+      setActiveGoal(goal);
+      setMonthlyContribution(scenario?.monthlyContribution || Math.round(profile.income.annualGross / 60));
       setLoading(false);
     };
-    
-    loadScenario();
-  }, []);
+    init();
+  }, [profiles, scenario]);
 
-  useEffect(() => {
-    if (!params) return;
-    
-    const data = calculateProjection(params);
-    setProjectionData(data);
-    
-    const probability = calculateSuccessProbability(
-      data,
-      params.lifeExpectancy,
-      params.currentAge
-    );
-    setSuccessProbability(probability);
-  }, [params]);
+  const horizonYears = useMemo(() => {
+    if (!activeGoal) return 25;
+    const goalYear = new Date(activeGoal.due_date).getFullYear();
+    const currentYear = new Date().getFullYear();
+    return Math.max(goalYear - currentYear, 1);
+  }, [activeGoal]);
 
-  const updateParam = (key, value) => {
-    setParams(prev => ({
-      ...prev,
-      [key]: value
+  const { summaryData: mcData, expectedReturn, volatility } = useMemo(() => {
+    if (!activeProfile) return { summaryData: [], expectedReturn: 0, volatility: 0 };
+    const initialCapital = (activeProfile.financials.cash || 0) + (activeProfile.financials.investments || 0);
+    return runMonteCarlo({ initialCapital, monthlyContribution, lumpSum }, exposure, horizonYears);
+  }, [activeProfile, exposure, monthlyContribution, lumpSum, horizonYears]);
+
+  const handleSwapProduct = (productId) => {
+    if (!isSwapping) return;
+    const { portfolioId, productIndex } = isSwapping;
+    
+    setCustomPortfolios(prev => prev.map(p => {
+      if (p.id !== portfolioId) return p;
+      const newProducts = [...p.products];
+      newProducts[productIndex] = { ...newProducts[productIndex], productId };
+      return { ...p, products: newProducts };
     }));
+    setIsSwapping(null);
   };
 
-  const addExpense = (template) => {
-    const newExpense = {
-      id: Date.now(),
-      name: template.name,
-      cost: template.cost,
-      year: 5
-    };
-    
-    setParams(prev => ({
-      ...prev,
-      bigExpenses: [...prev.bigExpenses, newExpense]
-    }));
-  };
-
-  const updateExpense = (id, field, value) => {
-    setParams(prev => ({
-      ...prev,
-      bigExpenses: prev.bigExpenses.map(exp =>
-        exp.id === id ? { ...exp, [field]: value } : exp
-      )
-    }));
-  };
-
-  const removeExpense = (id) => {
-    setParams(prev => ({
-      ...prev,
-      bigExpenses: prev.bigExpenses.filter(exp => exp.id !== id)
-    }));
-  };
-
-  const handleSave = () => {
-    alert("💾 Scenario saved! (Backend integration pending)");
-  };
-
-  const handlePromoteToRealPlan = () => {
-    const confirmed = window.confirm(
-      `🎯 Make "${scenario.name}" Your Real Plan?\n\n` +
-      `This will update your actual financial plan with:\n` +
-      `• Monthly Savings: $${params.monthlyContribution.toLocaleString()}\n` +
-      `• Retirement Age: ${params.retirementAge}\n` +
-      `• Expected Return: ${params.expectedReturn}%\n` +
-      `• ${params.bigExpenses.length} planned expenses\n\n` +
-      `Are you sure you want to continue?`
-    );
-
-    if (!confirmed) return;
-
-    setTimeout(() => {
-      triggerConfetti();
-      
-      setTimeout(() => {
-        alert(
-          `🎉 Success!\n\n` +
-          `"${scenario.name}" is now your active plan!\n\n` +
-          `Redirecting to Dashboard...`
-        );
-        
-        setTimeout(() => {
-          window.location.href = '/dashboard';
-        }, 1000);
-      }, 2000);
-      
-    }, 500);
-  };
-
-  const triggerConfetti = () => {
-    const duration = 3000;
-    const animationEnd = Date.now() + duration;
-    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
-
-    function randomInRange(min, max) {
-      return Math.random() * (max - min) + min;
-    }
-
-    const interval = setInterval(function() {
-      const timeLeft = animationEnd - Date.now();
-
-      if (timeLeft <= 0) {
-        return clearInterval(interval);
-      }
-
-      const particleCount = 50 * (timeLeft / duration);
-      
-      createConfettiParticles(
-        Object.assign({}, defaults, {
-          particleCount,
-          origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 }
-        })
-      );
-      createConfettiParticles(
-        Object.assign({}, defaults, {
-          particleCount,
-          origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 }
-        })
-      );
-    }, 250);
-  };
-
-  const createConfettiParticles = (config) => {
-    const colors = ['#10b981', '#6366f1', '#f59e0b', '#ec4899', '#8b5cf6'];
-    const container = document.body;
-    
-    for (let i = 0; i < config.particleCount; i++) {
-      const particle = document.createElement('div');
-      const color = colors[Math.floor(Math.random() * colors.length)];
-      const size = Math.random() * 10 + 5;
-      const startX = config.origin.x * window.innerWidth;
-      const startY = config.origin.y * window.innerHeight;
-      const endX = startX + (Math.random() - 0.5) * 500;
-      const endY = startY + Math.random() * 600 + 300;
-      const rotation = Math.random() * 720;
-      
-      particle.style.cssText = `
-        position: fixed;
-        width: ${size}px;
-        height: ${size}px;
-        background: ${color};
-        left: ${startX}px;
-        top: ${startY}px;
-        border-radius: ${Math.random() > 0.5 ? '50%' : '0'};
-        pointer-events: none;
-        z-index: 9999;
-        animation: confetti-fall 3s ease-out forwards;
-        transform: rotate(${rotation}deg);
-      `;
-      
-      if (!document.getElementById('confetti-style')) {
-        const style = document.createElement('style');
-        style.id = 'confetti-style';
-        style.textContent = `
-          @keyframes confetti-fall {
-            0% {
-              transform: translateY(0) rotate(0deg);
-              opacity: 1;
-            }
-            100% {
-              transform: translateY(${endY - startY}px) translateX(${endX - startX}px) rotate(${rotation}deg);
-              opacity: 0;
-            }
-          }
-        `;
-        document.head.appendChild(style);
-      }
-      
-      container.appendChild(particle);
-      
-      setTimeout(() => particle.remove(), 3000);
-    }
-  };
-
-  const handleAddFromCalculator = (data) => {
-    if (data.type === 'mortgage') {
-      const newExpense = {
-        id: Date.now(),
-        name: data.name,
-        cost: data.cost,
-        year: data.year
-      };
-      
-      setParams(prev => ({
-        ...prev,
-        bigExpenses: [...prev.bigExpenses, newExpense]
-      }));
-      
-      alert(`✅ Added ${data.name} ($${data.cost.toLocaleString()}) to your scenario at Year ${data.year}!`);
-      
-    } else if (data.type === 'savings_increase') {
-      const newContribution = params.monthlyContribution + data.monthlyIncrease;
-      
-      setParams(prev => ({
-        ...prev,
-        monthlyContribution: newContribution
-      }));
-      
-      alert(`✅ ${data.source}: Increased monthly savings by $${data.monthlyIncrease}!\nNew monthly savings: $${newContribution}`);
+  const updateExposure = (type, val) => {
+    const newExposure = { ...exposure, [type]: val };
+    const total = newExposure.growth + newExposure.defensive + newExposure.liquidity;
+    if (total > 0) {
+      setExposure({
+        growth: (newExposure.growth / total) * 100,
+        defensive: (newExposure.defensive / total) * 100,
+        liquidity: (newExposure.liquidity / total) * 100
+      });
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-slate-600 font-medium">Loading Scenario...</p>
-        </div>
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
       </div>
     );
   }
 
+  const currentWealth = (activeProfile.financials.cash || 0) + (activeProfile.financials.investments || 0);
+  const gap = Math.max(0, activeGoal.target_amount - currentWealth);
+  const progressPercent = (currentWealth / activeGoal.target_amount) * 100;
+
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="space-y-8 animate-in fade-in duration-700 pb-20">
       
-      <div className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-10">
-        <div className="max-w-[1800px] mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={() => window.history.back()}
-              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5 text-slate-600" />
-            </button>
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">{scenario.name}</h1>
-              <p className="text-sm text-slate-500">Simulation Workspace</p>
+      {/* 1. Decision Header */}
+      <div className="bg-white px-8 py-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex items-center justify-between">
+        <div className="flex items-center gap-6">
+          <button onClick={onBack} className="w-10 h-10 rounded-xl bg-slate-50 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all flex items-center justify-center group">
+            <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+          </button>
+          <div className="flex items-center gap-8">
+            <div className="space-y-0.5">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Simulation Context</p>
+              <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
+                {activeGoal?.name}
+                <span className="text-slate-200 font-light">|</span>
+                <span className="text-indigo-600 font-semibold">{activeProfile?.name}</span>
+              </h2>
             </div>
           </div>
-          
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-lg">
-              <span className="text-sm text-slate-600 font-medium">Success Rate:</span>
-              <span className={`text-xl font-bold ${
-                successProbability >= 70 ? 'text-emerald-600' : 
-                successProbability >= 40 ? 'text-amber-600' : 'text-rose-600'
-              }`}>
-                {successProbability}%
-              </span>
-            </div>
-            
-            {successProbability >= 70 && (
-              <button
-                onClick={handlePromoteToRealPlan}
-                className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-bold px-6 py-2 rounded-lg transition-all duration-200 flex items-center gap-2 shadow-lg shadow-emerald-200 hover:scale-105"
-              >
-                <TrendingUp className="w-5 h-5" />
-                Make This My Real Plan
-              </button>
-            )}
-            
-            <button
-              onClick={handleSave}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-2 rounded-lg transition-colors"
-            >
-              Save Changes
-            </button>
+        </div>
+        
+        <button onClick={() => setIsSaved(true)} className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-bold transition-all ${isSaved ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-900 text-white hover:bg-indigo-600 shadow-xl shadow-slate-200 active:scale-95'}`}>
+          {isSaved ? <CheckCircle2 size={18} /> : <Save size={18} />}
+          {isSaved ? 'Life Path Saved' : 'Commit Decision'}
+        </button>
+      </div>
+
+      {/* 2. Goal Gap & Progress Bar */}
+      <div className="bg-white p-10 rounded-[3.2rem] border border-slate-100 shadow-sm">
+        <div className="flex justify-between items-end mb-6">
+          <div className="space-y-1">
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <Target size={16} className="text-indigo-500" /> Goal Completion Progress
+            </h3>
+            <p className="text-xs text-slate-500 font-medium">Currently at <span className="text-indigo-600 font-bold">${currentWealth.toLocaleString()}</span> of <span className="text-slate-900 font-bold">${activeGoal.target_amount.toLocaleString()}</span></p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Gap Remaining</p>
+            <p className="text-2xl font-bold text-rose-600 tracking-tight">${gap.toLocaleString()}</p>
+          </div>
+        </div>
+        <div className="relative h-5 bg-slate-50 rounded-full border border-slate-100 p-1 overflow-hidden shadow-inner">
+          <div 
+            className="h-full bg-indigo-500 rounded-full transition-all duration-1000 shadow-lg shadow-indigo-200 relative flex items-center justify-end px-4"
+            style={{ width: `${Math.min(progressPercent, 100)}%` }}
+          >
+            <span className="text-[10px] font-bold text-white">{progressPercent.toFixed(1)}%</span>
           </div>
         </div>
       </div>
 
-      <div className="max-w-[1800px] mx-auto p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-12 gap-8">
+        {/* Left: Configuration Panel */}
+        <div className="col-span-12 lg:col-span-4 space-y-8">
           
-          <div className="space-y-6">
-            
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-              <div className="flex items-center gap-2 mb-6">
-                <DollarSign className="w-5 h-5 text-emerald-600" />
-                <h2 className="text-lg font-bold text-slate-900">Income Levers</h2>
-              </div>
+          {/* Stage 2: Strategic Guardrails */}
+          <ConfigCard title="Stage 2: Strategy" icon={Shield} isActive={true} badge="Guardrails">
+            <div className="space-y-8 mt-4">
               
-              <div className="mb-6">
-                <div className="flex justify-between items-center mb-3">
-                  <label className="text-sm font-medium text-slate-700">Monthly Savings</label>
-                  <span className="text-xl font-bold text-emerald-600">
-                    ${params.monthlyContribution.toLocaleString()}
-                  </span>
+              {/* Contributions */}
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  <div className="flex justify-between items-end px-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                      <Landmark size={12} className="text-indigo-400" /> One-time Lump Sum ($)
+                    </label>
+                    <span className="text-lg font-bold text-indigo-600">${lumpSum.toLocaleString()}</span>
+                  </div>
+                  <input 
+                    type="range" min={0} max={200000} step={5000}
+                    value={lumpSum} onChange={(e) => setLumpSum(parseInt(e.target.value))}
+                    className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  />
                 </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="5000"
-                  step="100"
-                  value={params.monthlyContribution}
-                  onChange={(e) => updateParam('monthlyContribution', parseInt(e.target.value))}
-                  onMouseDown={() => setIsDragging(true)}
-                  onMouseUp={() => setIsDragging(false)}
-                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
-                />
-                <div className="flex justify-between text-xs text-slate-400 mt-1">
-                  <span>$0</span>
-                  <span>$5,000</span>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between items-end px-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                      <Wallet size={12} className="text-indigo-400" /> Monthly Surplus ($)
+                    </label>
+                    <span className="text-lg font-bold text-indigo-600">${monthlyContribution.toLocaleString()}</span>
+                  </div>
+                  <input 
+                    type="range" min={500} max={15000} step={100}
+                    value={monthlyContribution} onChange={(e) => setMonthlyContribution(parseInt(e.target.value))}
+                    className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  />
                 </div>
               </div>
 
-              <div>
-                <div className="flex justify-between items-center mb-3">
-                  <label className="text-sm font-medium text-slate-700">Expected Return Rate</label>
-                  <span className="text-xl font-bold text-blue-600">{params.expectedReturn}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="3"
-                  max="10"
-                  step="0.5"
-                  value={params.expectedReturn}
-                  onChange={(e) => updateParam('expectedReturn', parseFloat(e.target.value))}
-                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                />
-                <div className="flex justify-between text-xs text-slate-400 mt-1">
-                  <span>3% (Conservative)</span>
-                  <span>10% (Aggressive)</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-              <div className="flex items-center gap-2 mb-6">
-                <Calendar className="w-5 h-5 text-indigo-600" />
-                <h2 className="text-lg font-bold text-slate-900">Timeline Levers</h2>
-              </div>
-              
-              <div className="mb-6">
-                <div className="flex justify-between items-center mb-3">
-                  <label className="text-sm font-medium text-slate-700">Retirement Age</label>
-                  <span className="text-xl font-bold text-indigo-600">Age {params.retirementAge}</span>
-                </div>
-                <input
-                  type="range"
-                  min="40"
-                  max="80"
-                  step="1"
-                  value={params.retirementAge}
-                  onChange={(e) => updateParam('retirementAge', parseInt(e.target.value))}
-                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                />
-                <div className="flex justify-between text-xs text-slate-400 mt-1">
-                  <span>Age 40</span>
-                  <span>Age 80</span>
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between items-center mb-3">
-                  <label className="text-sm font-medium text-slate-700">Life Expectancy</label>
-                  <span className="text-xl font-bold text-purple-600">Age {params.lifeExpectancy}</span>
-                </div>
-                <input
-                  type="range"
-                  min="80"
-                  max="100"
-                  step="1"
-                  value={params.lifeExpectancy}
-                  onChange={(e) => updateParam('lifeExpectancy', parseInt(e.target.value))}
-                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
-                />
-                <div className="flex justify-between text-xs text-slate-400 mt-1">
-                  <span>Age 80</span>
-                  <span>Age 100</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-2">
-                  <Zap className="w-5 h-5 text-amber-600" />
-                  <h2 className="text-lg font-bold text-slate-900">Big Expenses</h2>
-                </div>
+              {/* Economic Exposure Sliders */}
+              <div className="space-y-6 pt-6 border-t border-slate-50">
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">Economic Exposure Mix</h4>
                 
-                <select
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      const template = EXPENSE_TEMPLATES.find(t => t.name === e.target.value);
-                      addExpense(template);
-                      e.target.value = '';
-                    }
-                  }}
-                  className="text-sm border border-slate-200 rounded-lg px-3 py-2 cursor-pointer hover:border-indigo-400 transition-colors"
+                <div className="space-y-4">
+                  <ExposureSlider label="Growth" value={exposure.growth} color="bg-indigo-500" onChange={(v) => updateExposure('growth', v)} />
+                  <ExposureSlider label="Defensive" value={exposure.defensive} color="bg-sky-400" onChange={(v) => updateExposure('defensive', v)} />
+                  <ExposureSlider label="Liquidity" value={exposure.liquidity} color="bg-fuchsia-400" onChange={(v) => updateExposure('liquidity', v)} />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <div className="flex items-center gap-3">
+                  <TrendingUp size={18} className="text-slate-400" />
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Inflation Adjust</span>
+                </div>
+                <button 
+                  onClick={() => setIsInflationAdjusted(!isInflationAdjusted)}
+                  className={`w-10 h-5 rounded-full transition-colors relative ${isInflationAdjusted ? 'bg-indigo-600' : 'bg-slate-200'}`}
                 >
-                  <option value="">+ Add Event</option>
-                  {EXPENSE_TEMPLATES.map(template => (
-                    <option key={template.name} value={template.name}>
-                      {template.name} (${template.cost.toLocaleString()})
-                    </option>
-                  ))}
-                </select>
+                  <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${isInflationAdjusted ? 'right-0.5' : 'left-0.5'}`} />
+                </button>
+              </div>
+            </div>
+          </ConfigCard>
+
+          {/* Stage 3: Product Selection */}
+          <ConfigCard title="Stage 3: Portfolio" icon={ShoppingBag} isActive={true} badge="Vehicle">
+            <div className="space-y-4">
+              <div className="flex gap-2 mb-4">
+                {customPortfolios.map(p => (
+                  <button 
+                    key={p.id}
+                    onClick={() => setSelectedPortfolioId(p.id)}
+                    className={`flex-1 py-2.5 px-2 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition-all ${selectedPortfolioId === p.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-slate-50 border-slate-100 text-slate-500 hover:bg-white'}`}
+                  >
+                    {p.name.split(' ')[0]}
+                  </button>
+                ))}
               </div>
 
               <div className="space-y-3">
-                {params.bigExpenses.length === 0 ? (
-                  <div className="text-center py-8 text-slate-400">
-                    <p className="text-sm">No big expenses planned</p>
-                    <p className="text-xs mt-1">Use the dropdown above to add one</p>
-                  </div>
-                ) : (
-                  params.bigExpenses.map(expense => (
-                    <div key={expense.id} className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <input
-                            type="text"
-                            value={expense.name}
-                            onChange={(e) => updateExpense(expense.id, 'name', e.target.value)}
-                            className="font-medium text-slate-900 bg-transparent border-none outline-none focus:ring-2 focus:ring-indigo-300 rounded px-2 py-1 w-full"
-                          />
+                {activePortfolio.products.map((item, idx) => {
+                  const product = MOCK_PRODUCTS.find(p => p.id === item.productId);
+                  return (
+                    <div key={`${activePortfolio.id}_${idx}`} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 group">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Asset {idx + 1}</p>
+                          <h4 className="text-sm font-bold text-slate-900 truncate pr-4">{product.name}</h4>
                         </div>
-                        <button
-                          onClick={() => removeExpense(expense.id)}
-                          className="text-rose-500 hover:bg-rose-50 p-2 rounded-lg transition-colors"
+                        <button 
+                          onClick={() => setIsSwapping({ portfolioId: activePortfolio.id, productIndex: idx })}
+                          className="p-1.5 bg-white rounded-lg text-slate-400 hover:text-indigo-600 hover:shadow-sm transition-all shrink-0"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <ArrowRightLeft size={14} />
                         </button>
                       </div>
-                      
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-xs text-slate-500 mb-1 block">Cost</label>
-                          <input
-                            type="number"
-                            value={expense.cost}
-                            onChange={(e) => updateExpense(expense.id, 'cost', parseInt(e.target.value))}
-                            className="w-full text-sm font-bold bg-white border border-slate-200 rounded-lg px-3 py-2"
-                          />
+                      <div className="flex items-center justify-between">
+                        <div className="flex gap-2">
+                          <span className="text-[10px] font-semibold text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-100">Fee: {product.fee}%</span>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${product.risk === 'High' ? 'text-rose-600 bg-rose-50 border-rose-100' : 'text-emerald-600 bg-emerald-50 border-emerald-100'}`}>{product.risk} Risk</span>
                         </div>
-                        <div>
-                          <label className="text-xs text-slate-500 mb-1 block">Year</label>
-                          <input
-                            type="number"
-                            min="1"
-                            max="50"
-                            value={expense.year}
-                            onChange={(e) => updateExpense(expense.id, 'year', parseInt(e.target.value))}
-                            className="w-full text-sm font-bold bg-white border border-slate-200 rounded-lg px-3 py-2"
-                          />
-                        </div>
+                        <span className="text-sm font-bold text-indigo-600">{item.weight}%</span>
                       </div>
                     </div>
-                  ))
-                )}
+                  );
+                })}
               </div>
+            </div>
+          </ConfigCard>
+        </div>
+
+        {/* Right: Simulation & Results */}
+        <div className="col-span-12 lg:col-span-8 space-y-8">
+          
+          {/* Main Simulation Area */}
+          <div className="bg-white p-10 rounded-[3.2rem] border border-slate-100 shadow-sm relative overflow-hidden">
+            <div className="flex items-center justify-between mb-10">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                  <BarChart3 size={24} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Stage 4: Simulation View</h3>
+                  <p className="text-xs text-slate-500 font-medium">Monte Carlo Range (10th - 90th Percentile)</p>
+                </div>
+              </div>
+              <div className="flex gap-4">
+                <MetricBox label="Horizon" value={`${horizonYears}Y`} />
+                <MetricBox label="Exp. Return" value={`${expectedReturn.toFixed(1)}%`} color="text-indigo-600" />
+                <MetricBox label="Volatility" value={`${volatility.toFixed(1)}%`} color="text-rose-500" />
+              </div>
+            </div>
+
+            <div className="h-[450px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={mcData}>
+                  <defs>
+                    <linearGradient id="colorMC" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.15}/>
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis 
+                    dataKey="year" 
+                    axisLine={false} tickLine={false} 
+                    tick={{fill: '#94a3b8', fontSize: 11, fontWeight: 600}} 
+                  />
+                  <YAxis 
+                    axisLine={false} tickLine={false} 
+                    tick={{fill: '#94a3b8', fontSize: 11, fontWeight: 600}}
+                    tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`}
+                  />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '1.2rem', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '12px 20px' }}
+                    labelFormatter={(y) => `Year ${y} (Age ${activeProfile.identity.age + y})`}
+                  />
+                  
+                  <Area type="monotone" dataKey="high" stroke="none" fill="#6366f1" fillOpacity={0.05} />
+                  <Area type="monotone" dataKey="low" stroke="none" fill="#6366f1" fillOpacity={0.1} />
+                  <Area type="monotone" dataKey="median" stroke="#6366f1" strokeWidth={4} fill="url(#colorMC)" animationDuration={1500} />
+                  
+                  <ReferenceLine y={activeGoal.target_amount} stroke="#cbd5e1" strokeDasharray="8 8" strokeWidth={2} label={{ value: 'Target', position: 'right', fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </div>
 
-          <div className="space-y-6">
-            
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-              <h2 className="text-lg font-bold text-slate-900 mb-6">Success Probability</h2>
-              
-              <div className="relative h-48 mb-6">
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className={`text-6xl font-bold ${
-                    successProbability >= 70 ? 'text-emerald-600' : 
-                    successProbability >= 40 ? 'text-amber-600' : 'text-rose-600'
-                  }`}>
-                    {successProbability}%
-                  </div>
-                </div>
-                
-                <svg className="w-full h-full transform -rotate-90">
-                  <circle
-                    cx="50%"
-                    cy="50%"
-                    r="80"
-                    stroke="#e2e8f0"
-                    strokeWidth="12"
-                    fill="none"
-                  />
-                  <circle
-                    cx="50%"
-                    cy="50%"
-                    r="80"
-                    stroke={successProbability >= 70 ? '#10b981' : successProbability >= 40 ? '#f59e0b' : '#ef4444'}
-                    strokeWidth="12"
-                    fill="none"
-                    strokeDasharray={`${2 * Math.PI * 80}`}
-                    strokeDashoffset={`${2 * Math.PI * 80 * (1 - successProbability / 100)}`}
-                    strokeLinecap="round"
-                    className="transition-all duration-500"
-                  />
-                </svg>
+          {/* Allocation & Insights */}
+          <div className="grid grid-cols-2 gap-8">
+            <div className="bg-white p-8 rounded-[3.2rem] border border-slate-100 shadow-sm">
+              <div className="flex items-center gap-3 mb-8">
+                <PieChartIcon size={18} className="text-indigo-600" strokeWidth={2.5} />
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Economic Exposure</h4>
               </div>
-
-              <div className={`p-4 rounded-xl ${
-                successProbability >= 70 ? 'bg-emerald-50 border border-emerald-200' :
-                successProbability >= 40 ? 'bg-amber-50 border border-amber-200' :
-                'bg-rose-50 border border-rose-200'
-              }`}>
-                <div className="flex items-start gap-3">
-                  {successProbability >= 70 ? (
-                    <TrendingUp className="w-5 h-5 text-emerald-600 mt-0.5" />
-                  ) : (
-                    <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
-                  )}
-                  <div>
-                    <p className={`font-bold mb-1 ${
-                      successProbability >= 70 ? 'text-emerald-900' :
-                      successProbability >= 40 ? 'text-amber-900' :
-                      'text-rose-900'
-                    }`}>
-                      {successProbability >= 70 ? 'Looking Good!' :
-                       successProbability >= 40 ? 'Moderate Risk' :
-                       'High Risk - Adjustments Needed'}
-                    </p>
-                    <p className="text-sm text-slate-600">
-                      {successProbability >= 70 ? 
-                        'Your plan is likely to succeed. Keep it up!' :
-                        successProbability >= 40 ?
-                        'Consider increasing savings or reducing expenses.' :
-                        'You may run out of money. Try adjusting your parameters.'}
-                    </p>
-                  </div>
+              <div className="flex items-center gap-8">
+                <div className="w-32 h-32">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { name: 'Growth', value: exposure.growth },
+                          { name: 'Defensive', value: exposure.defensive },
+                          { name: 'Liquidity', value: exposure.liquidity },
+                        ]}
+                        innerRadius={35} outerRadius={50} paddingAngle={5} dataKey="value"
+                      >
+                        <Cell fill="#6366f1" />
+                        <Cell fill="#38bdf8" />
+                        <Cell fill="#f472b6" />
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="space-y-3 flex-1">
+                  <LegendItem label="Growth" value={`${exposure.growth.toFixed(0)}%`} color="bg-indigo-500" />
+                  <LegendItem label="Defensive" value={`${exposure.defensive.toFixed(0)}%`} color="bg-sky-400" />
+                  <LegendItem label="Liquidity" value={`${exposure.liquidity.toFixed(0)}%`} color="bg-fuchsia-400" />
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-              <h2 className="text-lg font-bold text-slate-900 mb-6">Wealth Projection</h2>
-              
-              <div className="h-96">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={projectionData}>
-                    <defs>
-                      <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis 
-                      dataKey="age" 
-                      label={{ value: 'Age', position: 'insideBottom', offset: -5 }}
-                      stroke="#64748b"
-                    />
-                    <YAxis 
-                      label={{ value: 'Net Worth ($)', angle: -90, position: 'insideLeft' }}
-                      stroke="#64748b"
-                      tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
-                    />
-                    <Tooltip 
-                      formatter={(value) => [`$${value.toLocaleString()}`, 'Balance']}
-                      labelFormatter={(label) => `Age ${label}`}
-                      contentStyle={{ 
-                        backgroundColor: 'white',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '8px',
-                        padding: '8px'
-                      }}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="balance" 
-                      stroke="#6366f1" 
-                      strokeWidth={3}
-                      fill="url(#colorBalance)"
-                      animationDuration={isDragging ? 0 : 500}
-                    />
-                    
-                    {projectionData.length > 0 && (
-                      <Line 
-                        type="monotone"
-                        dataKey={() => null}
-                        stroke="#f59e0b"
-                        strokeWidth={2}
-                        strokeDasharray="5 5"
-                        dot={false}
-                      />
-                    )}
-                  </AreaChart>
-                </ResponsiveContainer>
+            <div className="bg-slate-900 p-8 rounded-[3.2rem] text-white relative overflow-hidden shadow-2xl shadow-indigo-500/20">
+              <div className="absolute top-0 right-0 p-8 opacity-10 rotate-12">
+                <Zap size={100} />
               </div>
-
-              <div className="flex items-center justify-center gap-6 mt-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-indigo-600 rounded-full"></div>
-                  <span className="text-slate-600">Projected Balance</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-0.5 bg-amber-600"></div>
-                  <span className="text-slate-600">Retirement Age</span>
-                </div>
+              <h4 className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest mb-6 flex items-center gap-2">
+                <AlertCircle size={14} /> AI Engine Logic
+              </h4>
+              <p className="text-sm font-medium leading-relaxed mb-8">
+                The current exposure mix prioritizes <span className="text-indigo-400 font-bold">Growth</span>, aiming for target reach within your {horizonYears}-year window with a controlled volatility buffer.
+              </p>
+              <div className="p-4 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/5">
+                <p className="text-[10px] font-bold text-indigo-200 uppercase tracking-wider mb-1">Success Probability</p>
+                <p className="text-xl font-bold">{(progressPercent > 80 ? 92 : 64)}% <span className="text-[10px] font-medium text-emerald-400">Confidence</span></p>
               </div>
             </div>
           </div>
         </div>
       </div>
-      
-      <PlaygroundTools onAddToScenario={handleAddFromCalculator} />
+
+      {/* Product Swap Modal */}
+      {isSwapping && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsSwapping(null)} />
+          <div className="bg-white w-full max-w-2xl rounded-[3.2rem] shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="p-10">
+              <h2 className="text-2xl font-bold text-slate-900 mb-2 tracking-tight">Swap Product</h2>
+              <p className="text-slate-500 text-sm mb-8 font-medium">Select a different asset to replace in your portfolio.</p>
+              
+              <div className="grid grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                {MOCK_PRODUCTS.map(p => (
+                  <button 
+                    key={p.id}
+                    onClick={() => handleSwapProduct(p.id)}
+                    className="p-5 bg-slate-50 border border-slate-100 rounded-2xl text-left hover:bg-indigo-50 hover:border-indigo-200 transition-all group"
+                  >
+                    <h4 className="text-sm font-bold text-slate-900 mb-2 group-hover:text-indigo-900 transition-colors">{p.name}</h4>
+                    <div className="flex flex-wrap gap-2">
+                      <span className="text-[10px] font-semibold bg-white px-2 py-1 rounded border border-slate-100 uppercase text-slate-400">Fee: {p.fee}%</span>
+                      <span className="text-[10px] font-semibold bg-white px-2 py-1 rounded border border-slate-100 uppercase text-slate-400">G: {p.growth}%</span>
+                      <span className="text-[10px] font-semibold bg-white px-2 py-1 rounded border border-slate-100 uppercase text-slate-400">D: {p.defensive}%</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <button 
+                onClick={() => setIsSwapping(null)}
+                className="w-full mt-8 py-4 bg-slate-100 text-slate-500 font-bold uppercase tracking-widest text-[11px] rounded-2xl hover:bg-slate-200 transition-all"
+              >
+                Abort Swap
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+const ExposureSlider = ({ label, value, color, onChange }) => (
+  <div className="space-y-2.5">
+    <div className="flex justify-between items-center px-1">
+      <span className="text-xs font-semibold text-slate-700">{label}</span>
+      <span className="text-xs font-bold text-indigo-600">{value.toFixed(0)}%</span>
+    </div>
+    <div className="flex items-center gap-4">
+      <button onClick={() => onChange(Math.max(0, value - 5))} className="w-7 h-7 rounded-lg bg-slate-50 text-slate-400 hover:text-indigo-600 flex items-center justify-center border border-slate-100 transition-colors"><Minus size={12} strokeWidth={3} /></button>
+      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div className={`h-full ${color} transition-all duration-500`} style={{ width: `${value}%` }} />
+      </div>
+      <button onClick={() => onChange(Math.min(100, value + 5))} className="w-7 h-7 rounded-lg bg-slate-50 text-slate-400 hover:text-indigo-600 flex items-center justify-center border border-slate-100 transition-colors"><Plus size={12} strokeWidth={3} /></button>
+    </div>
+  </div>
+);
+
+const MetricBox = ({ label, value, color }) => (
+  <div className="px-5 py-2.5 bg-slate-50 rounded-2xl border border-slate-100 text-center min-w-[110px]">
+    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+    <p className={`text-lg font-bold ${color || 'text-slate-900'} tracking-tight`}>{value}</p>
+  </div>
+);
+
+const LegendItem = ({ label, value, color }) => (
+  <div className="flex items-center justify-between">
+    <div className="flex items-center gap-2.5">
+      <div className={`w-2 h-2 rounded-full ${color}`} />
+      <span className="text-xs font-medium text-slate-600">{label}</span>
+    </div>
+    <span className="text-xs font-bold text-slate-900">{value}</span>
+  </div>
+);
 
 export default ScenarioWorkspace;

@@ -3,8 +3,12 @@ import mongoose from 'mongoose';
 // --- 1. Asset Allocation (资产配置) ---
 // Adopting "Aggregation + Details" dual-layer structure, convenient for frontend pie charts and AI deep analysis (采用 "聚合 + 详情" 的双层结构，既方便前端饼图展示，又方便 AI 深度分析)
 const AssetAllocationSchema = new mongoose.Schema({
-  // Aggregation Layer (For UI Charts) (聚合层)
-  cash: { type: Number, default: 0 },
+  // Aggregation Layer (For UI Charts & AI Search) (聚合层)
+  growth: { type: Number, default: 0, index: true },    // Equities + Property (Calculated)
+  defensive: { type: Number, default: 0, index: true }, // Bonds (Calculated)
+  cash: { type: Number, default: 0, index: true },
+  
+  // Specific Asset Classes
   bonds: { type: Number, default: 0 },          // NZ Fixed + Int Fixed
   equities: { type: Number, default: 0 },       // Australasian + Int Equities
   property: { type: Number, default: 0 },       // Listed + Unlisted
@@ -103,10 +107,30 @@ const productSchema = new mongoose.Schema({
   },
 
   // --- Metadata (元数据) ---
+  asOfDate: { type: Date },           // Source data snapshot date (披露期)
+  topHoldingsAsOf: { type: Date },    // Holdings snapshot date
+  dataSource: { type: String },       // e.g., Disclose Register (FMA)
+  documents: [{
+    label: String, // e.g., "PDS", "Fund Update"
+    url: String,
+    note: String,
+  }],
   lastUpdated: { type: Date, default: Date.now },
   isActive: { type: Boolean, default: true } // Soft delete flag (软删除标记)
 
 }, { timestamps: true });
+
+// Middleware to calculate aggregate allocation fields before saving
+// IMPORTANT: Mongoose 7+/8+ - async functions should NOT use next parameter
+productSchema.pre('save', async function() {
+  if (this.allocation) {
+    // growth = equities + property
+    this.allocation.growth = (this.allocation.equities || 0) + (this.allocation.property || 0);
+    // defensive = bonds
+    this.allocation.defensive = this.allocation.bonds || 0;
+  }
+  // No need to call next() when using async functions
+});
 
 // --- Compound Index for Query Optimization (复合索引优化查询) ---
 // Scenario: "Find all KiwiSaver with risk <= 3 and lowest fees" (场景: "查找所有风险<=3且费率最低的KiwiSaver")

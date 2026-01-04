@@ -1,7 +1,7 @@
 import React from 'react';
 import { Plus, Settings2, Calendar } from 'lucide-react';
 
-const WealthNetWorthHeader = ({ summary }) => {
+const WealthNetWorthHeader = ({ summary, onAddAsset }) => {
   return (
     <div className="mb-6">
       {/* Top Bar with Title and Actions */}
@@ -29,9 +29,12 @@ const WealthNetWorthHeader = ({ summary }) => {
           </button>
           
           {/* Add Widget / Asset Button (Primary) */}
-          <button className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-500 transition-all shadow-md shadow-indigo-200 hover:shadow-indigo-300 transform hover:-translate-y-0.5">
+          <button 
+            onClick={onAddAsset} // Note: Parent might want to change this handler later for widget logic
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-500 transition-all shadow-md shadow-indigo-200 hover:shadow-indigo-300 transform hover:-translate-y-0.5"
+          >
             <Plus size={16} />
-            <span>Add Asset</span>
+            <span>Add Widget</span>
           </button>
         </div>
 

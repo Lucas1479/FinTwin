@@ -1,29 +1,40 @@
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Target, Briefcase, ShoppingBag, Gamepad2, Settings, HelpCircle, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useSidebar } from '../../context/SidebarContext';
+import { getCurrentUser, logout as logoutService } from '../../services/authService';
 
 const Sidebar = () => {
   const location = useLocation();
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  
-  // Auto-collapse on smaller screens (e.g. laptop/tablet < 1280px)
+  const navigate = useNavigate();
+  const { isCollapsed, toggleSidebar } = useSidebar();
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // Load user data
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 1280) {
-        setIsCollapsed(true);
-      } else {
-        setIsCollapsed(false);
-      }
-    };
-
-    // Initial check
-    handleResize();
-
-    // Listen for resize
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    (async () => {
+      const user = await getCurrentUser();
+      setCurrentUser(user);
+    })();
   }, []);
 
+  const initials = currentUser?.name
+    ? currentUser.name
+        .split(' ')
+        .filter(Boolean)
+        .map((part) => part[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : '??';
+
+  const handleLogout = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await logoutService();
+    navigate('/login');
+  };
+  
   // Core Modules (High Frequency)
   const mainItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
@@ -53,7 +64,7 @@ const Sidebar = () => {
       {/* Collapse Toggle */}
       <div className="flex justify-end mb-6">
           <button 
-            onClick={() => setIsCollapsed(!isCollapsed)}
+            onClick={toggleSidebar}
             className="p-2 rounded-xl text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors"
           >
               {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
@@ -149,23 +160,28 @@ const Sidebar = () => {
       </div>
       
       {/* User Profile Card Mini */}
-      <div className={`
-        mt-6 p-2 bg-slate-50 rounded-[2rem] border border-slate-100 flex items-center gap-3 hover:bg-white hover:shadow-lg hover:shadow-slate-200/50 transition-all duration-300 cursor-pointer group
-        ${isCollapsed ? 'justify-center w-12 h-12 p-0 mx-auto' : 'p-3'}
-      `}>
+      <Link 
+        to="/settings"
+        className={`
+          mt-6 p-2 bg-slate-50 rounded-[2rem] border border-slate-100 flex items-center gap-3 hover:bg-white hover:shadow-lg hover:shadow-slate-200/50 transition-all duration-300 cursor-pointer group
+          ${isCollapsed ? 'justify-center w-12 h-12 p-0 mx-auto' : 'p-3'}
+        `}
+      >
         <div className="w-8 h-8 rounded-full bg-brand-200 flex items-center justify-center text-primary font-bold text-xs group-hover:scale-110 transition-transform shrink-0">
-            LS
+            {initials}
         </div>
         {!isCollapsed && (
             <>
                 <div className="overflow-hidden flex-1">
-                    <p className="text-sm font-bold text-slate-900 truncate">Lucas Smith</p>
+                    <p className="text-sm font-bold text-slate-900 truncate">{currentUser?.name || 'Loading...'}</p>
                     <p className="text-[10px] text-slate-500 truncate font-medium uppercase tracking-wider">Free Account</p>
                 </div>
-                <LogOut size={16} className="text-slate-300 mr-2 hover:text-red-500 transition-colors" />
+                <button onClick={handleLogout} className="p-1 hover:bg-red-50 rounded-lg transition-colors group/logout">
+                    <LogOut size={16} className="text-slate-300 group-hover/logout:text-red-500 transition-colors" />
+                </button>
             </>
         )}
-      </div>
+      </Link>
     </div>
   );
 };

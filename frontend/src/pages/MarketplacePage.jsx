@@ -10,6 +10,7 @@ import ProductDetailsModal from "../components/marketplace/ProductDetailsModal";
 import productService from "../services/productService";
 import { fetchCurrentUserProfile } from "../utils/api";
 import { scoreProduct } from "../utils/scoring";
+import { useSidebar } from "../context/SidebarContext";
 
 const PAGE_SIZE = 2000; 
 const DISPLAY_PER_PAGE = 12; // Reduced for less scrolling
@@ -151,6 +152,7 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
 };
 
 const MarketplacePage = () => {
+  const { isCollapsed } = useSidebar();
   // ... (State logic unchanged) ...
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -175,6 +177,7 @@ const MarketplacePage = () => {
   });
   const [compareList, setCompareList] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
   // ... (Load logic unchanged) ...
   const loadPage = useCallback(async (page) => {
@@ -249,6 +252,23 @@ const MarketplacePage = () => {
   const handleSortChange = (field) => setFilters(f => ({ ...f, sortField: field }));
   const handleSortDirChange = (dir) => setFilters(f => ({ ...f, sortDir: dir }));
 
+  // Detail fetch on demand to keep list payload light
+  const handleViewDetails = useCallback(async (product) => {
+    if (!product?.id) return;
+    // Optimistically show the list-level data first
+    setSelectedProduct(product);
+    setDetailsLoading(true);
+    try {
+      const full = await productService.getProductById(product.id);
+      setSelectedProduct(full || product);
+    } catch (err) {
+      console.error("[Marketplace] Failed to load product detail", err);
+      // keep the basic data but stop loading
+    } finally {
+      setDetailsLoading(false);
+    }
+  }, []);
+
   // ==========================================
   // Render (UPDATED RESPONSIVE UI)
   // ==========================================
@@ -266,19 +286,21 @@ const MarketplacePage = () => {
 
         {/* Main Grid: Filters + Content */}
         {/* Changed from lg to xl breakpoint for sidebar layout */}
-        <div className="grid grid-cols-1 gap-8 2xl:grid-cols-[280px_1fr]">
+        <div className={`grid grid-cols-1 gap-8 ${isCollapsed ? '2xl:grid-cols-[280px_1fr]' : ''}`}>
           
           {/* Left: Filter Panel (Only visible on 2XL screens) */}
-          <div className="hidden 2xl:block relative">
-            <div className="sticky top-24 space-y-6">
-              <FilterPanel
-                filters={filters}
-                setFilters={setFilters}
-                providers={providerOptions}
-                maxTicketSize={maxTicketSize}
-              />
+          {isCollapsed && (
+            <div className="hidden 2xl:block relative">
+              <div className="sticky top-24 space-y-6">
+                <FilterPanel
+                  filters={filters}
+                  setFilters={setFilters}
+                  providers={providerOptions}
+                  maxTicketSize={maxTicketSize}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Right: Content */}
           <div className="space-y-6">
@@ -302,7 +324,7 @@ const MarketplacePage = () => {
                 />
 
                 {/* Horizontal Filter Bar (Visible on screens smaller than 2XL) */}
-                <div className="2xl:hidden">
+                <div className={isCollapsed ? "2xl:hidden" : ""}>
                   <HorizontalFilterBar 
                     filters={filters}
                     setFilters={setFilters}
@@ -345,7 +367,7 @@ const MarketplacePage = () => {
                   compareList={compareList}
                   onToggleCompare={handleToggleCompare}
                   viewMode={viewMode}
-                  onViewDetails={setSelectedProduct}
+                  onViewDetails={handleViewDetails}
                   userInvestmentAmount={maxTicketSize}
                 />
 
@@ -360,7 +382,12 @@ const MarketplacePage = () => {
         </div>
 
         <ComparisonDock compareList={compareList} products={products} onClear={() => setCompareList([])} />
-        <ProductDetailsModal product={selectedProduct} open={Boolean(selectedProduct)} onClose={() => setSelectedProduct(null)} />
+        <ProductDetailsModal 
+          product={selectedProduct} 
+          loading={detailsLoading}
+          open={Boolean(selectedProduct)} 
+          onClose={() => { setSelectedProduct(null); setDetailsLoading(false); }} 
+        />
       </div>
     </MainLayout>
   );

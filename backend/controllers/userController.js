@@ -75,11 +75,78 @@ const getMe = asyncHandler(async (req, res) => {
   res.status(200).json({
     id: user._id,
     name: user.name,
+    username: user.username,
     email: user.email,
-    age: user.age ?? null,
-    income: user.income ?? null,
-    riskTolerance: user.riskTolerance ?? 'Balanced',
+    riskProfile: user.riskProfile,
+    household: user.household,
+    compliance: user.compliance,
+    allocation: user.allocation,
+    settings: user.settings,
+    privacy: user.privacy,
+    security: user.security,
+    // Compatibility fields (for older frontend versions if any)
+    riskTolerance: user.riskProfile?.level || 'Balanced',
+    retirement_age: user.riskProfile?.retirementAge || 65,
   });
+});
+
+// @desc    Update user profile
+// @route   PUT /api/users/profile
+// @access  Private
+const updateUserProfile = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user.id);
+
+  if (user) {
+    user.name = req.body.name || user.name;
+    user.username = req.body.username || user.username;
+    user.email = req.body.email || user.email;
+
+    // Use a deep merge approach for sub-documents to avoid overwriting defaults
+    if (req.body.riskProfile) {
+      user.riskProfile = { ...user.riskProfile.toObject(), ...req.body.riskProfile };
+    }
+    if (req.body.household) {
+      user.household = { ...user.household.toObject(), ...req.body.household };
+    }
+    if (req.body.compliance) {
+      user.compliance = { ...user.compliance.toObject(), ...req.body.compliance };
+    }
+    if (req.body.allocation) {
+      user.allocation = { ...user.allocation.toObject(), ...req.body.allocation };
+    }
+    if (req.body.settings) {
+      user.settings = { ...user.settings.toObject(), ...req.body.settings };
+    }
+    if (req.body.privacy) {
+      user.privacy = { ...user.privacy.toObject(), ...req.body.privacy };
+    }
+    if (req.body.security) {
+      user.security = { ...user.security.toObject(), ...req.body.security };
+    }
+
+    if (req.body.password) {
+      user.password = req.body.password;
+    }
+
+    const updatedUser = await user.save();
+
+    res.json({
+      id: updatedUser._id,
+      name: updatedUser.name,
+      username: updatedUser.username,
+      email: updatedUser.email,
+      riskProfile: updatedUser.riskProfile,
+      household: updatedUser.household,
+      compliance: updatedUser.compliance,
+      allocation: updatedUser.allocation,
+      settings: updatedUser.settings,
+      privacy: updatedUser.privacy,
+      security: updatedUser.security,
+    });
+  } else {
+    res.status(404);
+    throw new Error('User not found');
+  }
 });
 
 // @desc    Logout user / clear JWT cookie
@@ -111,9 +178,32 @@ const generateToken = (res, userId) => {
   });
 };
 
+// @desc    Update user password
+// @route   PUT /api/users/password
+// @access  Private
+const updateUserPassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    throw new BadRequestError('Please provide both current and new passwords');
+  }
+
+  const user = await User.findById(req.user.id).select('+password');
+
+  if (user && (await user.matchPassword(currentPassword))) {
+    user.password = newPassword;
+    await user.save();
+    res.status(200).json({ message: 'Password updated successfully' });
+  } else {
+    throw new UnauthorizedError('Invalid current password');
+  }
+});
+
 export {
   registerUser,
   loginUser,
   getMe,
   logoutUser,
+  updateUserProfile,
+  updateUserPassword,
 };

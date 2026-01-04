@@ -1,6 +1,9 @@
 import api from '../utils/api';
-import fallbackProducts from '../data/products.json';
 import PROFILE_FALLBACK from '../data/profileFallback';
+
+// If the backend `/products` endpoint is unavailable, fall back to an empty list.
+// (A static dataset can be added under `src/data/` later if needed.)
+const fallbackProducts = [];
 
 const cloneRecords = (records = []) => records.map((item) => ({ ...item }));
 
@@ -89,6 +92,16 @@ export const fetchCurrentUserProfile = async () => {
       error
     );
     return buildProfile();
+  }
+};
+
+export const updateUserProfile = async (profileData) => {
+  try {
+    const { data } = await api.put('/users/profile', profileData);
+    return data;
+  } catch (error) {
+    console.error('[services/api] updateUserProfile failed:', error);
+    throw error;
   }
 };
 

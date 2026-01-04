@@ -32,3 +32,16 @@ export const deleteAsset = async (id) => {
   return response.data;
 };
 
+// ==========================================
+// Maturity Reminders
+// ==========================================
+
+/**
+ * Get upcoming maturity reminders (Term Deposits, Fixed Mortgages)
+ * @param {number} days - Number of days to look ahead (default: 30)
+ */
+export const getMaturityReminders = async (days = 30) => {
+  const response = await api.get('/wealth/reminders', { params: { days } });
+  return response.data;
+};
+

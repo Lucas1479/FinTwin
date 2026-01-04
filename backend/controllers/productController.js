@@ -34,6 +34,10 @@ export const getProducts = asyncHandler(async (req, res) => {
 
   // Build filter object
   const filter = { isActive: true };
+  if (req.query.ids) {
+    const idsArr = req.query.ids.split(',').map(i => i.trim()).filter(Boolean);
+    filter._id = { $in: idsArr };
+  }
 
   if (category) {
     filter.category = category;

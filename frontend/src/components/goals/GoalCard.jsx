@@ -52,12 +52,14 @@ const GoalCard = ({ goal, onClick }) => {
   if (progress < 30) barColor = 'bg-brand-300';
   else if (progress > 80) barColor = 'bg-green-500';
 
-  const handleClick = () => {
-    if (onClick) {
-        onClick(goal);
-    } else {
-        // Fallback to navigation if no onClick handler provided
-        navigate(`/goals/${goal._id}`);
+  const handleClick = (e) => {
+    // If there's a specific onClick handler and it's not a mock goal, use navigation
+    // For real goals, always navigate to detail page for full view
+    if (!goal._id?.startsWith('mock-')) {
+      navigate(`/goals/${goal._id}`);
+    } else if (onClick) {
+      // For mock goals, use the modal (legacy behavior)
+      onClick(goal);
     }
   };
 

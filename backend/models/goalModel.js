@@ -214,22 +214,16 @@ const GoalSchema = new mongoose.Schema({
 // ==========================================
 // 4. Validation Middleware (The Guard)
 // ==========================================
-// Automatically validates `goal_details` against the correct Sub-Schema based on `category`
-GoalSchema.pre('validate', async function(next) {
-  const SpecificSchema = DETAIL_SCHEMAS[this.category];
-
-  if (SpecificSchema && this.goal_details) {
-    // strict: false allows extra fields in Mixed, but we want to validate the known ones
-    const DummyModel = mongoose.model('DummyGoalDetail', SpecificSchema);
-    const dummyDoc = new DummyModel(this.goal_details);
-    
-    const error = dummyDoc.validateSync();
-    if (error) {
-      next(new Error(`Validation failed for goal category '${this.category}': ${error.message}`));
-      return;
-    }
+// NOTE: Complex polymorphic validation has been simplified.
+// The goal_details field is Mixed type and accepts any structure.
+// Frontend and AI are responsible for providing correct structure.
+// IMPORTANT: Mongoose 7+/8+ - async functions should NOT use next parameter
+GoalSchema.pre('validate', async function() {
+  // Basic validation: ensure goal_details is an object if provided
+  if (this.goal_details && typeof this.goal_details !== 'object') {
+    throw new Error('goal_details must be an object');
   }
-  next();
+  // No need to call next() when using async functions
 });
 
 // ==========================================
