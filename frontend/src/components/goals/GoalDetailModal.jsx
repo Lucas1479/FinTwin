@@ -105,7 +105,7 @@ const GoalDetailModal = ({ goal, onClose, onSave, onDelete }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
       {/* Backdrop */}
       <div 
-        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" 
+        className="absolute inset-0 bg-slate-900/40 transition-opacity" 
         onClick={onClose}
       ></div>
 

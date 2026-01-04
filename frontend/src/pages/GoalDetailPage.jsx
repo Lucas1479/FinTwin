@@ -53,6 +53,7 @@ import {
   LineChart as RechartsLineChart,
   Line
 } from 'recharts';
+import DigitalTwinHouse from '../components/goals/DigitalTwinHouse';
 
 // ================== Helpers ==================
 const formatCurrency = (amount) => {
@@ -526,25 +527,44 @@ const ProductDetailPanel = ({ product, onClose }) => {
           {activeTab === 'holdings' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-900 px-2">Top Strategic Holdings</span>
-              <div className="grid gap-4">
+              <div className="space-y-4">
                 {topHoldings.length > 0 ? (
-                  topHoldings.map((holding, idx) => (
-                    <div key={idx} className="bg-slate-50 rounded-[2rem] p-6 border border-slate-100/50 flex items-center justify-between group hover:bg-white hover:shadow-md transition-all">
-                      <div className="flex items-center gap-5">
-                        <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-xs font-black text-slate-400">
-                          {String(idx + 1).padStart(2, '0')}
+                  topHoldings.slice(0, 5).map((holding, idx) => {
+                    const name = holding.name || holding.ticker || 'Holding';
+                    const percent = typeof (holding.percent ?? holding.weight) === 'number' 
+                      ? (holding.percent ?? holding.weight) 
+                      : null;
+                    
+                    return (
+                      <div key={idx} className="bg-slate-50/50 rounded-[2rem] p-6 border border-slate-100/50 group hover:bg-white hover:shadow-md transition-all">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-5">
+                            <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-xs font-black text-slate-400">
+                              {String(idx + 1).padStart(2, '0')}
+                            </div>
+                            <div>
+                              <h4 className="font-bold text-slate-900 truncate max-w-[280px] md:max-w-[360px]">{name}</h4>
+                              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                                {holding.type || 'ASSET'} • {holding.country || 'GLOBAL'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xl font-black text-indigo-600 tracking-tight">
+                              {percent !== null ? `${percent.toFixed(2)}%` : '—'}
+                            </div>
+                            <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">Weight</span>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="font-bold text-slate-900 truncate max-w-[360px]">{holding.name || holding.ticker || 'Holding'}</h4>
-                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{holding.type || 'ASSET'} • {holding.country || 'GLOBAL'}</span>
+                        <div className="h-2 w-full bg-white/80 rounded-full overflow-hidden border border-slate-100 shadow-inner">
+                          <div 
+                            className="h-full bg-indigo-500 rounded-full transition-all duration-1000 ease-out opacity-80 group-hover:opacity-100"
+                            style={{ width: percent !== null ? `${Math.max(percent, 2)}%` : '0%' }}
+                          />
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-xl font-black text-indigo-600 tracking-tight">{holding.percent ?? holding.weight ?? '—'}%</div>
-                        <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">Weight</span>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="text-center py-20 bg-slate-50/50 rounded-[3rem] border border-dashed border-slate-200">
                     <Target size={40} className="mx-auto text-slate-200 mb-4" />
@@ -970,48 +990,86 @@ const GoalDetailPage = () => {
         </div>
         
         {/* Progress Hero Card */}
-        <div className="bg-white rounded-3xl border border-slate-100 p-6 mb-6 shadow-sm">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-            <div className="flex-1">
-              <div className="flex items-baseline gap-2 mb-1">
-                <span className="text-4xl font-bold text-slate-900">{formatCurrency(goal.current_amount)}</span>
-                <span className="text-lg text-slate-400">/ {formatCurrency(goal.target_amount)}</span>
+        <div className="bg-white rounded-[2rem] border border-slate-100 p-6 md:p-8 mb-8 shadow-sm relative overflow-hidden group">
+          {/* Ambient Background Effect */}
+          <div className="absolute -top-12 -right-12 w-64 h-64 bg-indigo-50/50 rounded-full blur-3xl opacity-50 pointer-events-none group-hover:bg-indigo-50 transition-colors duration-1000"></div>
+
+          <div className="relative z-10 flex flex-col lg:flex-row lg:items-center gap-8">
+            {/* Digital Twin (Left) */}
+            <div className="hidden md:flex shrink-0 items-center justify-center p-2 mr-4">
+              <DigitalTwinHouse progress={progress} />
+            </div>
+
+            {/* Amounts & Progress (Middle) */}
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-col md:flex-row md:items-baseline md:justify-between gap-2 mb-2">
+                <div className="flex items-baseline gap-3">
+                  <span className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight">{formatCurrency(goal.current_amount)}</span>
+                  <span className="text-lg font-bold text-slate-400">/ {formatCurrency(goal.target_amount)}</span>
+                </div>
+                {/* Mobile Twin */}
+                <div className="md:hidden self-end -mt-16 mb-4">
+                   <DigitalTwinHouse progress={progress} />
+                </div>
               </div>
-              <p className="text-sm text-slate-500 mb-4">
-                {formatCurrency(goal.target_amount - goal.current_amount)} remaining to goal
+              
+              <p className="text-sm font-medium text-slate-500 mb-6 flex items-center gap-2">
+                <span className="font-semibold text-slate-600">{formatCurrency(goal.target_amount - goal.current_amount)}</span> remaining
+                <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                <span className={`${timeRemaining.isOverdue ? 'text-red-500 font-bold' : 'text-slate-500'}`}>
+                   {timeRemaining.text}
+                </span>
               </p>
               
-              <div className="relative h-4 bg-slate-100 rounded-full overflow-hidden">
+              <div className="relative h-5 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-100/50">
                 <div 
-                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-brand-500 to-indigo-500 rounded-full transition-all duration-1000"
+                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-brand-500 via-indigo-500 to-purple-500 rounded-full transition-all duration-1000 ease-out"
                   style={{ width: `${progress}%` }}
-                />
+                >
+                  <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]"></div>
+                </div>
               </div>
               
-              <div className="flex justify-between items-center mt-2">
-                <span className="text-sm font-bold text-brand-600">{progress.toFixed(1)}% complete</span>
-                <span className={`text-sm font-medium ${timeRemaining.isOverdue ? 'text-red-500' : 'text-slate-500'}`}>
-                  <Clock size={14} className="inline mr-1" />
-                  {timeRemaining.text}
+              <div className="flex justify-between items-center mt-3">
+                <span className="text-sm font-bold text-brand-600 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></span>
+                  {progress.toFixed(1)}% complete
+                </span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Calendar size={12} />
+                  Target: {formatDate(goal.due_date)}
                 </span>
               </div>
             </div>
             
-            <div className="lg:w-64 lg:border-l lg:border-slate-100 lg:pl-6">
-              <div className="text-sm text-slate-500 mb-1">Target Date</div>
-              <div className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <Calendar size={20} className="text-brand-500" />
-                {formatDate(goal.due_date)}
-              </div>
-              
-              {plan?.contribution && (
-                <div className="mt-4 p-3 bg-emerald-50 rounded-xl">
-                  <div className="text-xs text-emerald-600 font-medium">Monthly Contribution</div>
-                  <div className="text-lg font-bold text-emerald-700">
+            {/* Key Stats (Right) */}
+            <div className="lg:w-72 lg:border-l lg:border-slate-100 lg:pl-8 flex flex-col gap-3">
+              {plan?.contribution ? (
+                 <div className="p-5 bg-emerald-50/50 rounded-2xl border border-emerald-100/50 hover:bg-emerald-50 transition-colors">
+                  <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                    <RefreshCw size={10} /> Monthly Save
+                  </div>
+                  <div className="text-2xl font-black text-emerald-700 tracking-tight">
                     {formatCurrency(plan.contribution.amount || plan.contribution_strategy?.monthly_amount)}
                   </div>
                 </div>
+              ) : (
+                <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
+                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Est. Completion</div>
+                   <div className="text-lg font-bold text-slate-700">{formatDate(goal.due_date)}</div>
+                </div>
               )}
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                  <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Priority</div>
+                  <div className="text-xs font-bold text-slate-700 capitalize">{goal.priority || 'Medium'}</div>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                  <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Risk</div>
+                  <div className="text-xs font-bold text-slate-700 capitalize">{goal.riskTolerance || 'Balanced'}</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1421,7 +1479,7 @@ const GoalDetailPage = () => {
         {/* Delete Confirmation Modal */}
         {showDeleteConfirm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowDeleteConfirm(false)}></div>
+            <div className="absolute inset-0 bg-slate-900/40" onClick={() => setShowDeleteConfirm(false)}></div>
             <div className="relative bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
               <h3 className="text-xl font-bold text-slate-900 mb-2">Delete Goal?</h3>
               <p className="text-slate-500 mb-6">

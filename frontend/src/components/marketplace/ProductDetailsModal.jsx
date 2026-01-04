@@ -174,24 +174,37 @@ export default function ProductDetailsModal({ product, open, onClose, loading = 
                     Top holdings data is not available for this product.
                   </p>
                 ) : (
-                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    {holdings.map((holding, index) => (
-                      // eslint-disable-next-line react/no-array-index-key
-                      <div
-                        key={index}
-                        className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2"
-                      >
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
-                          {index + 1}
-                        </span>
-                        <div className="text-sm text-slate-800">
-                          {holding?.name || holding || "Unknown"}
-                          {typeof holding?.percent === "number" && (
-                            <span className="ml-1 text-slate-500">({holding.percent}%)</span>
-                          )}
+                  <div className="mt-4 space-y-4">
+                    {holdings.slice(0, 5).map((holding, index) => {
+                      const name = holding?.name || holding || "Unknown";
+                      const percent = typeof holding?.percent === "number" ? holding.percent : null;
+                      
+                      return (
+                        <div key={index} className="group">
+                          <div className="flex justify-between items-center mb-1.5">
+                            <div className="flex items-center gap-3">
+                              <span className="text-[10px] font-black text-slate-400 w-4">
+                                0{index + 1}
+                              </span>
+                              <span className="text-xs font-bold text-slate-700 truncate max-w-[200px] sm:max-w-[400px]">
+                                {name}
+                              </span>
+                            </div>
+                            {percent !== null && (
+                              <span className="text-xs font-black text-slate-900">
+                                {percent.toFixed(2)}%
+                              </span>
+                            )}
+                          </div>
+                          <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-indigo-500 rounded-full transition-all duration-1000 ease-out opacity-80 group-hover:opacity-100"
+                              style={{ width: percent !== null ? `${Math.max(percent, 2)}%` : '0%' }}
+                            />
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

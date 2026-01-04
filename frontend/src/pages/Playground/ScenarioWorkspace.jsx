@@ -44,7 +44,7 @@ const INITIAL_PORTFOLIOS = [
   },
 ];
 
-const MOCK_GOALS = [
+const FALLBACK_GOALS = [
   { id: 'goal_1', name: 'Dream Home in Auckland', category: 'home', target_amount: 1200000, current_amount: 150000, due_date: '2030-12-31', icon: 'home' },
   { id: 'goal_2', name: 'Comfortable Retirement', category: 'retirement', target_amount: 2500000, current_amount: 250000, due_date: '2055-01-01', icon: 'retirement' },
   { id: 'goal_3', name: 'Child Education Fund', category: 'education', target_amount: 150000, current_amount: 20000, due_date: '2040-06-30', icon: 'education' },
@@ -107,11 +107,13 @@ const ConfigCard = ({ title, icon: Icon, children, isActive, badge }) => (
   </div>
 );
 
-const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles }) => {
+const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles, goals = [], goalsLoading }) => {
   const [loading, setLoading] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
   const [activeProfile, setActiveProfile] = useState(null);
   const [activeGoal, setActiveGoal] = useState(null);
+  const [activeProfileId, setActiveProfileId] = useState(null);
+  const [activeGoalId, setActiveGoalId] = useState(null);
 
   // --- Stage 2 State: Strategy ---
   const [exposure, setExposure] = useState({ growth: 50, defensive: 30, liquidity: 20 });
@@ -127,6 +129,11 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles }) => {
   const activePortfolio = useMemo(() => 
     customPortfolios.find(p => p.id === selectedPortfolioId), 
     [customPortfolios, selectedPortfolioId]
+  );
+
+  const goalOptions = useMemo(
+    () => (goals?.length ? goals : FALLBACK_GOALS),
+    [goals]
   );
 
   const portfolioExposure = useMemo(() => {
@@ -155,20 +162,40 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles }) => {
       await new Promise(resolve => setTimeout(resolve, 800));
       
       const profile = profiles.find(p => p.id === scenario?.profileId) || profiles[0];
-      const goal = MOCK_GOALS.find(g => g.id === scenario?.goalId) || MOCK_GOALS[1];
+      const goal = goalOptions.find(g => g.id === scenario?.goalId) || goalOptions[0];
       
       setActiveProfile(profile);
+      setActiveProfileId(profile?.id || null);
       setActiveGoal(goal);
+      setActiveGoalId(goal?.id || null);
       setMonthlyContribution(scenario?.monthlyContribution || Math.round(profile.income.annualGross / 60));
       setLoading(false);
     };
     init();
-  }, [profiles, scenario]);
+  }, [profiles, scenario, goalOptions]);
+
+  const handleGoalChange = (goalId) => {
+    const nextGoal = goalOptions.find((g) => g.id === goalId);
+    setActiveGoal(nextGoal || null);
+    setActiveGoalId(nextGoal?.id || null);
+  };
+
+  const handleProfileChange = (profileId) => {
+    const nextProfile = profiles.find((p) => p.id === profileId);
+    setActiveProfile(nextProfile || null);
+    setActiveProfileId(nextProfile?.id || null);
+    if (nextProfile) {
+      setMonthlyContribution(scenario?.monthlyContribution || Math.round(nextProfile.income.annualGross / 60));
+    }
+  };
 
   const horizonYears = useMemo(() => {
     if (!activeGoal) return 25;
-    const goalYear = new Date(activeGoal.due_date).getFullYear();
+    const goalDate = activeGoal.due_date ? new Date(activeGoal.due_date) : null;
+    const goalYear = goalDate && !isNaN(goalDate.getFullYear()) ? goalDate.getFullYear() : null;
     const currentYear = new Date().getFullYear();
+    const fallbackHorizon = 25;
+    if (!goalYear) return fallbackHorizon;
     return Math.max(goalYear - currentYear, 1);
   }, [activeGoal]);
 
@@ -211,9 +238,10 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles }) => {
     );
   }
 
-  const currentWealth = (activeProfile.financials.cash || 0) + (activeProfile.financials.investments || 0);
-  const gap = Math.max(0, activeGoal.target_amount - currentWealth);
-  const progressPercent = (currentWealth / activeGoal.target_amount) * 100;
+  const targetAmount = activeGoal?.target_amount ?? 0;
+  const currentGoalProgress = activeGoal?.current_amount ?? 0;
+  const gap = Math.max(0, targetAmount - currentGoalProgress);
+  const progressPercent = targetAmount > 0 ? (currentGoalProgress / targetAmount) * 100 : 0;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-20">
@@ -227,11 +255,39 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles }) => {
           <div className="flex items-center gap-8">
             <div className="space-y-0.5">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Simulation Context</p>
-              <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
-                {activeGoal?.name}
-                <span className="text-slate-200 font-light">|</span>
-                <span className="text-indigo-600 font-semibold">{activeProfile?.name}</span>
-              </h2>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Goal</span>
+                  <select
+                    value={activeGoalId || ''}
+                    onChange={(e) => handleGoalChange(e.target.value)}
+                    disabled={goalsLoading || !goalOptions.length}
+                    className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-900 focus:ring-2 focus:ring-indigo-200 outline-none min-w-[180px]"
+                  >
+                    {goalOptions.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                    {!goalOptions.length && <option value="">No goals available</option>}
+                  </select>
+                </div>
+                <span className="text-slate-200 font-light hidden sm:block">|</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Background</span>
+                  <select
+                    value={activeProfileId || ''}
+                    onChange={(e) => handleProfileChange(e.target.value)}
+                    className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-900 focus:ring-2 focus:ring-indigo-200 outline-none min-w-[180px]"
+                  >
+                    {profiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -249,7 +305,9 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles }) => {
             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
               <Target size={16} className="text-indigo-500" /> Goal Completion Progress
             </h3>
-            <p className="text-xs text-slate-500 font-medium">Currently at <span className="text-indigo-600 font-bold">${currentWealth.toLocaleString()}</span> of <span className="text-slate-900 font-bold">${activeGoal.target_amount.toLocaleString()}</span></p>
+            <p className="text-xs text-slate-500 font-medium">
+              Currently at <span className="text-indigo-600 font-bold">${currentGoalProgress.toLocaleString()}</span> of <span className="text-slate-900 font-bold">${targetAmount.toLocaleString()}</span>
+            </p>
           </div>
           <div className="text-right">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Gap Remaining</p>
@@ -429,7 +487,15 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles }) => {
                   <Area type="monotone" dataKey="low" stroke="none" fill="#6366f1" fillOpacity={0.1} />
                   <Area type="monotone" dataKey="median" stroke="#6366f1" strokeWidth={4} fill="url(#colorMC)" animationDuration={1500} />
                   
-                  <ReferenceLine y={activeGoal.target_amount} stroke="#cbd5e1" strokeDasharray="8 8" strokeWidth={2} label={{ value: 'Target', position: 'right', fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} />
+                  {targetAmount > 0 && (
+                    <ReferenceLine 
+                      y={targetAmount} 
+                      stroke="#cbd5e1" 
+                      strokeDasharray="8 8" 
+                      strokeWidth={2} 
+                      label={{ value: 'Target', position: 'right', fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} 
+                    />
+                  )}
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -491,7 +557,7 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles }) => {
       {/* Product Swap Modal */}
       {isSwapping && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsSwapping(null)} />
+          <div className="absolute inset-0 bg-slate-900/40" onClick={() => setIsSwapping(null)} />
           <div className="bg-white w-full max-w-2xl rounded-[3.2rem] shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 duration-300">
             <div className="p-10">
               <h2 className="text-2xl font-bold text-slate-900 mb-2 tracking-tight">Swap Product</h2>

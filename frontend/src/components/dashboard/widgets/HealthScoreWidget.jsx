@@ -1,63 +1,82 @@
-import { TrendingUp, Activity, ShieldCheck } from 'lucide-react';
+import { TrendingUp, Activity, ShieldCheck, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
-const HealthScoreWidget = ({ netWorth, liquidCapital, healthScore = 85 }) => {
+const HealthScoreWidget = ({ netWorth, liquidCapital, healthScore = 85, totalAssets, totalLiabilities }) => {
   const formatCurrency = (val) => 
     new Intl.NumberFormat('en-NZ', { style: 'currency', currency: 'NZD', maximumFractionDigits: 0 }).format(val);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {/* Net Worth Card */}
-      <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xl shadow-slate-200/40 group hover:shadow-brand-500/10 transition-all duration-500">
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Net Worth</p>
-          <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-            <TrendingUp size={16} />
-          </div>
-        </div>
-        <h3 className="text-3xl font-black text-slate-900 leading-none">
-          {formatCurrency(netWorth)}
-        </h3>
-        <p className="text-xs text-slate-500 mt-2 font-medium flex items-center gap-1">
-          <span className="text-emerald-600 font-bold">+2.4%</span> from last month
-        </p>
+    <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-xl shadow-slate-200/40 group overflow-hidden relative transition-all duration-500 hover:shadow-brand-500/10">
+      {/* Background Decor */}
+      <div className="absolute top-0 right-0 p-12 opacity-[0.02] pointer-events-none group-hover:scale-110 transition-transform duration-1000">
+        <ShieldCheck size={240} />
       </div>
 
-      {/* Liquid Capital Card */}
-      <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xl shadow-slate-200/40 group hover:shadow-brand-500/10 transition-all duration-500">
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Liquid Capital</p>
-          <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
-            <Activity size={16} />
+      <div className="flex flex-col lg:flex-row items-center gap-8 lg:gap-12 relative z-10">
+        
+        {/* 1. Primary Metric: Net Worth */}
+        <div className="flex-1 w-full lg:w-auto border-b lg:border-b-0 lg:border-r border-slate-100 pb-8 lg:pb-0 lg:pr-12">
+          <div className="flex items-center gap-2 mb-3">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Financial Pulse</p>
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-[9px] font-black uppercase tracking-widest animate-in fade-in slide-in-from-left duration-700 delay-300">
+              <TrendingUp size={10} /> +2.4%
+            </span>
           </div>
+          <div className="flex items-baseline gap-2">
+            <h2 className="text-5xl font-black text-slate-900 tracking-tighter">
+              {formatCurrency(netWorth)}
+            </h2>
+            <span className="text-slate-400 font-bold text-sm uppercase tracking-widest">NZD</span>
+          </div>
+          <p className="text-[10px] text-slate-400 mt-4 font-bold uppercase tracking-widest opacity-60">Total Net Worth Estimate</p>
         </div>
-        <h3 className="text-3xl font-black text-slate-900 leading-none">
-          {formatCurrency(liquidCapital)}
-        </h3>
-        <div className="w-full bg-slate-100 h-1.5 rounded-full mt-4 overflow-hidden">
-          <div 
-            className="h-full bg-blue-500 rounded-full transition-all duration-1000" 
-            style={{ width: `${Math.min(100, (liquidCapital / netWorth) * 100)}%` }}
-          />
-        </div>
-      </div>
 
-      {/* AI Health Score Card */}
-      <div className="bg-brand-600 rounded-3xl p-6 text-white shadow-xl shadow-brand-600/20 relative overflow-hidden group">
-        <div className="absolute -right-4 -top-4 opacity-10 group-hover:scale-110 transition-transform duration-700">
-          <ShieldCheck size={120} />
-        </div>
-        <div className="relative z-10">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-[10px] font-black text-brand-100 uppercase tracking-widest">FinTwin Health</p>
-            <span className="bg-white/20 text-[10px] font-bold px-2 py-1 rounded-lg">LIVE</span>
+        {/* 2. Secondary Metrics Grid */}
+        <div className="flex-[1.5] w-full grid grid-cols-2 md:grid-cols-4 gap-8">
+          
+          {/* Liquid Capital */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-primary">
+              <Activity size={14} strokeWidth={3} />
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Liquidity</p>
+            </div>
+            <p className="text-lg font-black text-slate-900 tracking-tight">{formatCurrency(liquidCapital)}</p>
+            <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-primary rounded-full transition-all duration-1000" 
+                style={{ width: `${Math.min(100, (liquidCapital / (netWorth || 1)) * 100)}%` }}
+              />
+            </div>
           </div>
-          <div className="flex items-end gap-2">
-            <h3 className="text-4xl font-black leading-none">{healthScore}</h3>
-            <span className="text-brand-200 font-bold text-sm mb-1">/100</span>
+
+          {/* Assets */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-emerald-500">
+              <ArrowUpRight size={14} strokeWidth={3} />
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Total Assets</p>
+            </div>
+            <p className="text-lg font-black text-slate-900 tracking-tight">{formatCurrency(totalAssets || 0)}</p>
+            <p className="text-[8px] text-slate-400 font-bold uppercase">Stored Value</p>
           </div>
-          <p className="text-xs text-brand-100 mt-3 font-medium opacity-80 italic">
-            "Your buy-home goal has a 92% feasibility."
-          </p>
+
+          {/* Liabilities */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-rose-500">
+              <ArrowDownRight size={14} strokeWidth={3} />
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Liabilities</p>
+            </div>
+            <p className="text-lg font-black text-slate-900 tracking-tight">{formatCurrency(totalLiabilities || 0)}</p>
+            <p className="text-[8px] text-slate-400 font-bold uppercase">Leverage: {totalAssets > 0 ? ((totalLiabilities / totalAssets) * 100).toFixed(1) : 0}%</p>
+          </div>
+
+          {/* AI Health Score */}
+          <div className="bg-primary/5 rounded-2xl p-4 flex flex-col justify-center border border-primary/10 hover:bg-primary hover:text-white transition-all duration-500 cursor-help group/score">
+            <p className="text-[8px] font-black uppercase tracking-widest opacity-60 mb-1 text-center group-hover/score:text-white">AI Health</p>
+            <div className="flex items-center justify-center gap-1">
+              <span className="text-2xl font-black">{healthScore}</span>
+              <span className="text-[10px] font-bold opacity-60 group-hover/score:text-white">/100</span>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>

@@ -63,7 +63,7 @@ const IncomeDetailModal = ({ isOpen, onClose, flows }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm transition-opacity animate-in fade-in duration-200">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 transition-opacity animate-in fade-in duration-200`}>
       <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-200">
         
         {/* Header */}

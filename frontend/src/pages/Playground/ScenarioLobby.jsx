@@ -1,19 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { PlusCircle, Play, Copy, Trash2, Edit2, UserCircle2, Briefcase, TrendingUp, X, ChevronDown, ChevronUp, Wallet, Landmark, TrendingDown, Info, ShieldCheck, Save, BarChart3, Activity, Target } from 'lucide-react';
 
-const ScenarioLobby = ({ onEditScenario, profiles, setProfiles, scenarios, setScenarios }) => {
+const ScenarioLobby = ({ onEditScenario, profiles, setProfiles, scenarios, setScenarios, goals = [], goalsLoading }) => {
   const [loading, setLoading] = useState(true);
   const [expandedProfileId, setExpandedProfileId] = useState(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isPathModalOpen, setIsPathModalOpen] = useState(false);
-
-  // Mock Goals
-  const mockGoals = [
-    { id: 'goal_1', name: 'Dream Home in Auckland', category: 'home', target_amount: 1200000, due_date: '2030-12-31', icon: 'home' },
-    { id: 'goal_2', name: 'Comfortable Retirement', category: 'retirement', target_amount: 2500000, due_date: '2055-01-01', icon: 'retirement' },
-    { id: 'goal_3', name: 'Child Education Fund', category: 'education', target_amount: 150000, due_date: '2040-06-30', icon: 'education' },
-    { id: 'goal_4', name: 'Tesla Model S', category: 'vehicle', target_amount: 140000, due_date: '2026-10-15', icon: 'vehicle' }
-  ];
 
   useEffect(() => {
     const loadData = async () => {
@@ -36,11 +28,12 @@ const ScenarioLobby = ({ onEditScenario, profiles, setProfiles, scenarios, setSc
 
   const handleCreateScenario = (data) => {
     const selectedProfile = profiles.find(p => p.id === data.profileId) || profiles[0];
+    const selectedGoalId = data.goalId || goals[0]?.id || null;
     const newScenario = {
       id: `sim_${Date.now()}`,
       name: data.name || "New Scenario",
       profileId: selectedProfile.id,
-      goalId: data.goalId,
+      goalId: selectedGoalId,
       status: "safe",
       successProbability: 50,
       monthlyContribution: Math.round(selectedProfile.income.annualGross / 60),
@@ -121,7 +114,7 @@ const ScenarioLobby = ({ onEditScenario, profiles, setProfiles, scenarios, setSc
                   </div>
                   {scenario.goalId && (
                     <div className="text-[10px] font-semibold text-slate-400 bg-indigo-50/50 px-3 py-1 rounded-xl border border-indigo-100">
-                      Goal: <span className="text-indigo-600 font-bold">{mockGoals.find(g => g.id === scenario.goalId)?.name || 'Unknown'}</span>
+                    Goal: <span className="text-indigo-600 font-bold">{goals.find(g => g.id === scenario.goalId)?.name || 'Unknown'}</span>
                     </div>
                   )}
                 </div>
@@ -163,7 +156,8 @@ const ScenarioLobby = ({ onEditScenario, profiles, setProfiles, scenarios, setSc
       {isPathModalOpen && (
         <CreatePathModal
           profiles={profiles}
-          goals={mockGoals}
+          goals={goals}
+          goalsLoading={goalsLoading}
           onClose={() => setIsPathModalOpen(false)}
           onSave={handleCreateScenario}
         />
@@ -426,7 +420,7 @@ const CreateProfileModal = ({ onClose, onSave }) => {
   const [name, setName] = useState('');
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
       <div className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 duration-300">
         <div className="p-12 text-center">
           <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-[2rem] flex items-center justify-center mx-auto mb-8 rotate-3 shadow-inner"><UserCircle2 size={40} /></div>
@@ -443,14 +437,20 @@ const CreateProfileModal = ({ onClose, onSave }) => {
   );
 };
 
-const CreatePathModal = ({ profiles, goals, onClose, onSave }) => {
+const CreatePathModal = ({ profiles, goals, goalsLoading, onClose, onSave }) => {
   const [name, setName] = useState('');
   const [profileId, setProfileId] = useState(profiles[0]?.id);
   const [goalId, setGoalId] = useState(goals[0]?.id);
 
+  useEffect(() => {
+    if (goals?.length && !goalId) {
+      setGoalId(goals[0].id);
+    }
+  }, [goals, goalId]);
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
       <div className="bg-white w-full max-w-xl rounded-[3rem] shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 duration-300">
         <div className="p-10">
           <div className="flex items-center gap-6 mb-8">
@@ -498,9 +498,11 @@ const CreatePathModal = ({ profiles, goals, onClose, onSave }) => {
                 <select 
                   value={goalId}
                   onChange={(e) => setGoalId(e.target.value)}
+                  disabled={goalsLoading || !goals.length}
                   className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-900 focus:ring-4 focus:ring-indigo-50 outline-none appearance-none"
                 >
                   {goals.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  {!goals.length && <option value="">No goals available</option>}
                 </select>
               </div>
             </div>
@@ -509,7 +511,7 @@ const CreatePathModal = ({ profiles, goals, onClose, onSave }) => {
           <div className="flex gap-4 mt-10">
             <button onClick={onClose} className="flex-1 py-4 bg-slate-100 text-slate-500 font-bold uppercase tracking-widest text-[11px] rounded-2xl hover:bg-slate-200 transition-all">Cancel</button>
             <button 
-              disabled={!name}
+              disabled={!name || !goalId}
               onClick={() => onSave({ name, profileId, goalId })} 
               className="flex-1 py-4 bg-indigo-600 text-white font-bold uppercase tracking-widest text-[11px] rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all disabled:opacity-50"
             >

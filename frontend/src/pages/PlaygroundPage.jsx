@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout';
-import { Gamepad2, Calculator, PlayCircle, Settings2 } from 'lucide-react';
+import { Calculator, PlayCircle, Settings2 } from 'lucide-react';
 import ScenarioLobby from './Playground/ScenarioLobby';
 import ScenarioWorkspace from './Playground/ScenarioWorkspace';
 import PlaygroundTools, { CalculatorModal } from './Playground/PlaygroundTools';
+import { getGoals } from '../services/goalService';
 
 const PlaygroundPage = () => {
   const [activeTab, setActiveTab] = useState('simulations'); // 'simulations' | 'tools'
   const [selectedScenarioId, setSelectedScenarioId] = useState(null);
   const [activeTool, setActiveTool] = useState(null);
+  const [goals, setGoals] = useState([]);
+  const [goalsLoading, setGoalsLoading] = useState(false);
 
   // Mock initial profiles (Backgrounds)
   const [profiles, setProfiles] = useState([
@@ -46,9 +49,55 @@ const PlaygroundPage = () => {
 
   // Manage scenarios at this level to share with Workspace
   const [scenarios, setScenarios] = useState([
-    { id: 'sim_1', name: 'Early Retirement Plan', profileId: 'prof_1', goalId: 'goal_2', status: 'safe', successProbability: 78, monthlyContribution: 2000, retirementAge: 55 },
-    { id: 'sim_2', name: 'Buying a Bach', profileId: 'prof_1', goalId: 'goal_1', status: 'risky', successProbability: 42, monthlyContribution: 1500, retirementAge: 65 }
+    { id: 'sim_1', name: 'Early Retirement Plan', profileId: 'prof_1', goalId: null, status: 'safe', successProbability: 78, monthlyContribution: 2000, retirementAge: 55 },
+    { id: 'sim_2', name: 'Buying a Bach', profileId: 'prof_1', goalId: null, status: 'risky', successProbability: 42, monthlyContribution: 1500, retirementAge: 65 }
   ]);
+
+  // Normalize goal payloads from API into the shape used by Playground
+  const normalizeGoal = (goal) => {
+    if (!goal) return null;
+    const id = goal._id || goal.id || goal.goal_id;
+    const name = goal.goal_name || goal.name || goal.title;
+    if (!id || !name) return null;
+    return {
+      id,
+      name,
+      icon: goal.icon || goal.category || 'target',
+      category: goal.category,
+      target_amount: goal.target_amount ?? goal.goal_amount ?? goal.targetAmount ?? 0,
+      current_amount: goal.current_amount ?? goal.progress_amount ?? goal.currentAmount ?? 0,
+      due_date: goal.due_date || goal.target_date || goal.dueDate,
+      raw: goal
+    };
+  };
+
+  useEffect(() => {
+    const loadGoals = async () => {
+      setGoalsLoading(true);
+      try {
+        const data = await getGoals();
+        const rawList = Array.isArray(data) ? data : data?.goals || [];
+        const normalized = rawList.map(normalizeGoal).filter(Boolean);
+        setGoals(normalized);
+
+        // Backfill existing scenarios to the first available goal when not set
+        if (normalized.length) {
+          setScenarios((prev) =>
+            prev.map((s) => {
+              if (s.goalId && normalized.some((g) => g.id === s.goalId)) return s;
+              return { ...s, goalId: normalized[0].id };
+            })
+          );
+        }
+      } catch (err) {
+        console.error('[Playground] Failed to load goals', err);
+      } finally {
+        setGoalsLoading(false);
+      }
+    };
+
+    loadGoals();
+  }, []);
 
   const handleEditScenario = (id) => {
     setSelectedScenarioId(id);
@@ -96,6 +145,8 @@ const PlaygroundPage = () => {
                   scenario={scenarios.find(s => s.id === selectedScenarioId)}
                   onBack={handleBackToLobby} 
                   profiles={profiles}
+                  goals={goals}
+                  goalsLoading={goalsLoading}
                 />
               ) : (
                 <ScenarioLobby 
@@ -104,6 +155,8 @@ const PlaygroundPage = () => {
                   setProfiles={setProfiles}
                   scenarios={scenarios}
                   setScenarios={setScenarios}
+                  goals={goals}
+                  goalsLoading={goalsLoading}
                 />
               )
             ) : (
@@ -111,8 +164,8 @@ const PlaygroundPage = () => {
                 <ToolCard 
                   title="Mortgage Calculator"
                   description="Calculate your monthly payments and interest for a home loan."
-                  icon={<Calculator className="text-indigo-600" />}
-                  color="indigo"
+                  icon={<Calculator className="text-purple-600" />}
+                  color="purple"
                   onClick={() => setActiveTool('mortgage')}
                 />
                 <ToolCard 
@@ -162,19 +215,20 @@ const TabButton = ({ id, label, icon: Icon, active, onClick }) => (
     className={`
       relative flex items-center gap-2 px-6 py-3 text-sm font-bold transition-all border-b-2
       ${active 
-        ? 'text-indigo-600 border-indigo-600 bg-indigo-50/20' 
+        ? 'text-primary border-primary bg-primary/5' 
         : 'text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-50/50'
       }
     `}
   >
-    <Icon size={16} className={active ? 'text-indigo-600' : 'text-slate-400'} />
+    <Icon size={16} className={active ? 'text-primary' : 'text-slate-400'} />
     <span>{label}</span>
   </button>
 );
 
 const ToolCard = ({ title, description, icon, color, onClick }) => {
   const colorMap = {
-    indigo: 'bg-indigo-50 text-indigo-600',
+    indigo: 'bg-indigo-50 text-indigo-950',
+    purple: 'bg-primary/10 text-primary',
     emerald: 'bg-emerald-50 text-emerald-600',
     amber: 'bg-amber-50 text-amber-600',
   };
@@ -182,7 +236,7 @@ const ToolCard = ({ title, description, icon, color, onClick }) => {
   return (
     <div 
       onClick={onClick}
-      className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-indigo-500/10 transition-all group cursor-pointer relative overflow-hidden"
+      className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-primary/10 transition-all group cursor-pointer relative overflow-hidden"
     >
       <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:scale-110 group-hover:rotate-12 transition-transform duration-500">
         {React.cloneElement(icon, { size: 120 })}
@@ -194,7 +248,7 @@ const ToolCard = ({ title, description, icon, color, onClick }) => {
       <p className="text-slate-500 text-sm leading-relaxed mb-8 pr-4">
         {description}
       </p>
-      <div className="flex items-center text-indigo-600 font-black text-[11px] uppercase tracking-widest group-hover:translate-x-2 transition-transform">
+      <div className="flex items-center text-primary font-black text-[11px] uppercase tracking-widest group-hover:translate-x-2 transition-transform">
         Initialize Tool <PlayCircle size={16} className="ml-2" strokeWidth={3} />
       </div>
     </div>

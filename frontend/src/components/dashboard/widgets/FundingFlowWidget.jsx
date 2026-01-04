@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { ArrowRightLeft, TrendingUp, Wallet, Calendar, Clock } from 'lucide-react';
+import { TrendingUp, Clock } from 'lucide-react';
 
 const FundingFlowWidget = ({ goals = [], profile }) => {
   const [frequency, setFrequency] = useState('Monthly'); // 'Weekly' or 'Monthly'
@@ -12,7 +12,7 @@ const FundingFlowWidget = ({ goals = [], profile }) => {
   const displaySurplus = frequency === 'Monthly' ? monthlySurplus : Math.round(monthlySurplus / 4.33);
 
   // Define color palette matching GoalHeatmap and Brand
-  const COLORS = ['#4f46e5', '#7c3aed', '#2563eb', '#6366f1', '#8b5cf6', '#3b82f6'];
+  const COLORS = ['#312e81', '#4338ca', '#4f46e5', '#6366f1', '#818cf8', '#a5b4fc'];
 
   // Mock allocation logic: In reality, this would be defined in user.allocation.goalPriorities
   const flowData = useMemo(() => {
@@ -45,9 +45,6 @@ const FundingFlowWidget = ({ goals = [], profile }) => {
       <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-8">
         <div>
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-brand-500 rounded-xl shadow-lg shadow-brand-500/20">
-              <ArrowRightLeft size={18} className="text-white" />
-            </div>
             <h2 className="text-lg font-black tracking-tight">Funding Flow</h2>
           </div>
           <p className="text-slate-400 text-[10px] mt-1 font-bold uppercase tracking-widest opacity-60">

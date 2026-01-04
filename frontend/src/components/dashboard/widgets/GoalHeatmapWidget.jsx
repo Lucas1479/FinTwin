@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react';
-import { Maximize2, Zap, Target } from 'lucide-react';
 
 const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
   // --- Treemap Layout Engine (Squarified Treemap Logic) ---
@@ -153,9 +152,6 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-brand-500 rounded-xl shadow-lg shadow-brand-500/20">
-              <Zap size={20} fill="white" className="text-white" />
-            </div>
             <h2 className="text-xl font-black tracking-tight">Strategy Heatmap</h2>
           </div>
           <p className="text-slate-400 text-[10px] mt-1 font-bold uppercase tracking-widest opacity-60">
@@ -233,11 +229,11 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
                   const intensity = Math.max(0.2, absPerf / 10); // 0.2 to 1.0 for better visibility
                   
                   // Professional Color Strategy: Use Asset Type for Hue, Performance for Opacity
-                  // Growth (Indigo), Defensive (Sky Blue), Liquidity (Fuchsia)
+                  // Growth (Deep Indigo), Defensive (Mid Lavender), Liquidity (Soft Indigo)
                   const COLORS = {
-                    growth: [99, 102, 241],    // #6366f1
-                    defensive: [56, 189, 248], // #38bdf8
-                    liquidity: [244, 114, 182] // #f472b6
+                    growth: [49, 46, 129],    // #312e81 - Deep Indigo
+                    defensive: [79, 70, 229], // #4f46e5 - Main Indigo
+                    liquidity: [129, 140, 248] // #818cf8 - Light Indigo
                   };
                   
                   const rgb = COLORS[item.type] || COLORS.growth;
@@ -298,15 +294,15 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
       <div className="mt-8 pt-6 border-t border-slate-50 flex flex-wrap items-center justify-between gap-4">
          <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
-               <div className="w-3 h-3 rounded bg-indigo-500"></div>
+               <div className="w-3 h-3 rounded bg-indigo-900"></div>
                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Growth</span>
             </div>
             <div className="flex items-center gap-2">
-               <div className="w-3 h-3 rounded bg-sky-400"></div>
+               <div className="w-3 h-3 rounded bg-indigo-600"></div>
                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Defensive</span>
             </div>
             <div className="flex items-center gap-2">
-               <div className="w-3 h-3 rounded bg-fuchsia-400"></div>
+               <div className="w-3 h-3 rounded bg-indigo-400"></div>
                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Liquidity</span>
             </div>
          </div>
