@@ -121,14 +121,15 @@ const productSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Middleware to calculate aggregate allocation fields before saving
-productSchema.pre('save', function(next) {
+// IMPORTANT: Mongoose 7+/8+ - async functions should NOT use next parameter
+productSchema.pre('save', async function() {
   if (this.allocation) {
     // growth = equities + property
     this.allocation.growth = (this.allocation.equities || 0) + (this.allocation.property || 0);
     // defensive = bonds
     this.allocation.defensive = this.allocation.bonds || 0;
   }
-  next();
+  // No need to call next() when using async functions
 });
 
 // --- Compound Index for Query Optimization (复合索引优化查询) ---

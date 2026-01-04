@@ -309,6 +309,15 @@ export async function buildOptimizedPortfolios(params = {}) {
                 const selected = [];
                 const usedProviders = new Set();
                 
+                // For retirement, try to ensure at least one KiwiSaver for its unique benefits (Employer match/Govt credit)
+                if (is_retirement_goal) {
+                    const ksCandidate = [...growth, ...defensive, ...liquidity].find(p => p.category?.toLowerCase().includes('kiwisaver'));
+                    if (ksCandidate) {
+                        selected.push(ksCandidate);
+                        usedProviders.add(ksCandidate.provider);
+                    }
+                }
+
                 for (const cat of [growth, defensive, liquidity]) {
                     for (const p of cat) {
                         if (!usedProviders.has(p.provider) && selected.length < 4) {
@@ -336,7 +345,9 @@ export async function buildOptimizedPortfolios(params = {}) {
                 const score = (p) => {
                     const feeScore = 1 / (1 + (p.fees || 0.5));  // 费率越低分越高
                     const returnScore = (p.return_5yr || 0) / 10;  // 回报越高分越高
-                    return feeScore + returnScore;
+                    // KiwiSaver Boost for retirement: compensates for slightly higher fees due to NZ policy benefits
+                    const ksBoost = (is_retirement_goal && p.category?.toLowerCase().includes('kiwisaver')) ? 1.0 : 0;
+                    return feeScore + returnScore + ksBoost;
                 };
                 
                 const all = [...growth, ...defensive, ...liquidity]
@@ -349,7 +360,7 @@ export async function buildOptimizedPortfolios(params = {}) {
                 
                 for (const cat of [growth, defensive, liquidity]) {
                     if (cat.length > 0) {
-                        const best = cat.reduce((a, b) => score(a) > score(b) ? a : b);
+                        const best = cat.map(p => ({...p, score: score(p)})).reduce((a, b) => a.score > b.score ? a : b);
                         selected.push(best);
                         usedIds.add(best.id);
                     }

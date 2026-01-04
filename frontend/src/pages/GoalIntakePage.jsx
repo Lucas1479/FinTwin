@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -7,6 +7,11 @@ import GoalDefinitionForm from '../components/goals/GoalDefinitionForm';
 import StageStrategy from '../components/goals/StageStrategy';
 import goalEngineService from '../services/goalEngineService';
 import productService from '../services/productService';
+import { createGoalWithPlan } from '../services/goalService';
+import { 
+    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
+    ResponsiveContainer, PieChart as RechartsPieChart, Pie, ReferenceLine, Cell 
+} from 'recharts';
 import { 
     MessageSquare, 
     Send, 
@@ -24,6 +29,7 @@ import {
     Lock,
     Unlock,
     TrendingUp,
+    TrendingDown,
     Percent,
     RefreshCw,
     Copy, 
@@ -31,7 +37,8 @@ import {
     PieChart,
     BarChart3,
     Brain,
-    ExternalLink
+    ExternalLink,
+    Wallet
 } from 'lucide-react';
 
 // --- STAGE COMPONENTS ---
@@ -39,10 +46,12 @@ import {
 
 // Stage 3: Product Selection (Vehicle) - Multiple Portfolio Options
 const StageProduct = ({ goalContext, onSelect }) => {
+    const navigate = useNavigate();
     const [selectedOption, setSelectedOption] = useState(null);
     const [loading, setLoading] = useState(false);
     const [portfolioOptions, setPortfolioOptions] = useState([]);
     const [detailProduct, setDetailProduct] = useState(null); // 产品详情模态框
+    const [detailTab, setDetailTab] = useState('overview'); // 'overview', 'performance', 'allocation'
 
     // 获取 AI 返回的投资组合选项
     const aiOptions = goalContext.ai_decision?.portfolio_options 
@@ -283,96 +292,255 @@ const StageProduct = ({ goalContext, onSelect }) => {
                 </div>
             )}
 
-            {/* 产品详情悬浮卡片 */}
+            {/* 产品详情悬浮卡片 - 精致化重构 */}
             {detailProduct && (
-                <div className="fixed bottom-6 right-6 z-50 w-[420px] max-h-[70vh] overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200 animate-fade-in">
-                    {/* Header */}
-                    <div className="flex items-start justify-between gap-3 px-5 py-4 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100">
-                        <div className="flex items-start gap-3 flex-1 min-w-0">
-                            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
-                                {(detailProduct.provider ?? "PF").slice(0, 2).toUpperCase()}
-                            </div>
-                            <div className="min-w-0">
-                                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{detailProduct.category}</span>
-                                <h2 className="text-sm font-bold text-slate-900 truncate">{detailProduct.name}</h2>
-                                <p className="text-[11px] text-slate-500 truncate">{detailProduct.provider}</p>
-                            </div>
-                        </div>
-                        <button
-                            onClick={() => setDetailProduct(null)}
-                            className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-                        >
-                            <span className="text-lg leading-none">×</span>
-                        </button>
-                    </div>
-
-                    {/* Content */}
-                    <div className="px-5 py-4 space-y-4 max-h-[50vh] overflow-y-auto">
-                        {/* 关键指标 */}
-                        <div className="grid grid-cols-4 gap-2">
-                            <div className="p-2.5 bg-slate-50 rounded-lg text-center">
-                                <span className="text-[9px] font-bold uppercase text-slate-400 block">Fees</span>
-                                <div className="text-base font-bold text-slate-900">{detailProduct.fees ?? '—'}%</div>
-                            </div>
-                            <div className="p-2.5 bg-slate-50 rounded-lg text-center">
-                                <span className="text-[9px] font-bold uppercase text-slate-400 block">Risk</span>
-                                <div className="text-xs font-bold text-slate-900">{detailProduct.riskLevel || detailProduct.strategy || '—'}</div>
-                            </div>
-                            <div className="p-2.5 bg-slate-50 rounded-lg text-center">
-                                <span className="text-[9px] font-bold uppercase text-slate-400 block">1Y</span>
-                                <div className="text-base font-bold text-slate-900">
-                                    {detailProduct.returns?.['1y'] != null ? `${detailProduct.returns['1y'].toFixed(1)}%` : '—'}
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+                    <div className="relative w-full max-w-[900px] bg-white rounded-[3rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        {/* Header */}
+                        <div className="px-10 py-8 flex items-center justify-between border-b border-slate-50">
+                            <div className="flex items-center gap-5">
+                                <div className="w-14 h-14 rounded-[1.5rem] bg-indigo-50 flex items-center justify-center text-indigo-600 font-black text-xl border border-indigo-100/50">
+                                    {(detailProduct.provider ?? "PF").slice(0, 2).toUpperCase()}
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-400 mb-1 block">
+                                        {detailProduct.category || 'Investment Product'}
+                                    </span>
+                                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">{detailProduct.name}</h2>
+                                    <p className="text-sm text-slate-400 font-medium">{detailProduct.provider}</p>
                                 </div>
                             </div>
-                            <div className="p-2.5 bg-slate-50 rounded-lg text-center">
-                                <span className="text-[9px] font-bold uppercase text-slate-400 block">5Y</span>
-                                <div className="text-base font-bold text-slate-900">
-                                    {detailProduct.returns?.['5y'] != null ? `${detailProduct.returns['5y'].toFixed(1)}%` : '—'}
-                                </div>
-                            </div>
+                            <button
+                                onClick={() => { setDetailProduct(null); setDetailTab('analysis'); }}
+                                className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all active:scale-95"
+                            >
+                                <span className="text-2xl leading-none">×</span>
+                            </button>
                         </div>
 
-                        {/* 资产配置 */}
-                        {detailProduct.allocation && (
-                            <div>
-                                <span className="text-[10px] font-bold uppercase text-slate-400">Asset Allocation</span>
-                                <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-100 mt-2">
-                                    {detailProduct.allocation.growth > 0 && (
-                                        <div style={{ width: `${detailProduct.allocation.growth}%` }} className="bg-indigo-500" />
+                        {/* Tabs Navigation */}
+                        <div className="px-10 py-4 bg-slate-50/30 flex gap-8 border-b border-slate-50">
+                            {[
+                                { id: 'analysis', label: 'DEEP ANALYSIS', icon: Activity },
+                                { id: 'composition', label: 'PORTFOLIO COMPOSITION', icon: PieChart },
+                                { id: 'holdings', label: 'TOP HOLDINGS', icon: Target }
+                            ].map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setDetailTab(tab.id)}
+                                    className={`flex items-center gap-2.5 py-2 text-[11px] font-black tracking-[0.15em] transition-all relative ${
+                                        detailTab === tab.id ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'
+                                    }`}
+                                >
+                                    <tab.icon size={14} strokeWidth={2.5} />
+                                    {tab.label}
+                                    {detailTab === tab.id && (
+                                        <div className="absolute -bottom-4 left-0 right-0 h-1 bg-indigo-600 rounded-full" />
                                     )}
-                                    {detailProduct.allocation.defensive > 0 && (
-                                        <div style={{ width: `${detailProduct.allocation.defensive}%` }} className="bg-purple-400" />
-                                    )}
-                                    {detailProduct.allocation.cash > 0 && (
-                                        <div style={{ width: `${detailProduct.allocation.cash}%` }} className="bg-teal-400" />
-                                    )}
-                                </div>
-                                <div className="flex gap-3 mt-1.5 text-[10px] text-slate-500">
-                                    <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>{detailProduct.allocation.growth || 0}%</span>
-                                    <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-purple-400"></div>{detailProduct.allocation.defensive || 0}%</span>
-                                    <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-teal-400"></div>{detailProduct.allocation.cash || 0}%</span>
-                                </div>
-                            </div>
-                        )}
+                                </button>
+                            ))}
+                        </div>
 
-                        {/* AI 推荐理由 */}
-                        {detailProduct.rationale && (
-                            <div className="p-3 bg-brand-50/50 border border-brand-100 rounded-xl">
-                                <div className="flex items-center gap-1.5 mb-1">
-                                    <Brain size={12} className="text-brand-600" />
-                                    <span className="text-[9px] font-bold uppercase tracking-wider text-brand-600">Why Selected</span>
-                                </div>
-                                <p className="text-[12px] text-slate-700 leading-relaxed">{detailProduct.rationale}</p>
-                            </div>
-                        )}
+                        {/* Content Area */}
+                        <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
+                            {detailTab === 'analysis' && (
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                    {/* Left Column */}
+                                    <div className="space-y-10">
+                                        {/* Stats Row */}
+                                        <div className="grid grid-cols-2 gap-6">
+                                            <div className="bg-slate-50 rounded-[2.5rem] p-8 flex flex-col items-center justify-center text-center border border-slate-100/50">
+                                                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-3">Fees (P.A.)</span>
+                                                <div className="text-4xl font-black text-slate-900 tracking-tighter">
+                                                    {detailProduct.fees ?? '0.00'}<span className="text-xl ml-0.5">%</span>
+                                                </div>
+                                            </div>
+                                            <div className="bg-emerald-50/50 rounded-[2.5rem] p-8 flex flex-col items-center justify-center text-center border border-emerald-100/30">
+                                                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-600/60 mb-3">5Y Return</span>
+                                                <div className="text-4xl font-black text-emerald-600 tracking-tighter">
+                                                    {detailProduct.returns?.['5y']?.toFixed(1) || '0.0'}<span className="text-xl ml-0.5">%</span>
+                                                </div>
+                                            </div>
+                                        </div>
 
-                        {/* 组合中的权重 */}
-                        {detailProduct.weight_pct !== undefined && (
-                            <div className="flex items-center justify-between p-3 bg-green-50 border border-green-100 rounded-xl">
-                                <span className="text-[12px] font-medium text-slate-600">Portfolio Weight</span>
-                                <span className="text-xl font-bold text-green-600">{detailProduct.weight_pct}%</span>
-                            </div>
-                        )}
+                                        {/* Projection Growth Chart Mockup */}
+                                        <div className="space-y-4">
+                                            <div className="flex justify-between items-end px-2">
+                                                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-900">Projection Growth</span>
+                                                <span className="text-[10px] font-bold text-slate-400 italic tracking-wider">5-Year Simulation</span>
+                                            </div>
+                                            <div className="bg-slate-50 rounded-[2.5rem] p-8 h-[200px] flex items-center justify-center border border-slate-100/50 overflow-hidden relative group">
+                                                {/* Gradient background for chart area */}
+                                                <div className="absolute inset-x-8 bottom-8 top-12 bg-white rounded-3xl" />
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <AreaChart data={[
+                                                        { x: 0, y: 100 }, { x: 1, y: 105 }, { x: 2, y: 112 }, 
+                                                        { x: 3, y: 125 }, { x: 4, y: 135 }, { x: 5, y: 150 }
+                                                    ]} margin={{ top: 20, right: 10, left: 10, bottom: 0 }}>
+                                                        <defs>
+                                                            <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                                                                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1}/>
+                                                                <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                                                            </linearGradient>
+                                                        </defs>
+                                                        <Area type="monotone" dataKey="y" stroke="#6366f1" strokeWidth={4} fill="url(#chartGradient)" />
+                                                    </AreaChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </div>
+
+                                        {/* Volatility Profile */}
+                                        <div className="space-y-4">
+                                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-900 px-2">Volatility Profile</span>
+                                            <div className="bg-slate-50 rounded-[2.5rem] p-8 border border-slate-100/50">
+                                                <div className="flex gap-1.5 mb-6">
+                                                    {[1, 2, 3, 4, 5, 6, 7].map(level => (
+                                                        <div 
+                                                            key={level} 
+                                                            className={`h-2.5 flex-1 rounded-full transition-all duration-500 ${
+                                                                level <= (detailProduct.riskScore || 4) 
+                                                                ? 'bg-indigo-500' 
+                                                                : 'bg-slate-200'
+                                                            }`} 
+                                                        />
+                                                    ))}
+                                                </div>
+                                                <div className="flex justify-between items-center px-1">
+                                                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Level {detailProduct.riskScore || 4}/7</span>
+                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Standardized Risk</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Right Column */}
+                                    <div className="space-y-10">
+                                        {/* AI Logic Card */}
+                                        <div className="space-y-4">
+                                            <div className="flex items-center gap-2 px-2">
+                                                <Brain size={14} className="text-indigo-600" />
+                                                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-600">AI Selection Logic</span>
+                                            </div>
+                                            <div className="bg-indigo-50/40 rounded-[2.5rem] p-8 border border-indigo-100/30 min-h-[140px] relative overflow-hidden">
+                                                <div className="absolute -top-4 -right-4 opacity-5">
+                                                    <Brain size={100} />
+                                                </div>
+                                                <p className="text-sm text-slate-700 leading-relaxed font-medium relative z-10">
+                                                    {detailProduct.rationale || "Automated selection based on risk-adjusted returns and strategy alignment with your long-term goals."}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Strategy Overview */}
+                                        <div className="space-y-4">
+                                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-900 px-2">Strategy Overview</span>
+                                            <div className="bg-slate-50 rounded-[2.5rem] p-8 border border-slate-100/50">
+                                                <div className="text-lg font-bold text-slate-600 italic">
+                                                    {detailProduct.riskLevel || detailProduct.strategy || 'Balanced'}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Portfolio Weight Card */}
+                                        <div className="bg-[#101827] rounded-[2.5rem] p-10 text-white relative overflow-hidden shadow-2xl shadow-indigo-500/20 group">
+                                            <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                                                <Zap size={60} />
+                                            </div>
+                                            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-400 mb-6 block">Portfolio Weight</span>
+                                            <div className="flex items-baseline gap-2">
+                                                <div className="text-7xl font-black tracking-tighter">
+                                                    {detailProduct.weight_pct || '0.0'}
+                                                </div>
+                                                <div className="text-3xl font-bold text-indigo-400/60">%</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {detailTab === 'composition' && (
+                                <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                    {/* Asset Mix Section */}
+                                    <div className="space-y-6">
+                                        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-900 px-2">Asset Mix</span>
+                                        <div className="bg-slate-50 rounded-[3rem] p-10 border border-slate-100/50">
+                                            <div className="flex h-5 rounded-full overflow-hidden bg-slate-200 shadow-inner mb-8">
+                                                <div style={{ width: `${detailProduct.allocation?.growth || 60}%` }} className="bg-indigo-500 shadow-lg shadow-indigo-500/20" />
+                                                <div style={{ width: `${detailProduct.allocation?.defensive || 30}%` }} className="bg-sky-400 shadow-lg shadow-sky-400/20" />
+                                                <div style={{ width: `${detailProduct.allocation?.cash || 10}%` }} className="bg-fuchsia-400 shadow-lg shadow-fuchsia-400/20" />
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                <LegendItem label="Growth Assets" value={`${detailProduct.allocation?.growth || 60}%`} color="bg-indigo-500" />
+                                                <LegendItem label="Defensive Assets" value={`${detailProduct.allocation?.defensive || 30}%`} color="bg-sky-400" />
+                                                <LegendItem label="Cash & Liquidity" value={`${detailProduct.allocation?.cash || 10}%`} color="bg-fuchsia-400" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Detailed breakdown if available */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                                        <div className="space-y-4">
+                                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 px-2">Product Category</span>
+                                            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between">
+                                                <span className="font-bold text-slate-700">{detailProduct.category}</span>
+                                                <div className="px-3 py-1 bg-slate-100 rounded-full text-[10px] font-black text-slate-400 uppercase tracking-widest">{detailProduct.type}</div>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-4">
+                                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 px-2">Risk Appetite</span>
+                                            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                                                <span className="font-bold text-slate-700">{detailProduct.strategy || detailProduct.riskLevel}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {detailTab === 'holdings' && (
+                                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-900 px-2">Top Strategic Holdings</span>
+                                    <div className="grid gap-4">
+                                        {detailProduct.topHoldings && detailProduct.topHoldings.length > 0 ? (
+                                            detailProduct.topHoldings.map((holding, idx) => (
+                                                <div key={idx} className="bg-slate-50 rounded-[2rem] p-6 border border-slate-100/50 flex items-center justify-between group hover:bg-white hover:shadow-md transition-all">
+                                                    <div className="flex items-center gap-5">
+                                                        <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-xs font-black text-slate-400">
+                                                            0{idx + 1}
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-bold text-slate-900 truncate max-w-[400px]">{holding.name}</h4>
+                                                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{holding.type || 'ASSET'} • {holding.country || 'GLOBAL'}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className="text-xl font-black text-indigo-600 tracking-tight">{holding.percent}%</div>
+                                                        <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">Weight</span>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="text-center py-20 bg-slate-50/50 rounded-[3rem] border border-dashed border-slate-200">
+                                                <Target size={40} className="mx-auto text-slate-200 mb-4" />
+                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">Detailed holdings data not disclosed</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer Action */}
+                        <div className="px-10 py-8 bg-white border-t border-slate-50">
+                            <button 
+                                onClick={() => {
+                                    setDetailProduct(null);
+                                    navigate(`/marketplace?search=${encodeURIComponent(detailProduct.name)}`);
+                                }}
+                                className="w-full h-16 bg-[#101827] text-white rounded-[1.5rem] text-[12px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-3 hover:bg-indigo-600 transition-all shadow-2xl shadow-slate-200 active:scale-[0.98]"
+                            >
+                                Deep Analytics in Marketplace <ExternalLink size={14} className="opacity-50" />
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -380,60 +548,433 @@ const StageProduct = ({ goalContext, onSelect }) => {
     );
 };
 
+// Monte Carlo Simulation Logic
+const runMonteCarlo = (params, exposure, years, glidePathConfig = null) => {
+    const iterations = 100;
+    const allProjections = [];
+    
+    // Base expected returns by asset class (annualized)
+    const RETURNS = { growth: 0.08, defensive: 0.04, liquidity: 0.02 };
+    const VOLATILITY = { growth: 0.18, defensive: 0.06, liquidity: 0.01 };
+    
+    for (let i = 0; i < iterations; i++) {
+        let balance = (params.initialCapital || 0) + (params.lumpSum || 0);
+        const yearlyData = [];
+        
+        for (let y = 0; y <= years; y++) {
+            // Apply glide path if enabled
+            let currentExposure = { ...exposure };
+            if (glidePathConfig?.enabled && y > (years - glidePathConfig.start_years_before_goal)) {
+                const progress = (y - (years - glidePathConfig.start_years_before_goal)) / glidePathConfig.start_years_before_goal;
+                currentExposure = {
+                    growth: exposure.growth + (glidePathConfig.end_state.growth - exposure.growth) * progress,
+                    defensive: exposure.defensive + (glidePathConfig.end_state.defensive - exposure.defensive) * progress,
+                    liquidity: exposure.liquidity + (glidePathConfig.end_state.liquidity - exposure.liquidity) * progress
+                };
+            }
+            
+            // Calculate weighted return and volatility
+            const expReturn = (currentExposure.growth / 100 * RETURNS.growth) +
+                              (currentExposure.defensive / 100 * RETURNS.defensive) +
+                              (currentExposure.liquidity / 100 * RETURNS.liquidity);
+            const volatility = (currentExposure.growth / 100 * VOLATILITY.growth) +
+                               (currentExposure.defensive / 100 * VOLATILITY.defensive) +
+                               (currentExposure.liquidity / 100 * VOLATILITY.liquidity);
+            
+            // Random return with normal distribution approximation
+            const randomFactor = (Math.random() + Math.random() + Math.random() - 1.5) * 2;
+            const yearReturn = expReturn + randomFactor * volatility;
+            
+            // Add monthly contributions first, then apply return
+            const annualContribution = (params.monthlyContribution || 0) * 12;
+            balance = (balance + annualContribution) * (1 + yearReturn);
+            
+            yearlyData.push({
+                year: y,
+                balance: Math.round(balance),
+                contributions: (params.initialCapital || 0) + (params.lumpSum || 0) + annualContribution * y
+            });
+        }
+        allProjections.push(yearlyData);
+    }
+    
+    // Calculate percentiles
+    const summaryData = [];
+    for (let y = 0; y <= years; y++) {
+        const yearValues = allProjections.map(proj => proj[y].balance).sort((a, b) => a - b);
+        const contributions = allProjections[0][y].contributions;
+        summaryData.push({
+            year: y,
+            median: yearValues[Math.floor(iterations * 0.5)],
+            low: yearValues[Math.floor(iterations * 0.1)],
+            high: yearValues[Math.floor(iterations * 0.9)],
+            contributions
+        });
+    }
+    
+    // Calculate expected return and volatility for display
+    const expectedReturn = (exposure.growth / 100 * RETURNS.growth * 100) +
+                           (exposure.defensive / 100 * RETURNS.defensive * 100) +
+                           (exposure.liquidity / 100 * RETURNS.liquidity * 100);
+    const volatility = (exposure.growth / 100 * VOLATILITY.growth * 100) +
+                       (exposure.defensive / 100 * VOLATILITY.defensive * 100) +
+                       (exposure.liquidity / 100 * VOLATILITY.liquidity * 100);
+    
+    return { summaryData, expectedReturn, volatility, allProjections };
+};
+
 // Stage 4: Simulation & Commitment (Twin)
 const StageSimulation = ({ goalContext }) => {
+    const [activeTab, setActiveTab] = useState('projection');
+    
+    // Extract data from goalContext
+    const strategy = goalContext.ai_decision?.strategy_recommendation || {};
+    const exposure = strategy.economic_exposure || { growth: 60, defensive: 30, liquidity: 10 };
+    const glidePath = strategy.glide_path;
+    const contributionStrategy = strategy.contribution_strategy || {};
+    
+    // 优先使用用户选择的完整投资组合（包含产品名称）
+    // 1. goalContext.selectedPortfolio - 用户在第三阶段选择的完整组合
+    // 2. goalContext.product - 兼容旧的存储方式
+    // 3. 从 AI 决策中查找
+    const selectedPortfolio = goalContext.selectedPortfolio || 
+        goalContext.product ||
+        goalContext.ai_decision?.portfolio_options?.find(p => p.option_id === goalContext.selectedPortfolioId) ||
+        goalContext.ai_decision?.portfolio_options?.[0];
+    
+    // Calculate horizon
+    const targetDate = goalContext.due_date ? new Date(goalContext.due_date) : new Date(Date.now() + 10 * 365 * 24 * 60 * 60 * 1000);
+    const horizonYears = Math.max(1, Math.round((targetDate - new Date()) / (365.25 * 24 * 60 * 60 * 1000)));
+    
+    // Simulation parameters
+    const simParams = useMemo(() => ({
+        initialCapital: goalContext.current_amount || 0,
+        lumpSum: contributionStrategy.lump_sum_amount || 0,
+        monthlyContribution: contributionStrategy.monthly_amount || goalContext.contribution?.amount || 0
+    }), [goalContext, contributionStrategy]);
+    
+    // Run simulation
+    const { summaryData, expectedReturn, volatility } = useMemo(() => {
+        return runMonteCarlo(simParams, exposure, horizonYears, glidePath);
+    }, [simParams, exposure, horizonYears, glidePath]);
+    
+    // Success probability calculation
+    const targetAmount = goalContext.target_amount || 100000;
+    const successProbability = useMemo(() => {
+        if (!summaryData.length) return 0;
+        const finalYear = summaryData[summaryData.length - 1];
+        // Simple heuristic based on median vs target
+        if (finalYear.median >= targetAmount) return 85 + Math.random() * 10;
+        const ratio = finalYear.median / targetAmount;
+        return Math.min(95, Math.max(15, ratio * 100));
+    }, [summaryData, targetAmount]);
+    
+    // Portfolio exposure from selected portfolio
+    const portfolioExposure = selectedPortfolio?.calculated_exposure || exposure;
+    
     return (
-        <div className="space-y-6 h-full flex flex-col">
-            <div className="flex-1 bg-slate-50 rounded-3xl p-6 relative overflow-hidden border border-slate-100 flex flex-col justify-center items-center">
-                {/* Mock Twin Projection Chart */}
-                <div className="w-full max-w-md aspect-video relative">
-                    {/* Grid lines */}
-                    <div className="absolute inset-0 grid grid-cols-4 grid-rows-4 gap-0 divide-x divide-y divide-slate-200 opacity-30 border-l border-t border-slate-200">
-                        {[...Array(16)].map((_, i) => <div key={i}></div>)}
+        <div className="space-y-6 flex flex-col min-h-0">
+            {/* Tab Navigation - Aligned with Playground */}
+            <div className="flex gap-1.5 bg-slate-100/80 p-1.5 rounded-2xl w-fit">
+                {[
+                    { id: 'projection', label: 'Wealth Projection', icon: TrendingUp },
+                    { id: 'breakdown', label: 'Contribution Breakdown', icon: BarChart3 },
+                    { id: 'portfolio', label: 'Portfolio Summary', icon: PieChart }
+                ].map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`flex items-center gap-2.5 py-2 px-5 rounded-xl text-xs font-bold transition-all ${
+                            activeTab === tab.id 
+                            ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-slate-200/50' 
+                            : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+                        }`}
+                    >
+                        <tab.icon size={14} strokeWidth={2.5} />
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+            
+            {/* Main Chart Area - Aligned with Playground */}
+            <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm min-h-[440px] flex flex-col">
+                {activeTab === 'projection' && (
+                    <div className="flex flex-col gap-6">
+                        <div className="flex flex-col gap-4 mb-8 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                                    <BarChart3 size={24} strokeWidth={2.5} />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-900 tracking-tight">Twin Projection</h3>
+                                    <p className="text-xs text-slate-500 font-medium italic">Monte Carlo Outcomes (10th - 90th Percentile)</p>
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap gap-3 justify-end">
+                                <MetricBadge label="Horizon" value={`${horizonYears}Y`} />
+                                <MetricBadge label="Exp. Return" value={`${expectedReturn.toFixed(1)}%`} color="text-indigo-600" />
+                                <MetricBadge label="Volatility" value={`${volatility.toFixed(1)}%`} color="text-rose-500" />
+                            </div>
+                        </div>
+                        <div className="h-[360px] w-full">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                <AreaChart data={summaryData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                    <defs>
+                                        <linearGradient id="colorMC" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.15}/>
+                                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                                    <XAxis 
+                                        dataKey="year" 
+                                        axisLine={false} 
+                                        tickLine={false}
+                                        tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
+                                        tickFormatter={(y) => `Y${y}`}
+                                    />
+                                    <YAxis 
+                                        axisLine={false} 
+                                        tickLine={false}
+                                        tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
+                                        tickFormatter={(v) => v >= 1000000 ? `$${(v/1000000).toFixed(1)}M` : `$${(v/1000).toFixed(0)}k`}
+                                        width={60}
+                                    />
+                                    <Tooltip 
+                                        contentStyle={{ borderRadius: '1.2rem', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '12px 20px' }}
+                                        formatter={(value) => [`$${value.toLocaleString()}`, '']}
+                                        labelFormatter={(y) => `Year ${y}`}
+                                    />
+                                    
+                                    {/* Confidence Bands */}
+                                    <Area type="monotone" dataKey="high" stroke="none" fill="#6366f1" fillOpacity={0.05} />
+                                    <Area type="monotone" dataKey="low" stroke="none" fill="#6366f1" fillOpacity={0.1} />
+                                    
+                                    {/* Median Path */}
+                                    <Area type="monotone" dataKey="median" stroke="#6366f1" strokeWidth={4} fill="url(#colorMC)" animationDuration={1500} />
+                                    
+                                    {/* Target Line */}
+                                    <ReferenceLine y={targetAmount} stroke="#cbd5e1" strokeDasharray="8 8" strokeWidth={2} label={{ value: 'Target', position: 'right', fill: '#94a3b8', fontSize: 10, fontWeight: 700 }} />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
                     </div>
-                    
-                    {/* Grey Line (Without Goal) */}
-                    <svg className="absolute inset-0 w-full h-full overflow-visible" preserveAspectRatio="none">
-                        <path d="M0,100 C50,90 150,80 300,40" stroke="#94a3b8" strokeWidth="2" fill="none" strokeDasharray="4 4" />
-                        <text x="280" y="35" className="text-[10px] fill-slate-400 font-bold">Without Goal</text>
-                    </svg>
+                )}
+                
+                {activeTab === 'breakdown' && (
+                    <div className="flex flex-col gap-6">
+                        <div className="flex flex-col gap-4 mb-8 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                                    <BarChart3 size={24} strokeWidth={2.5} />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-900 tracking-tight">Contributions vs Growth</h3>
+                                    <p className="text-xs text-slate-500 font-medium italic">Your investment journey over time</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="h-[360px] w-full">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                <AreaChart data={summaryData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                    <defs>
+                                        <linearGradient id="colorContrib" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.25}/>
+                                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0.05}/>
+                                        </linearGradient>
+                                        <linearGradient id="colorGrowth" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
+                                            <stop offset="95%" stopColor="#10b981" stopOpacity={0.05}/>
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                                    <XAxis dataKey="year" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }} tickFormatter={(y) => `Y${y}`} />
+                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }} tickFormatter={(v) => v >= 1000000 ? `$${(v/1000000).toFixed(1)}M` : `$${(v/1000).toFixed(0)}k`} width={60} />
+                                    <Tooltip contentStyle={{ borderRadius: '1.2rem', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '12px 20px' }} formatter={(value) => [`$${value.toLocaleString()}`, '']} />
+                                    <Area type="monotone" dataKey="contributions" stackId="1" stroke="#6366f1" strokeWidth={2} fill="url(#colorContrib)" name="Your Contributions" />
+                                    <Area type="monotone" dataKey="median" stroke="#10b981" strokeWidth={2} fill="url(#colorGrowth)" name="Total Value (Median)" />
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                )}
+                
+                {activeTab === 'portfolio' && (
+                    <div className="h-full flex flex-col">
+                        <div className="flex flex-col gap-4 mb-6 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
+                                    <PieChart size={24} strokeWidth={2.5} />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-900 tracking-tight">
+                                        {selectedPortfolio?.option_name || 'Portfolio Summary'}
+                                    </h3>
+                                    <p className="text-xs text-slate-500 font-medium italic">{selectedPortfolio?.description || 'Your investment allocation'}</p>
+                                </div>
+                            </div>
+                            {selectedPortfolio?.total_fees_estimate !== undefined && (
+                                <MetricBadge label="Est. Fees" value={`${selectedPortfolio.total_fees_estimate.toFixed(2)}%`} color="text-indigo-600" />
+                            )}
+                        </div>
+                        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-8 items-start min-h-0">
+                            {/* Left: Pie Chart */}
+                            <div className="flex flex-col items-center justify-center relative bg-slate-50/30 rounded-3xl p-6 border border-slate-100/50">
+                                <div className="w-full h-[200px]">
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                        <RechartsPieChart>
+                                            <Pie
+                                                data={[
+                                                    { name: 'Growth', value: portfolioExposure.growth || 0 },
+                                                    { name: 'Defensive', value: portfolioExposure.defensive || 0 },
+                                                    { name: 'Liquidity', value: portfolioExposure.liquidity || 0 }
+                                                ]}
+                                                innerRadius={60}
+                                                outerRadius={85}
+                                                paddingAngle={5}
+                                                dataKey="value"
+                                                strokeWidth={0}
+                                            >
+                                                <Cell fill="#6366f1" />
+                                                <Cell fill="#38bdf8" />
+                                                <Cell fill="#f472b6" />
+                                            </Pie>
+                                            <Tooltip 
+                                                contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.2)' }}
+                                                formatter={(value) => [`${value.toFixed(1)}%`, '']} 
+                                            />
+                                        </RechartsPieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pt-4">
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">Total</span>
+                                    <span className="text-xl font-bold text-slate-900">100%</span>
+                                </div>
+                                
+                                <div className="w-full mt-6 space-y-2.5">
+                                    <LegendRow label="Growth" value={`${(portfolioExposure.growth || 0).toFixed(1)}%`} color="bg-indigo-500" />
+                                    <LegendRow label="Defensive" value={`${(portfolioExposure.defensive || 0).toFixed(1)}%`} color="bg-sky-400" />
+                                    <LegendRow label="Liquidity" value={`${(portfolioExposure.liquidity || 0).toFixed(1)}%`} color="bg-fuchsia-400" />
+                                </div>
+                            </div>
 
-                    {/* Green Line (With Goal) */}
-                    <svg className="absolute inset-0 w-full h-full overflow-visible" preserveAspectRatio="none">
-                         <path d="M0,100 C50,95 150,85 300,20" stroke="#10b981" strokeWidth="3" fill="none" />
-                         <circle cx="300" cy="20" r="4" fill="#10b981" />
-                         <text x="250" y="15" className="text-[10px] fill-green-600 font-bold">Target Reached (2030)</text>
-                    </svg>
+                            {/* Right: Products List */}
+                            <div className="flex flex-col h-full min-h-0">
+                                {selectedPortfolio?.products?.length > 0 && (
+                                    <div className="space-y-3 flex-1 flex flex-col min-h-0">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Underlying Assets</p>
+                                            <span className="text-[10px] font-bold text-slate-300">{selectedPortfolio.products.length} Products</span>
+                                        </div>
+                                        <div className="grid gap-2 overflow-y-auto pr-2 custom-scrollbar flex-1" style={{ maxHeight: '320px' }}>
+                                            {selectedPortfolio.products.map((p, i) => (
+                                                <div key={p.id || p.product_id || i} className="flex justify-between items-center bg-white p-3 rounded-2xl border border-slate-100 hover:border-indigo-100 hover:shadow-sm transition-all group">
+                                                    <div className="flex-1 min-w-0">
+                                                        <span className="text-[10px] text-slate-400 font-medium block mb-0.5">Asset {i+1}</span>
+                                                        <h4 className="text-xs font-bold text-slate-700 truncate group-hover:text-slate-900" title={p.name}>
+                                                            {p.name || p.product_name || `Product ${i+1}`}
+                                                        </h4>
+                                                    </div>
+                                                    <div className="ml-4 flex items-center">
+                                                        <div className="h-8 w-[1px] bg-slate-100 mr-4" />
+                                                        <span className="text-sm font-bold text-indigo-600 bg-indigo-50/50 px-3 py-1 rounded-xl border border-indigo-100/50 shrink-0">
+                                                            {p.weight_pct}%
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+            
+            {/* Bottom Stats Cards - Better Proportions */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="p-6 bg-emerald-50/40 rounded-[2rem] border border-emerald-100/50 shadow-sm flex flex-col justify-between min-h-[140px]">
+                    <div className="flex items-center gap-2.5 mb-4">
+                        <div className="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center">
+                            <Target size={16} className="text-emerald-600" />
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Success Prob.</span>
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                        <p className="text-3xl font-bold text-emerald-700 tracking-tight">{successProbability.toFixed(0)}</p>
+                        <span className="text-lg font-bold text-emerald-600/60">%</span>
+                    </div>
                 </div>
                 
-                <p className="text-center text-sm text-slate-500 mt-6 font-medium">
-                    Projection: You are on track to reach your goal by <span className="text-slate-900 font-bold">Oct 2030</span>.
-                </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
-                    <div className="flex items-center gap-2 mb-1">
-                        <AlertCircle size={16} className="text-red-500" />
-                        <span className="text-xs font-bold text-red-700 uppercase">Impact</span>
+                <div className="p-6 bg-indigo-50/40 rounded-[2rem] border border-indigo-100/50 shadow-sm flex flex-col justify-between min-h-[140px]">
+                    <div className="flex items-center gap-2.5 mb-4">
+                        <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center">
+                            <Wallet size={16} className="text-indigo-600" />
+                        </div>
+                        <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Monthly Sav.</span>
                     </div>
-                    <p className="text-sm text-slate-700 leading-tight">
-                        Adding this goal delays "New Car" by 4 months.
-                    </p>
+                    <div className="flex items-baseline gap-1">
+                        <span className="text-xl font-bold text-indigo-600/60">$</span>
+                        <p className="text-3xl font-bold text-indigo-700 tracking-tight">{(simParams.monthlyContribution || 0).toLocaleString()}</p>
+                    </div>
                 </div>
-                <div className="p-4 bg-green-50 rounded-2xl border border-green-100">
-                     <div className="flex items-center gap-2 mb-1">
-                        <CheckCircle2 size={16} className="text-green-500" />
-                        <span className="text-xs font-bold text-green-700 uppercase">Safety</span>
+                
+                <div className="p-6 bg-amber-50/40 rounded-[2rem] border border-amber-100/50 shadow-sm flex flex-col justify-between min-h-[140px]">
+                    <div className="flex items-center gap-2.5 mb-4">
+                        <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center">
+                            <TrendingDown size={16} className="text-amber-600" />
+                        </div>
+                        <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Glide Path</span>
                     </div>
-                    <p className="text-sm text-slate-700 leading-tight">
-                        Your Emergency Fund remains untouched.
-                    </p>
+                    <p className="text-2xl font-bold text-amber-700 tracking-tight">{glidePath?.enabled ? 'Active' : 'Disabled'}</p>
+                </div>
+            </div>
+            
+            {/* Impact Analysis - More Compact */}
+            <div className="bg-slate-900 p-6 rounded-[2rem] text-white relative overflow-hidden shadow-xl shadow-indigo-500/10">
+                <div className="absolute top-0 right-0 p-6 opacity-5 rotate-12">
+                    <Zap size={80} />
+                </div>
+                <h4 className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <AlertCircle size={12} /> Simulation Insight
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
+                    <div className="space-y-1">
+                        <p className="text-[9px] font-bold text-indigo-200/60 uppercase tracking-wider">Expected Outcome</p>
+                        <p className="text-xl font-bold text-white tracking-tight">
+                            ${(summaryData[summaryData.length - 1]?.median || 0).toLocaleString()}
+                        </p>
+                    </div>
+                    <div className="space-y-1 border-l border-white/10 pl-8">
+                        <p className="text-[9px] font-bold text-rose-300/60 uppercase tracking-wider">Downside (10th)</p>
+                        <p className="text-xl font-bold text-white tracking-tight">
+                            ${(summaryData[summaryData.length - 1]?.low || 0).toLocaleString()}
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>
     );
 };
+
+// Helper Components for Simulation
+const MetricBadge = ({ label, value, color = "text-slate-700" }) => (
+    <div className="px-5 py-2.5 bg-slate-50 rounded-2xl border border-slate-100 text-center min-w-[110px]">
+        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+        <p className={`text-lg font-bold ${color} tracking-tight`}>{value}</p>
+    </div>
+);
+
+const LegendRow = ({ label, value, color }) => (
+    <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+            <div className={`w-2.5 h-2.5 rounded-full ${color}`} />
+            <span className="text-xs font-medium text-slate-600">{label}</span>
+        </div>
+        <span className="text-xs font-bold text-slate-900">{value}</span>
+    </div>
+);
 
 // Typewriter Effect Component - NOW SUPPORTS MARKDOWN
 const TypewriterMessage = ({ text, onComplete, role }) => {
@@ -771,7 +1312,9 @@ const Copilot = ({
 const GoalEnginePage = () => {
   const navigate = useNavigate();
   const [currentStage, setCurrentStage] = useState(0);
-  const [goalContext, setGoalContext] = useState({});
+  const [goalContext, setGoalContext] = useState({
+    session_id: `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  });
   const [submitting, setSubmitting] = useState(false);
   const [messages, setMessages] = useState([]);
   
@@ -1192,8 +1735,22 @@ const GoalEnginePage = () => {
       setSubmitting(true);
       try {
           console.log('Final Goal Context:', goalContext);
+          
+          // Generate a session ID if not present
+          const sessionId = goalContext.session_id || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          
           // Call API to create goal and plan
-          // await createGoal(goalContext); // Needs real implementation import
+          const result = await createGoalWithPlan({
+              ...goalContext,
+              session_id: sessionId,
+              // Include selected portfolio if user made a selection (优先使用完整的选择数据)
+              selectedPortfolio: goalContext.selectedPortfolio || 
+                  goalContext.product ||
+                  goalContext.ai_decision?.portfolio_options?.find(p => p.option_id === goalContext.selectedPortfolioId) ||
+                  goalContext.ai_decision?.portfolio_options?.[0]
+          });
+          
+          console.log('Goal created successfully:', result);
           navigate('/goals');
       } catch (error) {
           console.error('Failed to create goal:', error);
@@ -1357,7 +1914,15 @@ const GoalEnginePage = () => {
                     {currentStage === 2 && (
                          <div className="max-w-3xl mx-auto py-4">
                             <h2 className="text-2xl font-bold text-slate-900 mb-6">Select Investment Vehicle</h2>
-                            <StageProduct goalContext={goalContext} onSelect={(p) => setGoalContext({...goalContext, product: p})} />
+                            <StageProduct 
+                                goalContext={goalContext} 
+                                onSelect={(portfolio) => setGoalContext({
+                                    ...goalContext, 
+                                    product: portfolio,
+                                    selectedPortfolio: portfolio,  // 同时保存到 selectedPortfolio
+                                    selectedPortfolioId: portfolio.option_id
+                                })} 
+                            />
                         </div>
                     )}
                     {currentStage === 3 && (

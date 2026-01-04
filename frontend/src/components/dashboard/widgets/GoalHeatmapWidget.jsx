@@ -81,20 +81,63 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
     const sourceAssets = assets && assets.length > 0 ? assets : mockAssets;
 
     const data = sourceGoals.map((goal, idx) => {
-      // Logic to distribute assets: distribute sourceAssets among sourceGoals
-      const assignedAssets = sourceAssets.slice(idx % sourceAssets.length, (idx % sourceAssets.length) + 2).map(asset => ({
-        name: asset.name,
-        value: asset.value * (0.4 + (idx * 0.1)), // Simulated split
-        category: asset.category,
-        performance: (Math.random() * 12 - 3).toFixed(1)
-      }));
+      // 1. Try to get real assets from the Plan
+      const plan = goal.plan;
+      const portfolio = plan?.selected_portfolio;
+      
+      let assignedAssets = [];
+      
+      if (portfolio?.products?.length > 0) {
+        // Use actual products from the plan
+        assignedAssets = portfolio.products.map(item => {
+          const product = item.product_id || item;
+          if (!product) return null;
+
+          // Calculate estimated absolute value based on target_amount and weight
+          const estimatedValue = (goal.target_amount || 100000) * (item.weight_pct / 100);
+          
+          // Determine dominant asset type for coloring
+          let assetType = 'growth';
+          if (product.allocation) {
+            const { growth = 0, defensive = 0, cash = 0 } = product.allocation;
+            if (defensive > growth && defensive > cash) assetType = 'defensive';
+            else if (cash > growth && cash > defensive) assetType = 'liquidity';
+          }
+
+          // Professional Name Handling: Use full name, truncate will handle UI
+          const displayName = product.name || product.product_name || product.code || `Asset ${item.weight_pct}%`;
+
+          return {
+            name: displayName,
+            value: estimatedValue,
+            category: product.category || 'Fund',
+            type: assetType,
+            // Use real performance data if available (1y return)
+            performance: (product.metrics?.returns?.y1 != null) 
+              ? product.metrics.returns.y1.toFixed(1)
+              : ((product.returns?.['1y'] != null) 
+                  ? product.returns['1y'].toFixed(1) 
+                  : (Math.random() * 8 + 2).toFixed(1)) // Realistic growth fallback
+          };
+        }).filter(Boolean);
+      } else {
+        // Fallback: Logic to distribute sourceAssets among sourceGoals (Mock)
+        assignedAssets = sourceAssets.slice(idx % sourceAssets.length, (idx % sourceAssets.length) + 2).map(asset => ({
+          name: asset.name,
+          value: asset.value * (0.4 + (idx * 0.1)),
+          category: asset.category,
+          type: asset.category?.toLowerCase().includes('cash') ? 'liquidity' : 
+                asset.category?.toLowerCase().includes('bond') ? 'defensive' : 'growth',
+          performance: (Math.random() * 12 - 3).toFixed(1)
+        }));
+      }
 
       // Use target_amount as the weight for proportionality
       const weightValue = goal.target_amount || assignedAssets.reduce((sum, a) => sum + a.value, 0);
 
       return {
         id: goal._id || `g-${idx}`,
-        title: goal.title || goal.goal_name || 'Unnamed Goal',
+        title: goal.goal_name || goal.title || 'Unnamed Goal',
         category: goal.category || 'General',
         totalValue: weightValue,
         items: assignedAssets
@@ -187,18 +230,23 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
                   
                   // Calculate dynamic depth based on performance
                   const absPerf = Math.min(Math.abs(perf), 10);
-                  const intensity = Math.max(0.1, absPerf / 10); // 0.1 to 1.0
+                  const intensity = Math.max(0.2, absPerf / 10); // 0.2 to 1.0 for better visibility
                   
-                  // Using Logo Deep Purple (#4f46e5) and Wealth Center Deep Blue (#2563eb)
-                  // Expanding opacity range to [0.15 - 0.8] for much deeper "peak" colors
-                  const opacity = 0.15 + intensity * 0.65;
-                  const bgColor = isPositive 
-                    ? `rgba(79, 70, 229, ${opacity})` 
-                    : `rgba(37, 99, 235, ${opacity})`;
+                  // Professional Color Strategy: Use Asset Type for Hue, Performance for Opacity
+                  // Growth (Indigo), Defensive (Sky Blue), Liquidity (Fuchsia)
+                  const COLORS = {
+                    growth: [99, 102, 241],    // #6366f1
+                    defensive: [56, 189, 248], // #38bdf8
+                    liquidity: [244, 114, 182] // #f472b6
+                  };
                   
-                  // High contrast white text for deeper blocks, dark slate for lighter ones
-                  const textColor = opacity > 0.45 ? 'text-white' : (isPositive ? 'text-indigo-900' : 'text-blue-900');
-                  const labelColor = opacity > 0.45 ? 'text-white/70' : 'text-slate-500';
+                  const rgb = COLORS[item.type] || COLORS.growth;
+                  const opacity = 0.3 + intensity * 0.6; // [0.3 - 0.9]
+                  const bgColor = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${opacity})`;
+                  
+                  // High contrast text logic
+                  const textColor = opacity > 0.5 ? 'text-white' : 'text-slate-900';
+                  const labelColor = opacity > 0.5 ? 'text-white/70' : 'text-slate-500';
                   
                   // Calculate flex-grow based on asset value relative to other assets in the goal
                   const assetFlex = (item.value / totalAssetVal) * 100;
@@ -230,7 +278,9 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
                       className="relative flex flex-col justify-center items-center text-center transition-all duration-300 hover:brightness-110 cursor-pointer p-1"
                     >
                       {goal.w > 12 && (
-                        <span className={`font-black ${labelColor} uppercase truncate w-full px-1 ${labelSize}`}>{item.name.split(' ')[0]}</span>
+                        <span className={`font-black ${labelColor} uppercase truncate w-full px-1.5 ${labelSize}`} title={item.name}>
+                          {item.name}
+                        </span>
                       )}
                       <span className={`font-black ${textColor} ${perfSize}`}>
                         {isPositive ? '+' : ''}{item.performance}%
@@ -248,16 +298,20 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
       <div className="mt-8 pt-6 border-t border-slate-50 flex flex-wrap items-center justify-between gap-4">
          <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
-               <div className="w-3 h-3 rounded bg-brand-500/10 border border-brand-500/20"></div>
-               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Growth Assets</span>
+               <div className="w-3 h-3 rounded bg-indigo-500"></div>
+               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Growth</span>
             </div>
             <div className="flex items-center gap-2">
-               <div className="w-3 h-3 rounded bg-blue-500/10 border border-blue-500/20"></div>
-               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Defensive Assets</span>
+               <div className="w-3 h-3 rounded bg-sky-400"></div>
+               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Defensive</span>
+            </div>
+            <div className="flex items-center gap-2">
+               <div className="w-3 h-3 rounded bg-fuchsia-400"></div>
+               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Liquidity</span>
             </div>
          </div>
          <div className="flex items-center gap-3 text-slate-400 text-[10px] font-bold italic opacity-60">
-            * Area strictly represents capital allocation ratio within total wealth.
+            * Color indicates asset type; Opacity indicates performance intensity.
          </div>
       </div>
     </div>

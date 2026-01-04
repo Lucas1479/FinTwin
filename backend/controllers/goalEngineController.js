@@ -10,7 +10,57 @@ import User from '../models/userModel.js';
 import Plan from '../models/planModel.js';
 import Goal from '../models/goalModel.js';
 import Product from '../models/productModel.js';
+import GoalDecisionLog from '../models/goalDecisionLogModel.js';
 import productTools from '../services/productTools.js';
+
+/**
+ * Persist decision to database (GoalDecisionLog)
+ * This creates a permanent record for audit trail and analytics
+ */
+const persistDecisionLog = async (params) => {
+    const {
+        userId,
+        goalId,
+        sessionId,
+        stage,
+        stepIndex = 0,
+        agentRole = 'advisor',
+        llmModel,
+        goalSnapshot,
+        formSchema,
+        userInput,
+        aiDecision,
+        userAction = null
+    } = params;
+    
+    try {
+        const log = await GoalDecisionLog.create({
+            user_id: userId,
+            goal_id: goalId || null,
+            session_id: sessionId,
+            stage,
+            step_index: stepIndex,
+            agent_role: agentRole,
+            llm_model: llmModel,
+            goal_snapshot: goalSnapshot,
+            form_schema: formSchema,
+            user_input: userInput,
+            ai_decision: {
+                recommendation: aiDecision?.ai_decision || aiDecision,
+                rationale: aiDecision?.ai_decision?.rationale || aiDecision?.rationale,
+                plausible: true
+            },
+            user_action: userAction,
+            committed_to_goal: false
+        });
+        console.log(`[Goal Engine] ✅ Decision logged to DB: ${log._id}`);
+        return log;
+    } catch (err) {
+        console.error(`[Goal Engine] ⚠️ Failed to persist decision log:`, err.message);
+        // Don't throw - logging failure shouldn't break the main flow
+        return null;
+    }
+};
 
 // ==========================================
 // Goal Engine / LLM decision entrypoint
@@ -339,19 +389,40 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
                   output: result.json
               });
               
-            // Send final complete message
-            res.write(`data: ${JSON.stringify({ 
-                done: true, 
-                json: result.json,
-                toolCalls: result.toolCalls?.map(tc => ({ 
-                    name: tc.name, 
-                    resultCount: tc.result?.portfolio_options?.length 
-                        || tc.result?.summary?.total_candidates 
-                        || tc.result?.optimized_products?.length 
-                        || tc.result?.length 
-                        || 0 
-                }))
-            })}\n\n`);
+              // Persist to database (async, non-blocking)
+              const sessionId = goalContext?.session_id || `session_${Date.now()}`;
+              persistDecisionLog({
+                  userId: req.user._id,
+                  goalId: goalContext?.goal_id || null,
+                  sessionId,
+                  stage,
+                  stepIndex: goalContext?.step_index || 0,
+                  agentRole: 'advisor',
+                  llmModel: process.env.LLM_PROVIDER || 'gemini',
+                  goalSnapshot: {
+                      goal_name: goalContext?.goal_name,
+                      category: goalContext?.category,
+                      target_amount: goalContext?.target_amount,
+                      due_date: goalContext?.due_date
+                  },
+                  formSchema: result.json?.form_schema,
+                  userInput: userInput,
+                  aiDecision: result.json
+              }).catch(err => console.error('[Goal Engine] Decision log persistence error:', err));
+              
+              // Send final complete message
+              res.write(`data: ${JSON.stringify({ 
+                  done: true, 
+                  json: result.json,
+                  toolCalls: result.toolCalls?.map(tc => ({ 
+                      name: tc.name, 
+                      resultCount: tc.result?.portfolio_options?.length 
+                          || tc.result?.summary?.total_candidates 
+                          || tc.result?.optimized_products?.length 
+                          || tc.result?.length 
+                          || 0 
+                  }))
+              })}\n\n`);
               res.end();
               return;
           }
@@ -391,13 +462,34 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
               console.log(`[Goal Engine] Final Parsed JSON:`);
               console.log(JSON.stringify(finalJson, null, 2));
 
-              // Log to memory (instead of DB for now)
+              // Log to memory
               logDecision({
                   stage,
                   category: goalContext?.category,
                   input: userInput,
                   output: finalJson
               });
+              
+              // Persist to database (async, non-blocking)
+              const sessionId = goalContext?.session_id || `session_${Date.now()}`;
+              persistDecisionLog({
+                  userId: req.user._id,
+                  goalId: goalContext?.goal_id || null,
+                  sessionId,
+                  stage,
+                  stepIndex: goalContext?.step_index || 0,
+                  agentRole: 'advisor',
+                  llmModel: process.env.LLM_PROVIDER || 'gemini',
+                  goalSnapshot: {
+                      goal_name: goalContext?.goal_name,
+                      category: goalContext?.category,
+                      target_amount: goalContext?.target_amount,
+                      due_date: goalContext?.due_date
+                  },
+                  formSchema: finalJson?.form_schema,
+                  userInput: userInput,
+                  aiDecision: finalJson
+              }).catch(err => console.error('[Goal Engine] Decision log persistence error:', err));
           } catch (e) {
               console.warn("Could not parse final JSON from stream", e);
               console.log("[Goal Engine] Raw Fallback Text:", fullText.slice(0, 500) + "...");
@@ -448,13 +540,35 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
       // If neither exists, we leave result.text as is (which might be the raw JSON, but better than nothing)
   }
 
-  // Log to memory (instead of DB for now)
+  // Log to memory
   logDecision({
       stage,
       category: goalContext?.category,
       input: userInput,
       output: result.json
   });
+  
+  // Persist to database (async, non-blocking)
+  const sessionId = goalContext?.session_id || `session_${Date.now()}`;
+  persistDecisionLog({
+      userId: req.user._id,
+      goalId: goalContext?.goal_id || null,
+      sessionId,
+      stage,
+      stepIndex: goalContext?.step_index || 0,
+      agentRole: 'advisor',
+      llmModel: process.env.LLM_PROVIDER || 'gemini',
+      goalSnapshot: {
+          goal_name: goalContext?.goal_name,
+          category: goalContext?.category,
+          target_amount: goalContext?.target_amount,
+          due_date: goalContext?.due_date,
+          riskTolerance: goalContext?.riskTolerance
+      },
+      formSchema: result.json?.form_schema,
+      userInput: userInput,
+      aiDecision: result.json
+  }).catch(err => console.error('[Goal Engine] Decision log persistence error:', err));
 
   res.json(result);
 });

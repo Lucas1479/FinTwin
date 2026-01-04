@@ -1,383 +1,522 @@
-import { useNavigate } from 'react-router-dom'; 
 import React, { useState, useEffect } from 'react';
-import { PlusCircle, Play, Copy, Trash2, CheckCircle, AlertTriangle, TrendingUp, Lock } from 'lucide-react';
+import { PlusCircle, Play, Copy, Trash2, Edit2, UserCircle2, Briefcase, TrendingUp, X, ChevronDown, ChevronUp, Wallet, Landmark, TrendingDown, Info, ShieldCheck, Save, BarChart3, Activity, Target } from 'lucide-react';
 
-// ============================================
-// MOCK DATA (Ming's Phase 1)
-// Replace this with Ray's service later
-// ============================================
-const MOCK_REAL_LIFE = {
-  netWorth: 155400,
-  monthlyContribution: 1800,
-  retirementAge: 65,
-  riskProfile: "Balanced",
-  successProbability: 85,
-  goals: [
-    { name: "First Home", target: 120000, current: 108000 },
-    { name: "Retirement", target: 800000, current: 42300 }
-  ]
-};
-
-
-// // It will be:
-// const response = await fetch('/api/playground/real-life');
-// const realLife = await response.json();
-
-const MOCK_SCENARIOS = [
-  {
-    id: "sim_1",
-    name: "Early Retirement Plan",
-    status: "safe",
-    successProbability: 78,
-    monthlyContribution: 2000,
-    retirementAge: 55,
-    created: "2025-12-01"
-  },
-  {
-    id: "sim_2",
-    name: "Buying a Bach",
-    status: "risky",
-    successProbability: 42,
-    monthlyContribution: 1500,
-    retirementAge: 65,
-    created: "2025-12-05"
-  },
-  {
-    id: "sim_3",
-    name: "Aggressive Growth Strategy",
-    status: "safe",
-    successProbability: 92,
-    monthlyContribution: 2500,
-    retirementAge: 60,
-    created: "2025-12-08"
-  }
-];
-
-// ============================================
-// MAIN COMPONENT
-// ============================================
-const ScenarioLobby = () => {
-  const [realLife, setRealLife] = useState(null);
-  const [scenarios, setScenarios] = useState([]);
+const ScenarioLobby = ({ onEditScenario, profiles, setProfiles, scenarios, setScenarios }) => {
   const [loading, setLoading] = useState(true);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
-  const navigate = useNavigate(); 
+  const [expandedProfileId, setExpandedProfileId] = useState(null);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isPathModalOpen, setIsPathModalOpen] = useState(false);
 
-  // ============================================
-  // SIMULATE DATA LOADING (Ming's Mock Pattern)
-  // ============================================
+  // Mock Goals
+  const mockGoals = [
+    { id: 'goal_1', name: 'Dream Home in Auckland', category: 'home', target_amount: 1200000, due_date: '2030-12-31', icon: 'home' },
+    { id: 'goal_2', name: 'Comfortable Retirement', category: 'retirement', target_amount: 2500000, due_date: '2055-01-01', icon: 'retirement' },
+    { id: 'goal_3', name: 'Child Education Fund', category: 'education', target_amount: 150000, due_date: '2040-06-30', icon: 'education' },
+    { id: 'goal_4', name: 'Tesla Model S', category: 'vehicle', target_amount: 140000, due_date: '2026-10-15', icon: 'vehicle' }
+  ];
+
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      try {
-        // Simulate network delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Load mock data
-        setRealLife(MOCK_REAL_LIFE);
-        setScenarios(MOCK_SCENARIOS);
-      } catch (error) {
-        console.error("Error loading scenarios:", error);
-      } finally {
-        setLoading(false);
-      }
+      await new Promise(resolve => setTimeout(resolve, 600));
+      setLoading(false);
     };
-
     loadData();
   }, []);
 
-  // ============================================
-  // ACTIONS (Will be connected to backend later)
-  // ============================================
-  const handleCloneToSimulator = () => {
-    const newScenario = {
-      id: `sim_${Date.now()}`,
-      name: "My New Plan",
-      status: "safe",
-      successProbability: realLife.successProbability,
-      monthlyContribution: realLife.monthlyContribution,
-      retirementAge: realLife.retirementAge,
-      created: new Date().toISOString()
-    };
-    setScenarios([newScenario, ...scenarios]);
-    alert(" Cloned to simulator! Click 'Edit' to customize.");
+  const handleUpdateProfile = (updatedProfile) => {
+    setProfiles(profiles.map(p => p.id === updatedProfile.id ? updatedProfile : p));
   };
 
-  const handleCreateNew = () => {
+  const handleDeleteProfile = (e, id) => {
+    e.stopPropagation();
+    if (profiles.length <= 1) return alert("You must have at least one simulation profile.");
+    setProfiles(profiles.filter(p => p.id !== id));
+  };
+
+  const handleCreateScenario = (data) => {
+    const selectedProfile = profiles.find(p => p.id === data.profileId) || profiles[0];
     const newScenario = {
       id: `sim_${Date.now()}`,
-      name: "Untitled Scenario",
+      name: data.name || "New Scenario",
+      profileId: selectedProfile.id,
+      goalId: data.goalId,
       status: "safe",
       successProbability: 50,
-      monthlyContribution: 1000,
-      retirementAge: 65,
-      created: new Date().toISOString()
+      monthlyContribution: Math.round(selectedProfile.income.annualGross / 60),
+      retirementAge: selectedProfile.identity.retirementAge,
     };
     setScenarios([newScenario, ...scenarios]);
-    alert(" Created new scenario! Click 'Edit' to customize.");
+    setIsPathModalOpen(false);
   };
 
-  const handleEdit = (id) => {
-    navigate(`/playground/scenario/${id}`); //  Navigate to workspace
-  };
-
-
-  const handleDelete = (id) => {
-    setScenarios(scenarios.filter(s => s.id !== id));
-    setShowDeleteConfirm(null);
-    alert("🗑️ Scenario deleted!");
-  };
-
-  const handleApplyToMain = (scenario) => {
-    if (confirm(` This will overwrite your current plan with "${scenario.name}". Continue?`)) {
-      alert(" Applied to main plan! (Backend integration pending)");
-    }
-  };
-
-  // ============================================
-  // LOADING STATE
-  // ============================================
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-slate-600 font-medium">Loading Playground...</p>
-        </div>
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        
-        {/* ============================================ */}
-        {/* HEADER */}
-        {/* ============================================ */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900 mb-2">
-                The Playground 🎮
-              </h1>
-              <p className="text-slate-600">
-                Create parallel universes to test different life decisions
-              </p>
-            </div>
-            <div className="bg-indigo-100 text-indigo-700 px-4 py-2 rounded-lg text-sm font-bold">
-              SIMULATION MODE
-            </div>
-          </div>
-        </div>
-
-        {/* ============================================ */}
-        {/* "REAL LIFE" CARD (Reference) */}
-        {/* ============================================ */}
-        <div className="mb-8">
-          <h2 className="text-lg font-bold text-slate-700 mb-4 flex items-center">
-            <Lock className="w-5 h-5 mr-2" />
-            Your Current Reality
+    <div className="space-y-12 animate-in fade-in duration-700">
+      {/* 1. Full-Width Background Profiles */}
+      <section>
+        <div className="flex items-center justify-between mb-6 px-4">
+          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2.5">
+            <UserCircle2 className="text-indigo-500" size={16} strokeWidth={2.5} />
+            Simulation Backgrounds
           </h2>
-          
-          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-6 text-white shadow-xl border-2 border-slate-700 relative overflow-hidden">
-            {/* Locked Badge */}
-            <div className="absolute top-4 right-4 bg-white/10 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold flex items-center">
-              <Lock className="w-3 h-3 mr-1" />
-              READ ONLY
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              {/* Net Worth */}
-              <div>
-                <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Net Worth</p>
-                <p className="text-3xl font-bold">${realLife.netWorth.toLocaleString()}</p>
-              </div>
-
-              {/* Monthly Savings */}
-              <div>
-                <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Monthly Savings</p>
-                <p className="text-2xl font-bold">${realLife.monthlyContribution}</p>
-                <p className="text-slate-400 text-xs">{realLife.riskProfile} Strategy</p>
-              </div>
-
-              {/* Retirement Age */}
-              <div>
-                <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Target Retirement</p>
-                <p className="text-2xl font-bold">Age {realLife.retirementAge}</p>
-              </div>
-
-              {/* Success Rate */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-slate-400 text-xs uppercase tracking-wider">Success Rate</p>
-                  <span className="text-emerald-400 font-bold text-2xl">{realLife.successProbability}%</span>
-                </div>
-                <div className="w-full bg-slate-700 rounded-full h-2">
-                  <div 
-                    className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
-                    style={{ width: `${realLife.successProbability}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Clone Button */}
-            <div className="mt-6 pt-6 border-t border-slate-700">
-              <button
-                onClick={handleCloneToSimulator}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-105"
-              >
-                <Copy className="w-5 h-5 mr-2" />
-                Clone to Simulator
-              </button>
-            </div>
-          </div>
+          <button
+            onClick={() => setIsProfileModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-95"
+          >
+            <PlusCircle size={14} />
+            New Background
+          </button>
         </div>
 
-        {/* ============================================ */}
-        {/* SIMULATED SCENARIOS GRID */}
-        {/* ============================================ */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-slate-700 flex items-center">
-              <Play className="w-5 h-5 mr-2" />
-              Your Simulations ({scenarios.length})
-            </h2>
-            <button
-              onClick={handleCreateNew}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg flex items-center transition-colors"
-            >
-              <PlusCircle className="w-5 h-5 mr-2" />
-              New Scenario
-            </button>
-          </div>
+        <div className="space-y-3">
+          {profiles.map(profile => (
+            <ProfileRow 
+              key={profile.id} 
+              profile={profile} 
+              isExpanded={expandedProfileId === profile.id}
+              onToggle={() => setExpandedProfileId(expandedProfileId === profile.id ? null : profile.id)}
+              onUpdate={handleUpdateProfile}
+              onDelete={handleDeleteProfile}
+            />
+          ))}
+        </div>
+      </section>
 
-          {/* Scenario Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            
-            {scenarios.map((scenario) => (
-              <div
-                key={scenario.id}
-                className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 hover:shadow-lg transition-all duration-200 hover:border-indigo-300 relative"
-              >
-                {/* Status Badge */}
-                <div className="absolute top-4 right-4">
-                  {scenario.status === 'safe' ? (
-                    <div className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold flex items-center">
-                      <CheckCircle className="w-3 h-3 mr-1" />
-                      SAFE
-                    </div>
-                  ) : (
-                    <div className="bg-rose-100 text-rose-700 px-3 py-1 rounded-full text-xs font-bold flex items-center">
-                      <AlertTriangle className="w-3 h-3 mr-1" />
-                      RISKY
+      {/* 2. Scenarios List */}
+      <section>
+        <div className="flex items-center justify-between mb-6 px-4">
+          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2.5">
+            <Play className="text-indigo-500" size={16} strokeWidth={2.5} />
+            Saved Life Paths
+          </h2>
+          <button
+            onClick={() => setIsPathModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+          >
+            <PlusCircle size={14} />
+            Run New Path
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {scenarios.map(scenario => (
+            <div key={scenario.id} className="bg-white p-7 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 transition-all group relative overflow-hidden">
+              <div className="flex justify-between items-start mb-6">
+                <div className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                  scenario.status === 'safe' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                }`}>
+                  {scenario.status}
+                </div>
+                <div className="flex flex-col items-end gap-1.5">
+                  <div className="text-[10px] font-semibold text-slate-400 bg-slate-50 px-3 py-1 rounded-xl border border-slate-100">
+                    Background: <span className="text-indigo-600 font-bold">{profiles.find(p => p.id === scenario.profileId)?.name || 'Unknown'}</span>
+                  </div>
+                  {scenario.goalId && (
+                    <div className="text-[10px] font-semibold text-slate-400 bg-indigo-50/50 px-3 py-1 rounded-xl border border-indigo-100">
+                      Goal: <span className="text-indigo-600 font-bold">{mockGoals.find(g => g.id === scenario.goalId)?.name || 'Unknown'}</span>
                     </div>
                   )}
                 </div>
-
-                {/* Title */}
-                <h3 className="text-lg font-bold text-slate-900 mb-3 pr-20">
-                  {scenario.name}
-                </h3>
-
-                {/* Stats */}
-                <div className="space-y-3 mb-6">
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-600 text-sm">Success Rate</span>
-                    <span className={`font-bold ${scenario.successProbability >= 70 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {scenario.successProbability}%
-                    </span>
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 mb-6 group-hover:text-indigo-600 transition-colors leading-tight">{scenario.name}</h3>
+              <div className="space-y-4 mb-8">
+                <div>
+                  <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                    <span>Survival Chance</span>
+                    <span className={scenario.successProbability >= 70 ? 'text-emerald-600' : 'text-rose-600'}>{scenario.successProbability}%</span>
                   </div>
-                  <div className="w-full bg-slate-100 rounded-full h-2">
-                    <div 
-                      className={`h-2 rounded-full transition-all ${scenario.successProbability >= 70 ? 'bg-emerald-500' : 'bg-rose-500'}`}
-                      style={{ width: `${scenario.successProbability}%` }}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <div>
-                      <p className="text-slate-500 text-xs">Savings/Mo</p>
-                      <p className="font-bold text-slate-900">${scenario.monthlyContribution}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500 text-xs">Retirement</p>
-                      <p className="font-bold text-slate-900">Age {scenario.retirementAge}</p>
-                    </div>
+                  <div className="w-full bg-slate-50 h-2 rounded-full overflow-hidden p-0.5 border border-slate-100 shadow-inner">
+                    <div className={`h-full rounded-full transition-all duration-1000 ${scenario.successProbability >= 70 ? 'bg-emerald-500' : 'bg-rose-500'}`} style={{ width: `${scenario.successProbability}%` }} />
                   </div>
                 </div>
-
-                {/* Actions */}
-                <div className="space-y-2">
-                  <button
-                    onClick={() => handleEdit(scenario.id)}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
-                  >
-                    Edit Scenario
-                  </button>
-                  
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleApplyToMain(scenario)}
-                      className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold py-2 px-4 rounded-lg transition-colors text-sm flex items-center justify-center"
-                    >
-                      <TrendingUp className="w-4 h-4 mr-1" />
-                      Apply
-                    </button>
-                    <button
-                      onClick={() => setShowDeleteConfirm(scenario.id)}
-                      className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold py-2 px-4 rounded-lg transition-colors text-sm flex items-center justify-center"
-                    >
-                      <Trash2 className="w-4 h-4 mr-1" />
-                      Delete
-                    </button>
-                  </div>
-                </div>
-
-                {/* Delete Confirmation */}
-                {showDeleteConfirm === scenario.id && (
-                  <div className="absolute inset-0 bg-slate-900/95 rounded-2xl flex items-center justify-center p-6">
-                    <div className="text-center">
-                      <p className="text-white font-bold mb-4">Delete this scenario?</p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleDelete(scenario.id)}
-                          className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold py-2 px-4 rounded-lg"
-                        >
-                          Yes, Delete
-                        </button>
-                        <button
-                          onClick={() => setShowDeleteConfirm(null)}
-                          className="flex-1 bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded-lg"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
-            ))}
+              <button
+                onClick={() => onEditScenario(scenario.id)}
+                className="w-full bg-slate-900 text-white font-bold uppercase tracking-widest text-[11px] py-4 rounded-2xl hover:bg-indigo-600 transition-all flex items-center justify-center gap-3 group/btn"
+              >
+                Enter Decision Space
+                <TrendingUp size={16} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
 
-            {/* Empty State */}
-            {scenarios.length === 0 && (
-              <div className="col-span-full text-center py-16">
-                <Play className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-slate-400 mb-2">No simulations yet</h3>
-                <p className="text-slate-500 mb-6">Clone your current plan or create a new scenario</p>
-                <button
-                  onClick={handleCreateNew}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg inline-flex items-center"
-                >
-                  <PlusCircle className="w-5 h-5 mr-2" />
-                  Create First Scenario
-                </button>
-              </div>
+      {isProfileModalOpen && (
+        <CreateProfileModal 
+          onClose={() => setIsProfileModalOpen(false)} 
+          onSave={(newProfile) => {
+            setProfiles([...profiles, { ...newProfile, id: `prof_${Date.now()}` }]);
+            setIsProfileModalOpen(false);
+          }}
+        />
+      )}
+
+      {isPathModalOpen && (
+        <CreatePathModal
+          profiles={profiles}
+          goals={mockGoals}
+          onClose={() => setIsPathModalOpen(false)}
+          onSave={handleCreateScenario}
+        />
+      )}
+    </div>
+  );
+};
+
+// --- Sub-Components ---
+
+const ProfileRow = ({ profile, isExpanded, onToggle, onUpdate, onDelete }) => {
+  const [activeTab, setActiveTab] = useState('identity'); 
+  const [localProfile, setLocalProfile] = useState(profile);
+
+  useEffect(() => {
+    setLocalProfile(profile);
+  }, [profile]);
+
+  const totalAssets = (localProfile.financials.cash || 0) + 
+                     (localProfile.financials.investments || 0) + 
+                     (localProfile.financials.property || 0) + 
+                     (localProfile.financials.pension || 0);
+  const totalLiabilities = (localProfile.financials.mortgage || 0) + 
+                          (localProfile.financials.otherDebt || 0);
+  const netWorth = totalAssets - totalLiabilities;
+  const debtRatio = (totalLiabilities / Math.max(totalAssets, 1)) * 100;
+
+  const handleFieldChange = (section, field, value) => {
+    setLocalProfile(prev => ({
+      ...prev,
+      [section]: { ...prev[section], [field]: value }
+    }));
+  };
+
+  return (
+    <div className={`bg-white rounded-[2.5rem] border transition-all duration-500 ${isExpanded ? 'border-indigo-200 shadow-xl shadow-indigo-500/10 ring-1 ring-indigo-50/50' : 'border-slate-100 shadow-sm hover:border-slate-200'}`}>
+      <div className="px-10 py-6 flex items-center justify-between cursor-pointer group" onClick={onToggle}>
+        <div className="flex items-center gap-8 flex-1">
+          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-300 ${isExpanded ? 'bg-indigo-600 text-white scale-110 rotate-3' : 'bg-slate-50 text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600'}`}>
+            <UserCircle2 size={22} />
+          </div>
+          <div className={`grid flex-1 gap-x-12 gap-y-6 transition-all duration-500 ${isExpanded ? 'grid-cols-5' : 'grid-cols-4'}`}>
+            <Stat label="Background Name" value={profile.name} isPrimary />
+            <Stat label="Net Worth Base" value={`$${netWorth.toLocaleString()}`} />
+            <Stat label="Age / Ret." value={`${profile.identity.age} / ${profile.identity.retirementAge}`} />
+            <Stat label="Annual Income" value={`$${profile.income.annualGross.toLocaleString()}`} isIndigo />
+            
+            {/* Extended fields shown only when expanded */}
+            {isExpanded && (
+              <>
+                <Stat label="Risk Profile" value={profile.preferences.riskTolerance} />
+                <Stat label="Cash Reserves" value={`$${localProfile.financials.cash.toLocaleString()}`} />
+                <Stat label="Debt Ratio" value={`${debtRatio.toFixed(1)}%`} isRose={debtRatio > 40} />
+                <Stat label="Growth Exp." value={`${profile.income.growthRate}%`} />
+                <Stat label="Max Drawdown" value={`${profile.preferences.maxDrawdown || 20}%`} />
+              </>
             )}
           </div>
         </div>
+        <div className="flex items-center gap-4 self-start mt-1">
+          <button onClick={(e) => onDelete(e, profile.id)} className="p-2 text-slate-200 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${isExpanded ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'bg-slate-50 text-slate-300'}`}>
+            {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+          </div>
+        </div>
+      </div>
 
+      {isExpanded && (
+        <div className="px-10 pb-10 animate-in slide-in-from-top-4 duration-500">
+          <div className="border-t border-slate-50 pt-8 mt-2">
+            <div className="flex gap-2 mb-10 bg-slate-50/50 p-1.5 rounded-[1.5rem] w-fit border border-slate-100">
+              <TabBtn id="identity" label="Identity" active={activeTab === 'identity'} onClick={setActiveTab} icon={<Info size={14} />} />
+              <TabBtn id="financials" label="Balance Sheet" active={activeTab === 'financials'} onClick={setActiveTab} icon={<Wallet size={14} />} />
+              <TabBtn id="income" label="Earnings" active={activeTab === 'income'} onClick={setActiveTab} icon={<Landmark size={14} />} />
+              <TabBtn id="preferences" label="Risk Profile" active={activeTab === 'preferences'} onClick={setActiveTab} icon={<ShieldCheck size={14} />} />
+            </div>
+
+            <div className="grid grid-cols-12 gap-10">
+              <div className="col-span-12 lg:col-span-8 space-y-6">
+                {activeTab === 'identity' && (
+                  <div className="grid grid-cols-2 gap-x-10 gap-y-8">
+                    <Field label="Full Name" value={localProfile.name} icon={<UserCircle2 size={16}/>} onChange={(v) => setLocalProfile({...localProfile, name: v})} />
+                    <Field label="Current Age" value={localProfile.identity.age} type="number" min={18} max={80} step={1} icon={<Info size={16}/>} onChange={(v) => handleFieldChange('identity', 'age', v)} />
+                    <Field label="Target Retirement" value={localProfile.identity.retirementAge} type="number" min={40} max={85} step={1} icon={<TrendingUp size={16}/>} onChange={(v) => handleFieldChange('identity', 'retirementAge', v)} />
+                    <Field label="Life Expectancy" value={localProfile.identity.lifeExpectancy} type="number" min={70} max={110} step={1} icon={<Play size={16}/>} onChange={(v) => handleFieldChange('identity', 'lifeExpectancy', v)} />
+                  </div>
+                )}
+                {activeTab === 'financials' && (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-x-10 gap-y-8">
+                      <Field label="Liquid Cash ($)" value={localProfile.financials.cash} type="number" max={2000000} step={1000} icon={<Wallet size={16}/>} onChange={(v) => handleFieldChange('financials', 'cash', v)} />
+                      <Field label="Brokerage Portfolio ($)" value={localProfile.financials.investments} type="number" max={5000000} step={5000} icon={<TrendingUp size={16}/>} onChange={(v) => handleFieldChange('financials', 'investments', v)} />
+                      <Field label="Real Estate Equity ($)" value={localProfile.financials.property} type="number" max={10000000} step={10000} icon={<Landmark size={16}/>} onChange={(v) => handleFieldChange('financials', 'property', v)} />
+                      <Field label="Pension Assets ($)" value={localProfile.financials.pension} type="number" max={2000000} step={1000} icon={<Briefcase size={16}/>} onChange={(v) => handleFieldChange('financials', 'pension', v)} />
+                    </div>
+                    <div className="pt-8 border-t border-slate-100 grid grid-cols-2 gap-x-10 gap-y-8">
+                      <Field label="Mortgage Balance ($)" value={localProfile.financials.mortgage} type="number" max={5000000} step={10000} color="rose" icon={<TrendingDown size={16}/>} onChange={(v) => handleFieldChange('financials', 'mortgage', v)} />
+                      <Field label="Consumer Debt ($)" value={localProfile.financials.otherDebt} type="number" max={500000} step={1000} color="rose" icon={<Trash2 size={16}/>} onChange={(v) => handleFieldChange('financials', 'otherDebt', v)} />
+                    </div>
+                  </div>
+                )}
+                {activeTab === 'income' && (
+                  <div className="grid grid-cols-2 gap-x-10 gap-y-8">
+                    <Field label="Gross Annual Salary ($)" value={localProfile.income.annualGross} type="number" max={1000000} step={1000} icon={<Landmark size={16}/>} onChange={(v) => handleFieldChange('income', 'annualGross', v)} />
+                    <Field label="Career Growth Rate (%)" value={localProfile.income.growthRate} type="number" min={0} max={20} step={0.5} icon={<TrendingUp size={16}/>} onChange={(v) => handleFieldChange('income', 'growthRate', v)} />
+                  </div>
+                )}
+                {activeTab === 'preferences' && (
+                  <div className="grid grid-cols-2 gap-x-10 gap-y-8">
+                    <div className="space-y-4">
+                      <label className="text-xs font-semibold text-slate-700 ml-1 flex items-center gap-2">
+                        <ShieldCheck size={14} className="text-indigo-400" strokeWidth={2} />
+                        Risk Appetite
+                      </label>
+                      <select 
+                        value={localProfile.preferences.riskTolerance}
+                        onChange={(e) => handleFieldChange('preferences', 'riskTolerance', e.target.value)}
+                        className="w-full px-6 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-900 focus:ring-4 focus:ring-indigo-50 focus:bg-white outline-none appearance-none cursor-pointer transition-all text-sm"
+                      >
+                        <option value="Conservative">Conservative</option>
+                        <option value="Balanced">Balanced</option>
+                        <option value="Growth">Growth</option>
+                        <option value="Aggressive">Aggressive</option>
+                      </select>
+                    </div>
+                    <Field label="Volatility Limit (%)" value={localProfile.preferences.volatilityLimit} type="number" min={0} max={50} step={1} icon={<TrendingUp size={16}/>} onChange={(v) => handleFieldChange('preferences', 'volatilityLimit', v)} />
+                    <Field label="Max Drawdown Limit (%)" value={localProfile.preferences.maxDrawdown || 20} type="number" min={0} max={100} step={1} icon={<TrendingDown size={16}/>} onChange={(v) => handleFieldChange('preferences', 'maxDrawdown', v)} />
+                  </div>
+                )}
+              </div>
+
+              {/* Minimalist Background Health Sidebar */}
+              <div className="col-span-12 lg:col-span-4">
+                <div className="bg-slate-50 rounded-[2.5rem] p-8 border border-slate-100 h-full flex flex-col">
+                  <h5 className="font-bold text-xs text-slate-900 uppercase tracking-wider mb-10 flex items-center gap-3">
+                    <Activity size={16} className="text-indigo-500" strokeWidth={2.5} />
+                    Background Health
+                  </h5>
+                  
+                  <div className="space-y-10 flex-1">
+                    <Metric 
+                      label="Liquidity Ratio" 
+                      percentage={((localProfile.financials.cash / Math.max(totalAssets, 1)) * 100)} 
+                      colorClass="bg-indigo-500" 
+                    />
+                    <Metric 
+                      label="Debt-to-Asset" 
+                      percentage={debtRatio} 
+                      colorClass={debtRatio > 40 ? 'bg-rose-400' : 'bg-sky-400'} 
+                    />
+                    <Metric 
+                      label="Risk Exposure" 
+                      percentage={(( (localProfile.financials.investments + localProfile.financials.pension) / Math.max(totalAssets, 1)) * 100)} 
+                      colorClass="bg-fuchsia-500" 
+                    />
+                  </div>
+
+                  <div className="mt-12">
+                    <button 
+                      onClick={() => onUpdate(localProfile)} 
+                      className="w-full bg-slate-900 text-white font-bold uppercase tracking-widest text-[11px] py-5 rounded-[1.5rem] hover:bg-indigo-600 shadow-xl shadow-slate-200 transition-all flex items-center justify-center gap-3"
+                    >
+                      <Save size={16} /> Commit Changes
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- Helpers ---
+
+const Metric = ({ label, percentage, colorClass }) => (
+  <div className="space-y-2.5">
+    <div className="flex justify-between items-end px-0.5">
+      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{label}</span>
+      <span className="text-xs font-bold text-slate-900">{percentage.toFixed(1)}%</span>
+    </div>
+    <div className="w-full bg-slate-200/50 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-100 shadow-inner">
+      <div 
+        className={`h-full rounded-full ${colorClass} transition-all duration-1000 shadow-sm`} 
+        style={{ width: `${Math.min(percentage, 100)}%` }} 
+      />
+    </div>
+  </div>
+);
+
+const Stat = ({ label, value, isPrimary, isIndigo, isRose }) => (
+  <div className="flex flex-col min-w-0">
+    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">{label}</p>
+    <h4 className={`font-bold text-sm truncate ${
+      isPrimary ? 'text-slate-900' : 
+      isRose ? 'text-rose-600' : 
+      isIndigo ? 'text-indigo-600' :
+      'text-slate-700'
+    }`}>{value}</h4>
+  </div>
+);
+
+const TabBtn = ({ id, label, active, onClick, icon }) => (
+  <button onClick={() => onClick(id)} className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${active ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-slate-100' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}>
+    {React.cloneElement(icon, { size: 14, strokeWidth: 2.5 })} {label}
+  </button>
+);
+
+const Field = ({ label, value, type = "text", onChange, color = "indigo", icon, min = 0, max = 1000000, step = 100 }) => (
+  <div className="space-y-2">
+    <div className="flex justify-between items-center px-1">
+      <label className="text-xs font-semibold text-slate-700 flex items-center gap-2">
+        {icon && React.cloneElement(icon, { size: 14, className: `text-slate-400`, strokeWidth: 2 })}
+        {label}
+      </label>
+      {type === "number" && (
+        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
+          {label.includes('%') ? `${value}%` : `$${value.toLocaleString()}`}
+        </span>
+      )}
+    </div>
+    
+    <div className="space-y-2">
+      {type === "number" ? (
+        <>
+          <input 
+            type="range" 
+            min={min}
+            max={max}
+            step={step}
+            value={value}
+            onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+            className={`w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600`}
+          />
+          <div className="relative group/field">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 w-1 h-4 bg-indigo-500 rounded-full opacity-0 group-hover/field:opacity-100 transition-opacity" />
+            <input 
+              type="number" 
+              value={value} 
+              onChange={(e) => onChange(parseFloat(e.target.value) || 0)} 
+              className={`w-full pl-8 pr-5 py-2.5 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-900 focus:ring-4 focus:ring-indigo-50/50 focus:bg-white outline-none transition-all text-sm tracking-tight shadow-sm`} 
+            />
+          </div>
+        </>
+      ) : (
+        <input 
+          type={type} 
+          value={value} 
+          onChange={(e) => onChange(e.target.value)} 
+          className={`w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-900 focus:ring-4 focus:ring-indigo-50/50 focus:bg-white outline-none transition-all text-sm tracking-tight shadow-sm`} 
+        />
+      )}
+    </div>
+  </div>
+);
+
+const CreateProfileModal = ({ onClose, onSave }) => {
+  const [name, setName] = useState('');
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 duration-300">
+        <div className="p-12 text-center">
+          <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-[2rem] flex items-center justify-center mx-auto mb-8 rotate-3 shadow-inner"><UserCircle2 size={40} /></div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-3 tracking-tight">Init Background</h2>
+          <p className="text-slate-500 font-medium mb-10 leading-relaxed px-6">Create a distinct simulation profile to test your financial resilience.</p>
+          <input type="text" placeholder="Identity Name (e.g. Dream Self)" value={name} onChange={(e) => setName(e.target.value)} className="w-full px-8 py-5 bg-slate-50 border border-slate-100 rounded-[2rem] font-bold text-slate-900 focus:ring-4 focus:ring-indigo-50 outline-none mb-10 text-center text-lg" />
+          <div className="flex gap-4">
+            <button onClick={onClose} className="flex-1 py-5 bg-slate-100 text-slate-500 font-bold uppercase tracking-widest text-[11px] rounded-2xl hover:bg-slate-200 transition-all">Abort</button>
+            <button disabled={!name} onClick={() => onSave({ name, identity: { age: 30, retirementAge: 65, lifeExpectancy: 90 }, financials: { cash: 50000, investments: 100000, property: 0, pension: 20000, mortgage: 0, otherDebt: 0 }, income: { annualGross: 80000, growthRate: 3 }, preferences: { riskTolerance: 'Balanced', volatilityLimit: 15 } })} className="flex-1 py-5 bg-indigo-600 text-white font-bold uppercase tracking-widest text-[11px] rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all disabled:opacity-50">Confirm</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CreatePathModal = ({ profiles, goals, onClose, onSave }) => {
+  const [name, setName] = useState('');
+  const [profileId, setProfileId] = useState(profiles[0]?.id);
+  const [goalId, setGoalId] = useState(goals[0]?.id);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="bg-white w-full max-w-xl rounded-[3rem] shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 duration-300">
+        <div className="p-10">
+          <div className="flex items-center gap-6 mb-8">
+            <div className="w-16 h-16 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-indigo-100">
+              <Play size={32} fill="currentColor" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Run New Path</h2>
+              <p className="text-slate-500 text-sm font-medium">Connect a background to a goal to start simulating.</p>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <label className="text-[10px] font-bold text-slate-900 uppercase tracking-widest ml-1 flex items-center gap-2">
+                <Edit2 size={12} className="text-indigo-400" /> Path Name
+              </label>
+              <input 
+                type="text" 
+                placeholder="e.g. Aggressive Growth Plan" 
+                value={name} 
+                onChange={(e) => setName(e.target.value)} 
+                className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-900 focus:ring-4 focus:ring-indigo-50 outline-none" 
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <label className="text-[10px] font-bold text-slate-900 uppercase tracking-widest ml-1 flex items-center gap-2">
+                  <UserCircle2 size={12} className="text-indigo-400" /> Select Background
+                </label>
+                <select 
+                  value={profileId}
+                  onChange={(e) => setProfileId(e.target.value)}
+                  className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-900 focus:ring-4 focus:ring-indigo-50 outline-none appearance-none"
+                >
+                  {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-[10px] font-bold text-slate-900 uppercase tracking-widest ml-1 flex items-center gap-2">
+                  <Target size={12} className="text-indigo-400" /> Select Goal
+                </label>
+                <select 
+                  value={goalId}
+                  onChange={(e) => setGoalId(e.target.value)}
+                  className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-900 focus:ring-4 focus:ring-indigo-50 outline-none appearance-none"
+                >
+                  {goals.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-4 mt-10">
+            <button onClick={onClose} className="flex-1 py-4 bg-slate-100 text-slate-500 font-bold uppercase tracking-widest text-[11px] rounded-2xl hover:bg-slate-200 transition-all">Cancel</button>
+            <button 
+              disabled={!name}
+              onClick={() => onSave({ name, profileId, goalId })} 
+              className="flex-1 py-4 bg-indigo-600 text-white font-bold uppercase tracking-widest text-[11px] rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all disabled:opacity-50"
+            >
+              Start Simulation
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

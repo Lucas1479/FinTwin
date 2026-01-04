@@ -5,7 +5,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis
 // ============================================
 // CALCULATOR MODAL COMPONENT
 // ============================================
-const CalculatorModal = ({ isOpen, onClose, calculatorType, onAddToScenario }) => {
+export const CalculatorModal = ({ isOpen, onClose, calculatorType, onAddToScenario }) => {
   if (!isOpen) return null;
 
   return (

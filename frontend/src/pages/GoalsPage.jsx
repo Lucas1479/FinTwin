@@ -56,8 +56,8 @@ const GoalsPage = () => {
 
   // Filter state
   const [filters, setFilters] = useState({
-    dateRange: 'this_year', // 'this_year', 'next_year', 'all'
-    sortBy: 'name_asc',     // 'name_asc', 'name_desc', 'amount_desc', 'date_asc'
+    dateRange: 'all',       // Default to 'all' so users see their data across years
+    sortBy: 'date_asc',     // Default to 'Soonest' to see what's due next or overdue
     status: 'all',          // 'all', 'in_progress', 'not_started'
   });
 
@@ -91,7 +91,11 @@ const GoalsPage = () => {
       result = result.filter(g => {
         if (!g.target_date && !g.due_date) return false;
         const d = new Date(g.target_date || g.due_date);
-        return d.getFullYear() === currentYear;
+        const isThisYear = d.getFullYear() === currentYear;
+        // Natural logic: Also include overdue goals that are not yet finished
+        const isOverdueActive = d.getTime() < now.getTime() && 
+                               (g.status !== 'Finished' && g.status !== 'completed');
+        return isThisYear || isOverdueActive;
       });
     } else if (filters.dateRange === 'next_year') {
       result = result.filter(g => {
@@ -135,10 +139,10 @@ const GoalsPage = () => {
   }, [goals, filters]);
 
   const handleReset = () => {
-    setFilters({ dateRange: 'all', sortBy: 'name_asc', status: 'all' });
+    setFilters({ dateRange: 'all', sortBy: 'date_asc', status: 'all' });
   };
 
-  const hasActiveFilters = filters.dateRange !== 'all' || filters.status !== 'all' || filters.sortBy !== 'name_asc';
+  const hasActiveFilters = filters.dateRange !== 'all' || filters.status !== 'all' || filters.sortBy !== 'date_asc';
 
   const handleGoalClick = (goal) => {
     setSelectedGoal(goal);
