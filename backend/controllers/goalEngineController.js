@@ -522,14 +522,14 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
   }
 
   // Overlay our static schema if it exists (it's better than what AI generates)
-  if (injectedSchema && result.json) {
+  if (injectedSchema && result?.json) {
       result.json.form_schema = injectedSchema;
   }
 
   // --- CLEANUP: Ensure 'text' is user-friendly, not raw JSON ---
   // If the LLM returned structured data, we want the chat bubble to show the 'rationale' or 'text' field,
   // not the entire JSON string.
-  if (result.json && result.json.ai_decision) {
+  if (result?.json && result.json.ai_decision) {
       const decision = result.json.ai_decision;
       // Prefer explicit 'text' for chat, then 'rationale', then fallback to existing result.text
       if (decision.text) {
@@ -541,34 +541,43 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
   }
 
   // Log to memory
-  logDecision({
-      stage,
-      category: goalContext?.category,
-      input: userInput,
-      output: result.json
-  });
+  if (result) {
+    logDecision({
+        stage,
+        category: goalContext?.category,
+        input: userInput,
+        output: result.json
+    });
+  }
   
   // Persist to database (async, non-blocking)
   const sessionId = goalContext?.session_id || `session_${Date.now()}`;
-  persistDecisionLog({
-      userId: req.user._id,
-      goalId: goalContext?.goal_id || null,
-      sessionId,
-      stage,
-      stepIndex: goalContext?.step_index || 0,
-      agentRole: 'advisor',
-      llmModel: process.env.LLM_PROVIDER || 'gemini',
-      goalSnapshot: {
-          goal_name: goalContext?.goal_name,
-          category: goalContext?.category,
-          target_amount: goalContext?.target_amount,
-          due_date: goalContext?.due_date,
-          riskTolerance: goalContext?.riskTolerance
-      },
-      formSchema: result.json?.form_schema,
-      userInput: userInput,
-      aiDecision: result.json
-  }).catch(err => console.error('[Goal Engine] Decision log persistence error:', err));
+  if (result) {
+    persistDecisionLog({
+        userId: req.user._id,
+        goalId: goalContext?.goal_id || null,
+        sessionId,
+        stage,
+        stepIndex: goalContext?.step_index || 0,
+        agentRole: 'advisor',
+        llmModel: process.env.LLM_PROVIDER || 'gemini',
+        goalSnapshot: {
+            goal_name: goalContext?.goal_name,
+            category: goalContext?.category,
+            target_amount: goalContext?.target_amount,
+            due_date: goalContext?.due_date,
+            riskTolerance: goalContext?.riskTolerance
+        },
+        formSchema: result.json?.form_schema,
+        userInput: userInput,
+        aiDecision: result.json
+    }).catch(err => console.error('[Goal Engine] Decision log persistence error:', err));
+  }
 
-  res.json(result);
+  if (result) {
+    res.json(result);
+  } else {
+    // If we reach here and result is still undefined, something went wrong but wasn't caught
+    res.status(500).json({ message: 'Failed to generate goal decision' });
+  }
 });

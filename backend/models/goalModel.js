@@ -45,13 +45,6 @@ const EmergencyDetailSchema = new mongoose.Schema({
   is_locked: { type: Boolean, default: false } // If true, AI warns against withdrawing
 }, { _id: false });
 
-const DebtDetailSchema = new mongoose.Schema({
-  lender_name: { type: String, required: true },
-  interest_rate: { type: Number, required: true },
-  minimum_monthly_payment: { type: Number },
-  debt_type: { type: String, enum: ['credit_card', 'student_loan', 'personal_loan', 'mortgage'] }
-}, { _id: false });
-
 const EducationDetailSchema = new mongoose.Schema({
   start_year: { type: Number, required: true },
   duration_years: { type: Number, required: true, default: 3 },
@@ -89,7 +82,6 @@ const DETAIL_SCHEMAS = {
   'retirement': RetirementDetailSchema,
   'home': HomeDetailSchema,
   'emergency': EmergencyDetailSchema,
-  'debt': DebtDetailSchema,
   'education': EducationDetailSchema,
   'wealth': WealthDetailSchema,
   'travel': TravelDetailSchema,
@@ -130,7 +122,6 @@ const GoalSchema = new mongoose.Schema({
             'retirement',    // Retirement (Strategy: Ultra-long term, KiwiSaver lock-in, Inflation-resistant)
             'home',          // Home Ownership (Strategy: Large capital, First Home Grant/Subsidy, Medium-to-long term)
             'emergency',     // Emergency Fund (Strategy: Extremely high liquidity, Zero risk, AI auto-calculates amount)
-            'debt',          // Debt Repayment (Strategy: Guaranteed return, Highest priority)
 
             // --- 2. Growth / Value-Add  ---
             'education',     // Education (Strategy: Tuition/School district housing, Rigid demand/Guaranteed payment)

@@ -3,32 +3,32 @@
 @plugin "@tailwindcss/typography";
 
 @theme {
-  /* Brand Colors - Desaturated Purple */
-  --color-brand-50: #f0f1fa;
-  --color-brand-100: #e2e4f6;
-  --color-brand-200: #c6c9ed;
-  --color-brand-300: #a9ade5;
-  --color-brand-400: #8d92dc;
-  --color-brand-500: #7077d4; /* Base Color - Lower Saturation */
-  --color-brand-600: #5a5faa;
-  --color-brand-700: #434780;
-  --color-brand-800: #2d3055;
-  --color-brand-900: #16182b;
+  /* Brand Colors - Deep Professional Indigo/Purple Palette */
+  --color-brand-50: #f5f3ff;
+  --color-brand-100: #ede9fe;
+  --color-brand-200: #ddd6fe;
+  --color-brand-300: #c4b5fd;
+  --color-brand-400: #a78bfa;
+  --color-brand-500: #818cf8; 
+  --color-brand-600: #4f46e5; /* Main Brand Primary */
+  --color-brand-700: #4338ca;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
   
-  --color-primary: #7077d4;
-  --color-primary-hover: #5a5faa;
-  --color-primary-light: #e2e4f6;
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-primary-light: #ede9fe;
 
   /* Radius */
-  --radius-box: 2rem; /* 32px for extra rounded feel */
+  --radius-box: 2.25rem; /* Slightly more rounded for high-end feel */
   --radius-btn: 9999px;
-  --radius-input: 1.25rem; /* 20px */
+  --radius-input: 1.25rem;
 }
 
 @layer base {
   body {
     font-family: 'Outfit', sans-serif;
-    background-color: #f8f9fc;
+    background-color: #fcfcfd; /* Pure High-end Slate White */
     color: #334155;
   }
 }
@@ -44,8 +44,8 @@
   
   .card-base:hover {
     transform: translateY(-2px);
-    box-shadow: 0 20px 40px -10px rgba(112, 119, 212, 0.05);
-    border-color: #e2e4f6;
+    box-shadow: 0 30px 60px -12px rgba(49, 46, 129, 0.08); /* Sophisticated Indigo Shadow */
+    border-color: #ede9fe;
   }
   
   .input-rounded {
@@ -90,4 +90,10 @@
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(30px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
 }

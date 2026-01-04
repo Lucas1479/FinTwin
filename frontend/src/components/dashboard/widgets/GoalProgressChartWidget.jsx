@@ -9,7 +9,7 @@ import {
   ResponsiveContainer, 
   Legend 
 } from 'recharts';
-import { Target, TrendingUp } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 
 const GoalProgressChartWidget = ({ goals = [] }) => {
   // 1. Generate high-quality mock historical progress data (using absolute values)
@@ -61,9 +61,6 @@ const GoalProgressChartWidget = ({ goals = [] }) => {
       <div className="flex justify-between items-start mb-8">
         <div>
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-brand-500 rounded-xl shadow-lg shadow-brand-500/20">
-              <Target size={18} className="text-white" />
-            </div>
             <h2 className="text-lg font-black tracking-tight">Completion Velocity</h2>
           </div>
           <p className="text-slate-400 text-[10px] mt-1 font-bold uppercase tracking-widest opacity-60">

@@ -10,6 +10,7 @@ import GoalHeatmapWidget from '../components/dashboard/widgets/GoalHeatmapWidget
 import AdvisorPulseWidget from '../components/dashboard/widgets/AdvisorPulseWidget';
 import FundingFlowWidget from '../components/dashboard/widgets/FundingFlowWidget';
 import GoalProgressChartWidget from '../components/dashboard/widgets/GoalProgressChartWidget';
+import DigitalTwinCore from '../components/dashboard/DigitalTwinCore';
 
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -45,7 +46,7 @@ const Dashboard = () => {
       // Fallback to minimal data if APIs fail
       setData(prev => ({
         ...prev,
-        wealth: { net_worth: 154000, liquid_capital: 42000 }
+        wealth: { netWorth: 154000, liquidCapital: 42000, totalAssets: 180000, totalLiabilities: 26000 }
       }));
     } finally {
       setLoading(false);
@@ -70,14 +71,19 @@ const Dashboard = () => {
     if (hour >= 17) timeGreeting = "Good Evening";
 
     return (
-      <div className="mb-8 pt-4">
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-          {timeGreeting}, {data.profile?.name?.split(' ')[0] || 'User'} 
-          <span className="animate-pulse inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
-        </h1>
-        <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest opacity-70">
-          Your digital twin is currently processing latest market data
-        </p>
+      <div className="mb-8 pt-4 flex items-center gap-6">
+        <div className="hidden md:block">
+          <DigitalTwinCore size={80} />
+        </div>
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+            {timeGreeting}, {data.profile?.name?.split(' ')[0] || 'User'} 
+            <span className="animate-pulse inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+          </h1>
+          <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest opacity-70">
+            Your digital twin is currently processing latest market data
+          </p>
+        </div>
       </div>
     );
   };
@@ -90,8 +96,10 @@ const Dashboard = () => {
         {/* Level 1: Global Health Pulse */}
         <section className="mb-8">
           <HealthScoreWidget 
-            netWorth={data.wealth?.net_worth || 0} 
-            liquidCapital={data.wealth?.liquid_capital || 0}
+            netWorth={data.wealth?.netWorth || 0} 
+            liquidCapital={data.wealth?.liquidCapital || 0}
+            totalAssets={data.wealth?.totalAssets || 0}
+            totalLiabilities={data.wealth?.totalLiabilities || 0}
             healthScore={88}
           />
         </section>

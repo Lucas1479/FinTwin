@@ -5,13 +5,15 @@ import {
     DollarSign, 
     Percent, 
     Calculator,
-    Info 
+    Info
 } from 'lucide-react';
+import LocationPickerModal from '../LocationPickerModal';
 
 const HomeGoalForm = ({ initialValues, onChange }) => {
     // Local state
     const [details, setDetails] = useState({
         location: initialValues.goal_details?.location || '',
+        coordinates: initialValues.goal_details?.coordinates || null,
         property_price_estimate: initialValues.goal_details?.property_price_estimate || 800000,
         deposit_percentage: initialValues.goal_details?.deposit_percentage || 20,
         is_first_home: initialValues.goal_details?.is_first_home ?? true
@@ -42,6 +44,15 @@ const HomeGoalForm = ({ initialValues, onChange }) => {
 
     const handleMetaChange = (key, value) => {
         setMeta(prev => ({ ...prev, [key]: value }));
+    };
+
+    const handleLocationSelect = (loc) => {
+        setDetails(prev => ({ 
+            ...prev, 
+            location: loc.name,
+            coordinates: { lat: loc.lat, lng: loc.lng }
+        }));
+        setIsMapOpen(false);
     };
 
     return (
@@ -76,8 +87,8 @@ const HomeGoalForm = ({ initialValues, onChange }) => {
                     </div>
                     <div>
                         <label className="block text-sm font-bold text-slate-700 mb-2">Target Location</label>
-                        <div className="relative">
-                             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                        <div className="relative flex-1">
+                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                                 <MapPin size={16} />
                             </div>
                             <input 
@@ -175,6 +186,12 @@ const HomeGoalForm = ({ initialValues, onChange }) => {
                     />
                 </div>
             </div>
+
+            {/* Location Picker Inline */}
+            <LocationPickerModal 
+                onSelect={handleLocationSelect}
+                initialLocation={details.coordinates}
+            />
         </div>
     );
 };

@@ -214,7 +214,102 @@ export const GOAL_FORM_SCHEMAS = {
     ]
   },
 
-  // --- 6. Custom / General ---
+  // --- 6. Education ---
+  education: {
+    title: 'Education',
+    description: 'Save for tuition, courses, or study-related costs.',
+    fields: [
+      ...COMMON_FIELDS,
+      {
+        name: 'goal_details.student_name',
+        label: 'Student Name',
+        type: 'text',
+        placeholder: 'e.g. Self or Child Name'
+      },
+      {
+        name: 'goal_details.start_year',
+        label: 'Start Year',
+        type: 'number',
+        min: new Date().getFullYear(),
+        defaultValue: new Date().getFullYear() + 1
+      },
+      {
+        name: 'goal_details.duration_years',
+        label: 'Duration (Years)',
+        type: 'number',
+        min: 1,
+        defaultValue: 3
+      },
+      {
+        name: 'goal_details.institution_type',
+        label: 'Institution Type',
+        type: 'select',
+        options: ['University', 'Polytech', 'Private', 'School', 'Other'],
+        defaultValue: 'University'
+      }
+    ]
+  },
+
+  // --- 7. Wealth Growth ---
+  wealth: {
+    title: 'Wealth Growth',
+    description: 'Invest to grow your capital over time.',
+    fields: [
+      ...COMMON_FIELDS,
+      {
+        name: 'goal_details.investment_vehicle',
+        label: 'Preferred Vehicle',
+        type: 'select',
+        options: ['managed_fund', 'shares', 'crypto', 'business', 'other'],
+        defaultValue: 'managed_fund'
+      },
+      {
+        name: 'goal_details.target_return_rate',
+        label: 'Target Annual Return (%)',
+        type: 'number',
+        min: 0,
+        max: 100,
+        defaultValue: 7,
+        helpText: 'Be realistic: 4-6% for balanced, 7-10% for growth.'
+      },
+      {
+        name: 'goal_details.reinvest_dividends',
+        label: 'Reinvest Dividends?',
+        type: 'toggle',
+        defaultValue: true
+      }
+    ]
+  },
+
+  // --- 8. Big Purchase / Event ---
+  big_purchase: {
+    title: 'Major Purchase / Event',
+    description: 'Save for a wedding, renovation, or luxury item.',
+    fields: [
+      ...COMMON_FIELDS,
+      {
+        name: 'goal_details.item_name',
+        label: 'What are you buying?',
+        type: 'text',
+        placeholder: 'e.g. Wedding, Kitchen Renovation'
+      },
+      {
+        name: 'goal_details.purchase_type',
+        label: 'Purchase Type',
+        type: 'select',
+        options: ['renovation', 'wedding', 'electronics', 'luxury', 'other'],
+        defaultValue: 'other'
+      },
+      {
+        name: 'goal_details.vendor_quote',
+        label: 'Estimated Quote ($)',
+        type: 'currency',
+        helpText: 'If you already have a quote from a vendor.'
+      }
+    ]
+  },
+
+  // --- 9. Custom / General ---
   custom: {
     title: 'Custom Goal',
     description: 'Define your own financial target.',

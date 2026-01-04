@@ -1,4 +1,4 @@
-import { BrainCircuit, Zap, CheckCircle2, AlertTriangle, ArrowUpRight } from 'lucide-react';
+import { Zap, CheckCircle2, AlertTriangle, ArrowUpRight } from 'lucide-react';
 
 const AdvisorPulseWidget = ({ insights = [] }) => {
   // Mock insights if none provided
@@ -26,9 +26,6 @@ const AdvisorPulseWidget = ({ insights = [] }) => {
   return (
     <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-xl shadow-slate-200/40">
       <div className="flex items-center gap-3 mb-8">
-        <div className="p-2.5 bg-purple-50 text-purple-600 rounded-2xl">
-          <BrainCircuit size={20} />
-        </div>
         <div>
           <h2 className="text-lg font-black text-slate-900 tracking-tight leading-none">Advisor Pulse</h2>
           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">AI-Powered Reasoning</p>

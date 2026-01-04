@@ -43,9 +43,17 @@ import {
 
 // --- STAGE COMPONENTS ---
 
+const StageLoading = ({ text = 'AI is structuring your plan...' }) => (
+    <div className="flex flex-col items-center justify-center h-64 space-y-4 animate-pulse">
+        <div className="w-16 h-16 bg-slate-200 rounded-full"></div>
+        <div className="h-4 w-48 bg-slate-200 rounded"></div>
+        <p className="text-slate-400 text-sm">{text}</p>
+    </div>
+);
+
 
 // Stage 3: Product Selection (Vehicle) - Multiple Portfolio Options
-const StageProduct = ({ goalContext, onSelect }) => {
+const StageProduct = ({ goalContext, onSelect, isLoadingAI }) => {
     const navigate = useNavigate();
     const [selectedOption, setSelectedOption] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -163,6 +171,10 @@ const StageProduct = ({ goalContext, onSelect }) => {
         setSelectedOption(option.option_id);
         onSelect(option);
     };
+
+    if (isLoadingAI && portfolioOptions.length === 0 && !legacySelection.length) {
+        return <StageLoading text="AI is structuring your investment products..." />;
+    }
 
     return (
         <div className="space-y-6">
@@ -294,7 +306,7 @@ const StageProduct = ({ goalContext, onSelect }) => {
 
             {/* 产品详情悬浮卡片 - 精致化重构 */}
             {detailProduct && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 animate-fade-in">
                     <div className="relative w-full max-w-[900px] bg-white rounded-[3rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
                         {/* Header */}
                         <div className="px-10 py-8 flex items-center justify-between border-b border-slate-50">
@@ -499,25 +511,36 @@ const StageProduct = ({ goalContext, onSelect }) => {
                             {detailTab === 'holdings' && (
                                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-900 px-2">Top Strategic Holdings</span>
-                                    <div className="grid gap-4">
+                                    <div className="space-y-4">
                                         {detailProduct.topHoldings && detailProduct.topHoldings.length > 0 ? (
-                                            detailProduct.topHoldings.map((holding, idx) => (
-                                                <div key={idx} className="bg-slate-50 rounded-[2rem] p-6 border border-slate-100/50 flex items-center justify-between group hover:bg-white hover:shadow-md transition-all">
-                                                    <div className="flex items-center gap-5">
-                                                        <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-xs font-black text-slate-400">
-                                                            0{idx + 1}
+                                            detailProduct.topHoldings.slice(0, 5).map((holding, idx) => {
+                                                const percent = typeof holding.percent === 'number' ? holding.percent : null;
+                                                return (
+                                                    <div key={idx} className="bg-slate-50/50 rounded-[2rem] p-6 border border-slate-100/50 group hover:bg-white hover:shadow-md transition-all">
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <div className="flex items-center gap-5">
+                                                                <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-xs font-black text-slate-400">
+                                                                    0{idx + 1}
+                                                                </div>
+                                                                <div>
+                                                                    <h4 className="font-bold text-slate-900 truncate max-w-[280px] md:max-w-[400px]">{holding.name}</h4>
+                                                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{holding.type || 'ASSET'} • {holding.country || 'GLOBAL'}</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className="text-xl font-black text-indigo-600 tracking-tight">{percent !== null ? `${percent.toFixed(2)}%` : '—'}</div>
+                                                                <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">Weight</span>
+                                                            </div>
                                                         </div>
-                                                        <div>
-                                                            <h4 className="font-bold text-slate-900 truncate max-w-[400px]">{holding.name}</h4>
-                                                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{holding.type || 'ASSET'} • {holding.country || 'GLOBAL'}</span>
+                                                        <div className="h-2 w-full bg-white/80 rounded-full overflow-hidden border border-slate-100 shadow-inner">
+                                                            <div 
+                                                                className="h-full bg-indigo-500 rounded-full transition-all duration-1000 ease-out opacity-80 group-hover:opacity-100"
+                                                                style={{ width: percent !== null ? `${Math.max(percent, 2)}%` : '0%' }}
+                                                            />
                                                         </div>
                                                     </div>
-                                                    <div className="text-right">
-                                                        <div className="text-xl font-black text-indigo-600 tracking-tight">{holding.percent}%</div>
-                                                        <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">Weight</span>
-                                                    </div>
-                                                </div>
-                                            ))
+                                                );
+                                            })
                                         ) : (
                                             <div className="text-center py-20 bg-slate-50/50 rounded-[3rem] border border-dashed border-slate-200">
                                                 <Target size={40} className="mx-auto text-slate-200 mb-4" />
@@ -624,7 +647,7 @@ const runMonteCarlo = (params, exposure, years, glidePathConfig = null) => {
 };
 
 // Stage 4: Simulation & Commitment (Twin)
-const StageSimulation = ({ goalContext }) => {
+const StageSimulation = ({ goalContext, isLoadingAI }) => {
     const [activeTab, setActiveTab] = useState('projection');
     
     // Extract data from goalContext
@@ -653,6 +676,12 @@ const StageSimulation = ({ goalContext }) => {
         monthlyContribution: contributionStrategy.monthly_amount || goalContext.contribution?.amount || 0
     }), [goalContext, contributionStrategy]);
     
+    const hasStrategy = Boolean(goalContext.ai_decision?.strategy_recommendation);
+
+    if (isLoadingAI && !hasStrategy) {
+        return <StageLoading text="AI is structuring your simulation..." />;
+    }
+
     // Run simulation
     const { summaryData, expectedReturn, volatility } = useMemo(() => {
         return runMonteCarlo(simParams, exposure, horizonYears, glidePath);
@@ -1916,6 +1945,7 @@ const GoalEnginePage = () => {
                             <h2 className="text-2xl font-bold text-slate-900 mb-6">Select Investment Vehicle</h2>
                             <StageProduct 
                                 goalContext={goalContext} 
+                                isLoadingAI={isLoadingAI}
                                 onSelect={(portfolio) => setGoalContext({
                                     ...goalContext, 
                                     product: portfolio,
@@ -1928,7 +1958,7 @@ const GoalEnginePage = () => {
                     {currentStage === 3 && (
                          <div className="max-w-4xl mx-auto h-full py-4">
                             <h2 className="text-2xl font-bold text-slate-900 mb-6">Simulation & Impact</h2>
-                            <StageSimulation goalContext={goalContext} />
+                            <StageSimulation goalContext={goalContext} isLoadingAI={isLoadingAI} />
                         </div>
                     )}
                 </div>

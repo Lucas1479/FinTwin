@@ -3,6 +3,10 @@ import { ArrowRight, Sparkles } from 'lucide-react';
 
 import RetirementGoalForm from './forms/RetirementGoalForm';
 import HomeGoalForm from './forms/HomeGoalForm';
+import EmergencyGoalForm from './forms/EmergencyGoalForm';
+import VehicleGoalForm from './forms/VehicleGoalForm';
+import TravelGoalForm from './forms/TravelGoalForm';
+import EducationGoalForm from './forms/EducationGoalForm';
 import DynamicFormRenderer from './forms/DynamicFormRenderer';
 import goalEngineService from '../../services/goalEngineService';
 import api from '../../utils/api'; // Keep for other API calls if needed
@@ -93,7 +97,7 @@ const GoalDefinitionForm = ({
             const category = goalContext.category;
 
             // Known hardcoded types don't need a schema fetch (frontend handles UI)
-            if (['retirement', 'home'].includes(category)) {
+            if (['retirement', 'home', 'emergency', 'vehicle', 'travel', 'education'].includes(category)) {
                 setFormSchema(null);
                 return;
             }
@@ -180,6 +184,34 @@ const GoalDefinitionForm = ({
                         onChange={handleFormChange} 
                     />
                 );
+            case 'emergency':
+                return (
+                    <EmergencyGoalForm 
+                        initialValues={goalContext} 
+                        onChange={handleFormChange} 
+                    />
+                );
+            case 'vehicle':
+                return (
+                    <VehicleGoalForm 
+                        initialValues={goalContext} 
+                        onChange={handleFormChange} 
+                    />
+                );
+            case 'travel':
+                return (
+                    <TravelGoalForm 
+                        initialValues={goalContext} 
+                        onChange={handleFormChange} 
+                    />
+                );
+            case 'education':
+                return (
+                    <EducationGoalForm 
+                        initialValues={goalContext} 
+                        onChange={handleFormChange} 
+                    />
+                );
             default:
                 // Fallback to Dynamic Renderer
                 if (loadingSchema) return <div className="p-8 text-center text-slate-400">Loading AI Form...</div>;
@@ -209,11 +241,12 @@ const GoalDefinitionForm = ({
                     <option value="custom">Custom Goal</option>
                     <option value="retirement">Retirement</option>
                     <option value="home">Home Ownership</option>
-                    <option value="vehicle">Vehicle</option>
-                    <option value="travel">Travel</option>
                     <option value="emergency">Emergency Fund</option>
                     <option value="education">Education</option>
                     <option value="wealth">Wealth Growth</option>
+                    <option value="vehicle">Vehicle Purchase</option>
+                    <option value="travel">Travel / Holiday</option>
+                    <option value="big_purchase">Major Purchase / Event</option>
                 </select>
             </div>
 
