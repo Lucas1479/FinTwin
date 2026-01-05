@@ -53,25 +53,45 @@ const FALLBACK_GOALS = [
 
 // --- Simulation Logic ---
 
-const runMonteCarlo = (params, exposure, years) => {
-  const iterations = 50;
+const runMonteCarlo = (params, exposure, years, targetAmount, isInflationAdjusted) => {
+  const iterations = 100; 
   const allProjections = [];
   
-  const expectedReturn = (exposure.growth * 0.12) + (exposure.defensive * 0.04) + (exposure.liquidity * 0.02);
-  const volatility = (exposure.growth * 0.20) + (exposure.defensive * 0.05);
+  // Baseline rates
+  const growthRate = 0.10;
+  const defensiveRate = 0.04;
+  const liquidityRate = 0.02;
+  const inflationRate = isInflationAdjusted ? 0.025 : 0; // 2.5% annual inflation adjustment
   
+  const nominalExpectedReturn = (exposure.growth * growthRate) + (exposure.defensive * defensiveRate) + (exposure.liquidity * liquidityRate);
+  const realExpectedReturn = nominalExpectedReturn - (inflationRate * 100);
+  const volatility = (exposure.growth * 0.18) + (exposure.defensive * 0.05); 
+  
+  let successCount = 0;
+
   for (let i = 0; i < iterations; i++) {
     let balance = params.initialCapital + params.lumpSum;
     const annualContribution = params.monthlyContribution * 12;
-    const yearlyData = [];
+    const yearlyData = [Math.round(balance)]; // Year 0 is starting point
     
-    for (let y = 0; y <= years; y++) {
-      const randomReturn = expectedReturn + (Math.random() - 0.5) * volatility * 2;
-      balance = (balance + annualContribution) * (1 + randomReturn / 100);
-      yearlyData.push(Math.round(balance));
+    for (let y = 1; y <= years; y++) {
+      const u1 = Math.random();
+      const u2 = Math.random();
+      const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+      
+      const periodicReturn = realExpectedReturn + z0 * volatility;
+      
+      balance = (balance + annualContribution) * (1 + periodicReturn / 100);
+      yearlyData.push(Math.max(0, Math.round(balance))); // Ensure balance doesn't go negative
+    }
+    
+    if (balance >= targetAmount) {
+      successCount++;
     }
     allProjections.push(yearlyData);
   }
+
+  const successProbability = (successCount / iterations) * 100;
 
   const summaryData = [];
   for (let y = 0; y <= years; y++) {
@@ -83,7 +103,7 @@ const runMonteCarlo = (params, exposure, years) => {
       high: yearValues[Math.floor(iterations * 0.9)],
     });
   }
-  return { summaryData, expectedReturn, volatility };
+  return { summaryData, expectedReturn: nominalExpectedReturn, volatility, successProbability };
 };
 
 // --- Sub-Components ---
@@ -199,11 +219,16 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles, goals = [],
     return Math.max(goalYear - currentYear, 1);
   }, [activeGoal]);
 
-  const { summaryData: mcData, expectedReturn, volatility } = useMemo(() => {
-    if (!activeProfile) return { summaryData: [], expectedReturn: 0, volatility: 0 };
+  const targetAmount = activeGoal?.target_amount ?? 0;
+  const currentGoalProgress = activeGoal?.current_amount ?? 0;
+  const gap = Math.max(0, targetAmount - currentGoalProgress);
+  const progressPercent = targetAmount > 0 ? (currentGoalProgress / targetAmount) * 100 : 0;
+
+  const { summaryData: mcData, expectedReturn, volatility, successProbability } = useMemo(() => {
+    if (!activeProfile) return { summaryData: [], expectedReturn: 0, volatility: 0, successProbability: 0 };
     const initialCapital = (activeProfile.financials.cash || 0) + (activeProfile.financials.investments || 0);
-    return runMonteCarlo({ initialCapital, monthlyContribution, lumpSum }, exposure, horizonYears);
-  }, [activeProfile, exposure, monthlyContribution, lumpSum, horizonYears]);
+    return runMonteCarlo({ initialCapital, monthlyContribution, lumpSum }, exposure, horizonYears, targetAmount, isInflationAdjusted);
+  }, [activeProfile, exposure, monthlyContribution, lumpSum, horizonYears, targetAmount, isInflationAdjusted]);
 
   const handleSwapProduct = (productId) => {
     if (!isSwapping) return;
@@ -237,11 +262,6 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles, goals = [],
       </div>
     );
   }
-
-  const targetAmount = activeGoal?.target_amount ?? 0;
-  const currentGoalProgress = activeGoal?.current_amount ?? 0;
-  const gap = Math.max(0, targetAmount - currentGoalProgress);
-  const progressPercent = targetAmount > 0 ? (currentGoalProgress / targetAmount) * 100 : 0;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-20">
@@ -343,7 +363,7 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles, goals = [],
                   </div>
                   <input 
                     type="range" min={0} max={200000} step={5000}
-                    value={lumpSum} onChange={(e) => setLumpSum(parseInt(e.target.value))}
+                    value={lumpSum} onChange={(e) => setLumpSum(Number(e.target.value) || 0)}
                     className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                   />
                 </div>
@@ -357,7 +377,7 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles, goals = [],
                   </div>
                   <input 
                     type="range" min={500} max={15000} step={100}
-                    value={monthlyContribution} onChange={(e) => setMonthlyContribution(parseInt(e.target.value))}
+                    value={monthlyContribution} onChange={(e) => setMonthlyContribution(Number(e.target.value) || 0)}
                     className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                   />
                 </div>
@@ -547,7 +567,7 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles, goals = [],
               </p>
               <div className="p-4 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/5">
                 <p className="text-[10px] font-bold text-indigo-200 uppercase tracking-wider mb-1">Success Probability</p>
-                <p className="text-xl font-bold">{(progressPercent > 80 ? 92 : 64)}% <span className="text-[10px] font-medium text-emerald-400">Confidence</span></p>
+                <p className="text-xl font-bold">{Math.round(successProbability)}% <span className="text-[10px] font-medium text-emerald-400">Confidence</span></p>
               </div>
             </div>
           </div>

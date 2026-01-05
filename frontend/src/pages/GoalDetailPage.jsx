@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout';
 import {
@@ -33,11 +33,20 @@ import {
   Lock,
   Unlock,
   Wallet,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Coins,
+  Zap,
+  Download,
+  FileText
 } from 'lucide-react';
 import { getGoalWithPlan, getDecisionLogsForGoal, getDecisionLogsBySession, deleteGoal } from '../services/goalService';
+import { getAssets } from '../services/wealthService';
+import { getCashFlows } from '../services/cashFlowService';
+import { useSimulatedData, useSimulation } from '../context/SimulationContext';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import {
   PieChart as RechartsPie,
   Pie,
@@ -131,6 +140,60 @@ const StatusBadge = ({ status }) => {
   );
 };
 
+// Minimalist Abstract 2D Geometric Hourglass
+const AnimatedHourglass = ({ progress }) => {
+  const p = progress / 100;
+  
+  return (
+    <div className="relative w-16 h-20 flex items-center justify-center">
+      {/* Subtle Ambient Glow */}
+      <div className="absolute inset-0 bg-primary/5 rounded-full blur-xl animate-pulse" />
+      
+      <svg width="40" height="56" viewBox="0 0 40 56" fill="none" xmlns="http://www.w3.org/2000/svg" className="relative z-10 overflow-visible">
+        {/* Abstract Outline - Outer Frame */}
+        <path 
+          d="M4 2H36M4 54H36M4 2L20 28L36 2M4 54L20 28L36 54" 
+          stroke="currentColor" 
+          strokeWidth="1.5" 
+          strokeLinecap="round" 
+          strokeLinejoin="round" 
+          className="text-slate-200" 
+        />
+        
+        {/* Sand - Top Chamber (Draining) */}
+        <path 
+          d={`M${4 + 16 * p} ${2 + 26 * p} L${36 - 16 * p} ${2 + 26 * p} L20 28 Z`} 
+          fill="currentColor" 
+          className="text-primary/20 transition-all duration-1000"
+        />
+        
+        {/* Sand - Bottom Chamber (Filling) */}
+        <path 
+          d={`M20 28 L${20 - 16 * p} ${54 - 26 * (1-p)} L${20 + 16 * p} ${54 - 26 * (1-p)} Z`} 
+          fill="currentColor" 
+          className="text-primary transition-all duration-1000"
+        />
+
+        {/* Central Flowing Particle (Animated) */}
+        {progress < 100 && (
+          <line 
+            x1="20" y1="28" x2="20" y2="52" 
+            stroke="currentColor" 
+            strokeWidth="1.5" 
+            strokeDasharray="2 4" 
+            className="text-primary/40"
+          >
+            <animate attributeName="stroke-dashoffset" from="6" to="0" dur="0.8s" repeatCount="indefinite" />
+          </line>
+        )}
+
+        {/* Precision Nodes */}
+        <circle cx="20" cy="28" r="2" fill="currentColor" className="text-primary shadow-[0_0_8px_rgba(79,70,229,0.4)]" />
+      </svg>
+    </div>
+  );
+};
+
 // Stat Card
 const StatCard = ({ icon: Icon, label, value, subValue, color = 'brand' }) => {
   const colorClasses = {
@@ -215,7 +278,7 @@ const PortfolioAllocationChart = ({ exposure }) => {
 };
 
 // Product Card in Portfolio
-const PortfolioProductCard = ({ item, index, onClick }) => {
+const PortfolioProductCard = ({ item, index, onClick, currentBalance }) => {
   const product = item.product_id || item; // Handle populated or snapshot data
   const category = product.category || 'Fund';
   const isKiwiSaver = category === 'KiwiSaver';
@@ -248,11 +311,17 @@ const PortfolioProductCard = ({ item, index, onClick }) => {
           <span className="truncate">{product.provider || 'External Provider'}</span>
         </div>
       </div>
-      <div className="text-right shrink-0 ml-4">
-        <div className="text-lg md:text-xl font-black text-brand-600 leading-none">
-          {item.weight_pct?.toFixed(1) || '0.0'}%
+      
+      {/* Current Balance Display */}
+      <div className="text-right shrink-0 ml-4 flex flex-col items-end">
+        <div className="text-lg md:text-xl font-black text-slate-900 leading-none mb-1">
+          {formatCurrency(currentBalance)}
         </div>
-        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter mt-1">Allocation</div>
+        <div className="flex items-center gap-1.5">
+           <span className="text-xs font-bold text-brand-600 bg-brand-50 px-1.5 py-0.5 rounded">
+             {item.weight_pct?.toFixed(1) || '0.0'}%
+           </span>
+        </div>
       </div>
     </div>
   );
@@ -638,7 +707,11 @@ const DecisionLogItem = ({ log, isLast }) => {
           <div className="bg-slate-50 rounded-xl p-4 text-sm text-slate-600 border border-slate-100">
             <div className="flex items-start gap-2">
               <Sparkles size={14} className="text-brand-500 mt-0.5 flex-shrink-0" />
-              <p className="line-clamp-3">{log.ai_decision.rationale}</p>
+              <div className="prose prose-slate prose-sm max-w-none prose-p:leading-relaxed prose-strong:text-brand-600">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {log.ai_decision.rationale}
+                </ReactMarkdown>
+              </div>
             </div>
           </div>
         )}
@@ -809,17 +882,185 @@ const GoalDetailPage = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [associatedAssets, setAssociatedAssets] = useState([]);
+  const [cashFlows, setCashFlows] = useState([]);
+  const { timeOffset, marketMode } = useSimulation();
   
+  const reportRef = useRef(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportPDF = async () => {
+    if (!reportRef.current) return;
+    
+    setIsExporting(true);
+    try {
+      const element = reportRef.current;
+      
+      // html2canvas v1.4.1 has major issues with Tailwind v4's oklch() and oklab() colors.
+      // These are modern CSS color spaces that the library's internal parser doesn't understand.
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        windowWidth: 1200,
+        ignoreElements: (el) => {
+          return el.getAttribute('data-export-ignore') === 'true';
+        },
+        onclone: (clonedDoc) => {
+          // Find all elements in the cloned document
+          const elements = clonedDoc.getElementsByTagName('*');
+          
+          // Pre-define common safe colors
+          const SAFE_TEXT = '#1e293b'; // slate-800
+          const SAFE_BORDER = '#e2e8f0'; // slate-200
+          const SAFE_BRAND = '#6366f1'; // indigo-500
+          
+          for (let i = 0; i < elements.length; i++) {
+            const el = elements[i];
+            const style = window.getComputedStyle(el);
+            
+            // 1. Fix explicit color properties
+            const colorProps = [
+              'backgroundColor', 'color', 'fill', 'stroke',
+              'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor',
+              'outlineColor'
+            ];
+
+            colorProps.forEach(prop => {
+              const val = style[prop];
+              if (val && (val.includes('oklch') || val.includes('oklab'))) {
+                if (prop === 'backgroundColor') el.style.backgroundColor = '#ffffff';
+                else if (prop === 'color') el.style.color = SAFE_TEXT;
+                else if (prop.includes('Color')) el.style[prop] = SAFE_BORDER;
+                else if (prop === 'fill' || prop === 'stroke') el.style[prop] = SAFE_BRAND;
+              }
+            });
+
+            // 2. Fix backgroundImage (gradients often use oklch in Tailwind v4)
+            if (style.backgroundImage.includes('oklch') || style.backgroundImage.includes('oklab')) {
+              el.style.backgroundImage = 'none';
+              // If it was a brand gradient, give it a solid brand color instead
+              if (el.className.includes('brand') || el.className.includes('indigo')) {
+                el.style.backgroundColor = SAFE_BRAND;
+              }
+            }
+
+            // 3. Fix box-shadow (Tailwind v4 shadows often use oklch)
+            if (style.boxShadow.includes('oklch') || style.boxShadow.includes('oklab')) {
+              el.style.boxShadow = 'none';
+            }
+          }
+
+          // 4. Inject a style tag to clear out any remaining oklch/oklab from CSS variables
+          // html2canvas sometimes parses the stylesheets/variables directly.
+          const styleTag = clonedDoc.createElement('style');
+          styleTag.innerHTML = `
+            * { 
+              --tw-ring-color: rgba(99, 102, 241, 0.5) !important;
+              --tw-shadow-color: rgba(0, 0, 0, 0.1) !important;
+              --tw-outline-color: #6366f1 !important;
+              border-color: #e2e8f0 !important;
+            }
+          `;
+          clonedDoc.head.appendChild(styleTag);
+        }
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'px',
+        format: [canvas.width / 2, canvas.height / 2]
+      });
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 2, canvas.height / 2);
+      pdf.save(`FinTwin_Report_${goal.goal_name.replace(/\s+/g, '_')}.pdf`);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('PDF generation failed. Tailwind v4 uses modern color formats (oklch/oklab) that the PDF generator cannot yet parse. Please use the Markdown export as a reliable alternative.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportMarkdown = () => {
+    const assetList = associatedAssets.length > 0 
+      ? associatedAssets.map(a => `- **${a.name}**: ${formatCurrency(a.value)}`).join('\n')
+      : "No individual assets linked yet.";
+
+    const productList = selectedPortfolio?.products?.length > 0
+      ? selectedPortfolio.products.map((item, idx) => {
+          const p = item.product_id || item;
+          return `${idx + 1}. **${p.name || p.product_name}** (${p.provider}) - Allocation: ${item.weight_pct}%`;
+        }).join('\n')
+      : "No portfolio configuration found.";
+
+    const md = `
+# Financial Strategy Report: ${goal.goal_name}
+**Date Generated:** ${new Date().toLocaleDateString('en-NZ')}
+**Status:** ${goal.status?.toUpperCase() || 'ACTIVE'}
+
+## 1. Goal Summary
+- **Target Amount:** ${formatCurrency(goal.target_amount)}
+- **Target Date:** ${formatDate(goal.due_date)}
+- **Current Balance:** ${formatCurrency(totalAssociatedValue)}
+- **Progress:** ${progress.toFixed(1)}%
+- **Time Horizon:** ${timeRemaining.text}
+
+## 2. Strategic Configuration
+- **Category:** ${goal.category}
+- **Priority:** ${goal.priority || 'Medium'}
+- **Risk Profile:** ${goal.riskTolerance || 'Balanced'}
+- **Inflation Protection:** ${plan?.settings?.inflation_adjusted ? 'Enabled' : 'Disabled'}
+
+## 3. AI Strategy Insight
+${plan?.ai_rationale || goal.notes || "Standard growth path."}
+
+## 4. Associated Assets
+${assetList}
+
+## 5. Target Asset Allocation
+- **Growth Assets:** ${targetExposure?.growth || 0}%
+- **Defensive Assets:** ${targetExposure?.defensive || 0}%
+- **Liquidity/Cash:** ${targetExposure?.liquidity || 0}%
+
+## 6. Recommended Portfolio Holdings
+${productList}
+
+---
+*This report was generated by FinTwin AI Engine. Projections are estimates and not guaranteed.*
+    `.trim();
+
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Strategy_Report_${goal.goal_name.replace(/\s+/g, '_')}.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        // Fetch goal with plan
+        // 1. Fetch goal with plan
         const goalData = await getGoalWithPlan(id);
         setGoal(goalData);
         setPlan(goalData.plan || null);
         
-        // Fetch decision logs
+        // 2. Fetch ALL assets + cash flows to find associated ones and feed simulation
+        const [allAssets, allCashFlows] = await Promise.all([
+          getAssets(),
+          getCashFlows()
+        ]);
+        const linkedAssets = allAssets.filter(a => a.asset_details?.linked_goal_id === id);
+        setAssociatedAssets(linkedAssets);
+        setCashFlows(allCashFlows || []);
+
+        // 3. Fetch decision logs
         try {
           let logs = await getDecisionLogsForGoal(id);
           
@@ -855,15 +1096,41 @@ const GoalDetailPage = () => {
     }
   };
   
+  // 2. Simulated data wrapper
+  // This interceptor allows the page to reflect future state automatically
+  const simulatedData = useSimulatedData({
+    assets: associatedAssets,
+    goals: [goal].filter(Boolean),
+    cashFlows: cashFlows // Include cash flows so contributions feed the evolution engine
+  });
+
+  const displayGoal = simulatedData?.goals?.[0] || goal;
+  const displayAssets = simulatedData?.assets || associatedAssets;
+
   // Computed values
+  const totalAssociatedValue = useMemo(() => {
+    return displayAssets.reduce((sum, a) => sum + (a.value || 0), 0);
+  }, [displayAssets]);
+
   const progress = useMemo(() => {
-    if (!goal?.target_amount) return 0;
-    return Math.min(100, Math.max(0, (goal.current_amount / goal.target_amount) * 100));
-  }, [goal]);
+    if (!displayGoal?.target_amount) return 0;
+    // Real-time progress: Sum of current associated assets value / Target
+    return Math.min(100, Math.max(0, (totalAssociatedValue / displayGoal.target_amount) * 100));
+  }, [totalAssociatedValue, displayGoal?.target_amount]);
   
   const timeRemaining = useMemo(() => {
     return getTimeRemaining(goal?.due_date);
   }, [goal?.due_date]);
+
+  const timeProgress = useMemo(() => {
+    if (!goal?.created_at || !goal?.due_date) return 0;
+    const start = new Date(goal.created_at).getTime();
+    const end = new Date(goal.due_date).getTime();
+    const now = new Date().getTime();
+    const total = end - start;
+    if (total <= 0) return 100;
+    return Math.min(100, Math.max(0, ((now - start) / total) * 100));
+  }, [goal]);
   
   const selectedPortfolio = plan?.selected_portfolio;
   const targetExposure = plan?.target_exposure || selectedPortfolio?.calculated_exposure;
@@ -944,10 +1211,10 @@ const GoalDetailPage = () => {
   
   return (
     <MainLayout>
-      <div className="max-w-7xl mx-auto p-4 md:p-6 animate-fade-in">
+      <div className="max-w-7xl mx-auto p-4 md:p-6 animate-fade-in" ref={reportRef}>
         
         {/* Back Button & Header */}
-        <div className="mb-6">
+        <div className="mb-6" data-export-ignore="true">
           <button 
             onClick={() => navigate('/goals')}
             className="flex items-center gap-2 text-slate-500 hover:text-slate-700 transition-colors mb-4"
@@ -962,15 +1229,54 @@ const GoalDetailPage = () => {
                 <Target size={28} />
               </div>
               <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-slate-900">{goal.goal_name}</h1>
-                <div className="flex items-center gap-3 mt-1">
-                  <span className="text-sm text-slate-500 capitalize">{goal.category}</span>
-                  <StatusBadge status={goal.status} />
+                <div className="flex items-center gap-3">
+                  <h1 className="text-2xl md:text-3xl font-bold text-slate-900">{goal.goal_name}</h1>
+                  {timeOffset > 0 && (
+                    <div className="bg-indigo-600 text-white text-[10px] font-black uppercase px-2 py-1 rounded flex items-center gap-1 shadow-sm animate-pulse">
+                      <Zap size={12} fill="currentColor" /> Simulation Mode
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2 mt-1">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-slate-500 capitalize">{goal.category}</span>
+                    <StatusBadge status={goal.status} />
+                    {timeOffset > 0 && (
+                       <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                          +{timeOffset}y ({marketMode})
+                       </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2" data-export-ignore="true">
+              <div className="relative group">
+                <button 
+                  className="px-4 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition-all flex items-center gap-2 text-sm font-medium shadow-lg shadow-slate-200"
+                >
+                  <Download size={16} />
+                  Export
+                </button>
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-2">
+                  <button 
+                    onClick={handleExportPDF}
+                    disabled={isExporting}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-xl transition-colors"
+                  >
+                    <Download size={14} className="text-brand-500" />
+                    {isExporting ? 'Generating...' : 'Download PDF Report'}
+                  </button>
+                  <button 
+                    onClick={handleExportMarkdown}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-xl transition-colors"
+                  >
+                    <FileText size={14} className="text-emerald-500" />
+                    Download Markdown
+                  </button>
+                </div>
+              </div>
               <button 
                 onClick={() => navigate(`/goals/${id}/edit`)}
                 className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-2 text-sm font-medium"
@@ -988,6 +1294,22 @@ const GoalDetailPage = () => {
             </div>
           </div>
         </div>
+
+        {/* PDF Header */}
+        <div className="hidden pb-6 mb-8 border-b border-slate-100 flex items-center justify-between" style={{ display: isExporting ? 'flex' : 'none' }}>
+           <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-brand-600 flex items-center justify-center text-white font-black text-sm shadow-lg shadow-brand-100">FT</div>
+              <div>
+                <span className="font-black text-slate-900 tracking-tight text-lg block">FinTwin Strategy Report</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Empowering Financial Clarity</span>
+              </div>
+           </div>
+           <div className="text-right">
+              <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest block mb-1">Confidential Report</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{new Date().toLocaleDateString('en-NZ', { dateStyle: 'full' })}</span>
+           </div>
+        </div>
+
         
         {/* Progress Hero Card */}
         <div className="bg-white rounded-[2rem] border border-slate-100 p-6 md:p-8 mb-8 shadow-sm relative overflow-hidden group">
@@ -1004,7 +1326,7 @@ const GoalDetailPage = () => {
             <div className="flex-1 min-w-0">
               <div className="flex flex-col md:flex-row md:items-baseline md:justify-between gap-2 mb-2">
                 <div className="flex items-baseline gap-3">
-                  <span className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight">{formatCurrency(goal.current_amount)}</span>
+                  <span className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight">{formatCurrency(totalAssociatedValue)}</span>
                   <span className="text-lg font-bold text-slate-400">/ {formatCurrency(goal.target_amount)}</span>
                 </div>
                 {/* Mobile Twin */}
@@ -1075,7 +1397,7 @@ const GoalDetailPage = () => {
         </div>
         
         {/* Tabs */}
-        <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-6 overflow-x-auto">
+        <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-6 overflow-x-auto" data-export-ignore="true">
           {tabs.map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -1113,7 +1435,7 @@ const GoalDetailPage = () => {
                 <StatCard 
                   icon={TrendingUp}
                   label="Current Amount"
-                  value={formatCurrency(goal.current_amount)}
+                  value={formatCurrency(totalAssociatedValue)}
                   subValue={`${progress.toFixed(0)}% achieved`}
                   color="emerald"
                 />
@@ -1254,26 +1576,36 @@ const GoalDetailPage = () => {
                     </div>
                   )}
 
-                  {/* Progress Tracker / Timeline Summary */}
-                  <div className="bg-emerald-50 rounded-3xl p-6 border border-emerald-100">
-                    <h3 className="text-emerald-900 font-bold mb-4 flex items-center gap-2 text-xs uppercase tracking-wider">
-                      <Clock size={14} /> Time Horizon
-                    </h3>
-                    <div className="space-y-4">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-emerald-700 font-medium">Started</span>
-                        <span className="text-emerald-900 font-bold">{formatDate(goal.created_at)}</span>
+                  {/* Time Horizon - Simplified Abstract Design */}
+                  <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm relative overflow-hidden flex flex-col items-center">
+                    <div className="mb-6">
+                      <AnimatedHourglass progress={timeProgress} />
+                    </div>
+                    
+                    <div className="text-center space-y-1 mb-8">
+                      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Temporal Horizon</h3>
+                      <div className={`text-2xl font-black tracking-tight ${timeRemaining.isOverdue ? 'text-rose-600' : 'text-primary'}`}>
+                        {timeRemaining.text}
                       </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-emerald-700 font-medium">Target</span>
-                        <span className="text-emerald-900 font-bold">{formatDate(goal.due_date)}</span>
+                    </div>
+
+                    <div className="w-full space-y-3">
+                      <div className="flex justify-between items-center px-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Start Date</span>
+                        <span className="text-xs font-bold text-slate-600 tracking-tight">{formatDate(goal.created_at)}</span>
                       </div>
-                      <div className="pt-3 border-t border-emerald-200">
-                        <div className="text-[10px] text-emerald-600 font-bold uppercase mb-1">Status</div>
-                        <div className={`text-lg font-black ${timeRemaining.isOverdue ? 'text-red-600' : 'text-emerald-700'}`}>
-                          {timeRemaining.text}
-                        </div>
+                      <div className="flex justify-between items-center px-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Target Date</span>
+                        <span className="text-xs font-bold text-slate-900 tracking-tight">{formatDate(goal.due_date)}</span>
                       </div>
+                    </div>
+
+                    <div className="mt-6 w-full pt-6 border-t border-slate-50 flex items-center justify-between px-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Progress</span>
+                      </div>
+                      <span className="text-xs font-black text-slate-900">{timeProgress.toFixed(1)}%</span>
                     </div>
                   </div>
                 </div>
@@ -1360,14 +1692,23 @@ const GoalDetailPage = () => {
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {items.map((item, idx) => (
-                            <PortfolioProductCard 
-                              key={item._id || item.product_id || idx} 
-                              item={item} 
-                              index={idx} 
-                              onClick={setSelectedProduct}
-                            />
-                          ))}
+                          {items.map((item, idx) => {
+                            const product = item.product_id || item;
+                            const asset = displayAssets.find(a => 
+                              a.source_product_id === (product._id || product.id) || 
+                              a.name.includes(product.name)
+                            );
+                            
+                            return (
+                              <PortfolioProductCard 
+                                key={item._id || item.product_id || idx} 
+                                item={item} 
+                                index={idx} 
+                                onClick={setSelectedProduct}
+                                currentBalance={asset ? asset.value : 0}
+                              />
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
@@ -1510,6 +1851,17 @@ const GoalDetailPage = () => {
             onClose={() => setSelectedProduct(null)} 
           />
         )}
+
+        {/* PDF Footer */}
+        <div className="hidden pt-8 mt-12 border-t border-slate-50 flex items-center justify-between opacity-50" style={{ display: isExporting ? 'flex' : 'none' }}>
+           <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest max-w-md leading-relaxed">
+             Disclaimer: This document is a projection based on current market assumptions and user-provided data. Past performance is not indicative of future results. Financial decisions should be made in consultation with a qualified professional.
+           </p>
+           <div className="text-right">
+              <p className="text-[10px] font-black text-slate-900 tracking-tighter">GENERATED BY FINTWIN ENGINE V2.1</p>
+              <p className="text-[8px] font-bold text-slate-400">© 2026 Money-Minds Interactive</p>
+           </div>
+        </div>
         
       </div>
     </MainLayout>

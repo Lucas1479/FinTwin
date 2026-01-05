@@ -15,11 +15,11 @@ const CashFlowSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // 'Income', 'Expense', or 'Subscription' (which is technically an expense but tracked separately)
+    // 'Income', 'Expense', 'Subscription', or 'Investment'
     type: {
       type: String,
       required: true,
-      enum: ['Income', 'Expense', 'Subscription'],
+      enum: ['Income', 'Expense', 'Subscription', 'Investment'],
       index: true,
     },
 

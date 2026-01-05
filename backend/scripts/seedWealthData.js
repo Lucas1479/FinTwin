@@ -54,7 +54,7 @@ const seedWealthData = async () => {
         name: 'Everyday Account',
         record_type: 'Asset',
         category: 'Cash_Bank',
-        value: 5430.50,
+        value: 50000.00,
         currency: 'NZD',
         is_liquid: true,
         asset_details: {
@@ -68,7 +68,7 @@ const seedWealthData = async () => {
         name: 'High Interest Savings',
         record_type: 'Asset',
         category: 'Cash_Bank',
-        value: 15000.00,
+        value: 200000.00,
         currency: 'NZD',
         is_liquid: true,
         asset_details: {
@@ -188,4 +188,5 @@ const seedWealthData = async () => {
 };
 
 seedWealthData();
+
 

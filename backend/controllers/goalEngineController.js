@@ -118,14 +118,17 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
 
       // Cashflow summary (monthly)
       const incomes = cashFlows.filter(f => f.type === 'Income');
-      const expenses = cashFlows.filter(f => f.type === 'Expense' || f.type === 'Subscription');
+      // Include all outflows: Expenses, Subscriptions, and Investment contributions
+      const outflows = cashFlows.filter(f => f.type === 'Expense' || f.type === 'Subscription' || f.type === 'Investment');
+      
       const annualIncome = incomes.reduce((sum, f) => sum + toAnnual(f.amount, f.frequency), 0);
-      const annualExpense = expenses.reduce((sum, f) => sum + toAnnual(f.amount, f.frequency), 0);
+      const annualOutflow = outflows.reduce((sum, f) => sum + toAnnual(f.amount, f.frequency), 0);
+      
       const monthlyIncome = annualIncome / 12;
-      const monthlyExpense = annualExpense / 12;
-      const monthlySurplus = Math.max(0, monthlyIncome - monthlyExpense);
+      const monthlyOutflow = annualOutflow / 12;
+      const monthlySurplus = Math.max(0, monthlyIncome - monthlyOutflow);
 
-      // Avoid single goal consuming all surplus; reserve 40% by default.
+      // Avoid single goal consuming all surplus; reserve 40% of the REMAINING surplus by default.
       const maxAllocatableSurplus = Math.max(0, monthlySurplus * 0.6);
 
       // Derive age & risk
@@ -222,7 +225,7 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
               net_worth: totalAssets - totalLiabilities,
               liquid_capital: liquidCapital,
               monthly_income: Math.round(monthlyIncome),
-              monthly_expense: Math.round(monthlyExpense),
+              monthly_outflow: Math.round(monthlyOutflow),
               monthly_surplus_total: Math.round(monthlySurplus),
               monthly_surplus_allocatable: Math.round(allocatableSurplus),
               reserve_for_other_goals_pct: 40,

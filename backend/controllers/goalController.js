@@ -2,7 +2,173 @@ import asyncHandler from 'express-async-handler';
 import Goal from '../models/goalModel.js';
 import Plan from '../models/planModel.js';
 import GoalDecisionLog from '../models/goalDecisionLogModel.js';
+import FinancialAsset from '../models/financialAssetModel.js';
+import CashFlow from '../models/cashFlowModel.js';
+import Product from '../models/productModel.js';
 import { BadRequestError, NotFoundError } from '../utils/errors.js';
+
+/**
+ * Handle Linkage between Goal/Plan and Wealth Center (Assets & CashFlow)
+ * This function handles:
+ * 1. Initial Lump Sum deduction from source asset
+ * 2. Creation of a new "Goal-linked" investment asset
+ * 3. Setup of recurring CashFlow for contributions
+ */
+const handlePlanActivation = async (user, goal, plan) => {
+    console.log(`[Goal Activation] 🚀 Activating Plan for Goal: ${goal.goal_name}`);
+    
+    // --- 1. Handle Initial Lump Sum (One-time deduction) ---
+    const initialAmount = plan.contribution_strategy?.lump_sum_amount || 0;
+    let sourceAssetId = plan.funding_source;
+
+    if (initialAmount > 0) {
+        let sourceAsset = null;
+
+        // Step A: If source ID is provided, try to find that specific asset
+        if (sourceAssetId) {
+            sourceAsset = await FinancialAsset.findOne({ _id: sourceAssetId, user_id: user._id });
+        }
+
+        // Step B: Smart Match - If no ID or ID not found, find the best cash account (highest balance)
+        if (!sourceAsset) {
+            console.log(`[Goal Activation] 🔍 Finding best cash account for deduction...`);
+            const cashAccounts = await FinancialAsset.find({ 
+                user_id: user._id, 
+                record_type: 'Asset',
+                category: 'Cash_Bank' 
+            }).sort({ value: -1 }); // Get highest balance first
+
+            if (cashAccounts.length > 0) {
+                sourceAsset = cashAccounts[0];
+                console.log(`[Goal Activation] ✨ Smart matched account: ${sourceAsset.name} (Balance: ${sourceAsset.value})`);
+            }
+        }
+        
+        if (sourceAsset) {
+            console.log(`[Goal Activation] 💸 Deducting initial lump sum ${initialAmount} from ${sourceAsset.name}`);
+            const oldValue = sourceAsset.value;
+            sourceAsset.value = Math.max(0, sourceAsset.value - initialAmount);
+            await sourceAsset.save();
+            console.log(`[Goal Activation] Updated ${sourceAsset.name}: ${oldValue} -> ${sourceAsset.value}`);
+
+            // NOTE: One-Off Lump Sum is handled as a physical transfer. 
+            // We NO LONGER create a CashFlow record for it to keep the planning view clean.
+            // The deduction is already reflected in the asset balance.
+
+            // --- 1.3 Create Detailed Investment Assets based on Portfolio Weights ---
+            const portfolio = plan.selected_portfolio;
+            
+            if (portfolio && portfolio.products?.length > 0) {
+                console.log(`[Goal Activation] 🧩 Fragmenting investment into ${portfolio.products.length} products...`);
+                
+                for (const item of portfolio.products) {
+                    const productAmount = Math.round(initialAmount * (item.weight_pct / 100));
+                    if (productAmount <= 0) continue;
+
+                    const productDoc = await Product.findById(item.product_id);
+                    const productName = productDoc ? productDoc.name : `Investment Product`;
+                    
+                    let productCat = 'Invest_ManagedFund';
+                    if (productDoc) {
+                        if (productDoc.category === 'KiwiSaver') productCat = 'KiwiSaver';
+                        else if (productDoc.category === 'Fund') productCat = 'Invest_ManagedFund';
+                        else if (productDoc.category === 'TermDeposit') productCat = 'Cash_TermDeposit';
+                    } else {
+                        productCat = goal.category === 'retirement' ? 'KiwiSaver' : 'Invest_ManagedFund';
+                    }
+
+                    await FinancialAsset.create({
+                        user_id: user._id,
+                        name: `${productName} (${goal.goal_name})`,
+                        record_type: 'Asset',
+                        category: productCat,
+                        value: productAmount,
+                        source_product_id: item.product_id,
+                        is_liquid: productCat !== 'KiwiSaver',
+                        asset_details: {
+                            linked_goal_id: goal._id,
+                            strategy: plan.strategy_profile,
+                            is_auto_generated: true,
+                            weight_pct: item.weight_pct
+                        }
+                    });
+                    console.log(`   + Created asset: ${productName} ($${productAmount})`);
+                }
+            } else {
+                // Fallback: If no specific portfolio products, create a generic one
+                const investmentAssetName = `${goal.goal_name} Portfolio`;
+                const isRetirement = goal.category === 'retirement';
+                
+                await FinancialAsset.create({
+                    user_id: user._id,
+                    name: investmentAssetName,
+                    record_type: 'Asset',
+                    category: isRetirement ? 'KiwiSaver' : 'Invest_ManagedFund',
+                    value: initialAmount,
+                    is_liquid: !isRetirement,
+                    asset_details: {
+                        linked_goal_id: goal._id,
+                        strategy: plan.strategy_profile,
+                        is_auto_generated: true
+                    }
+                });
+                console.log(`[Goal Activation] 📈 Created generic investment asset: ${investmentAssetName}`);
+            }
+        } else {
+            console.error(`[Goal Activation] ❌ No suitable cash account found for deduction of ${initialAmount}`);
+        }
+    }
+
+    // --- 2. Handle Recurring Contributions (Atomic CashFlow Linkage) ---
+    const monthlyAmount = plan.contribution?.amount || plan.contribution_strategy?.monthly_amount || 0;
+    const portfolio = plan.selected_portfolio;
+    
+    if (monthlyAmount > 0) {
+        console.log(`[Goal Activation] 🗓️ Setting up atomic recurring contributions for total: ${monthlyAmount}/month`);
+        
+        if (portfolio && portfolio.products?.length > 0) {
+            // Fragment the monthly contribution according to portfolio weights
+            for (const item of portfolio.products) {
+                const productMonthlyAmount = Math.round(monthlyAmount * (item.weight_pct / 100));
+                if (productMonthlyAmount <= 0) continue;
+
+                const productDoc = await Product.findById(item.product_id);
+                const productName = productDoc ? productDoc.name : `Investment`;
+
+                await CashFlow.create({
+                    user_id: user._id,
+                    name: `${productName} (${goal.goal_name})`,
+                    type: 'Investment',
+                    category: 'Goal_Contribution',
+                    amount: productMonthlyAmount,
+                    frequency: 'Monthly',
+                    timing_mode: 'Specific_Date',
+                    anchor_date: 1, 
+                    is_variable: false,
+                    icon: goal.icon || 'target',
+                    color: '#4F46E5' 
+                });
+                console.log(`   + Created recurring cashflow: ${productName} ($${productMonthlyAmount}/mo)`);
+            }
+        } else {
+            // Fallback: Generic single contribution record
+            await CashFlow.create({
+                user_id: user._id,
+                name: `Contribution: ${goal.goal_name}`,
+                type: 'Investment',
+                category: 'Goal_Contribution',
+                amount: monthlyAmount,
+                frequency: 'Monthly',
+                timing_mode: 'Specific_Date',
+                anchor_date: 1, 
+                is_variable: false,
+                icon: goal.icon || 'target',
+                color: '#4F46E5' 
+            });
+            console.log(`   + Created generic recurring cashflow: $${monthlyAmount}/mo`);
+        }
+    }
+};
 
 // ==========================================
 // Goal & Plan Controller
@@ -114,7 +280,10 @@ export const createGoal = asyncHandler(async (req, res) => {
     decision_session_id
   });
 
-  // 3. If we have a session ID, update decision logs with the goal ID
+  // 3. Trigger Linkage Logic (Financial Activation)
+  await handlePlanActivation(req.user, goal, plan);
+
+  // 4. If we have a session ID, update decision logs with the goal ID
   if (decision_session_id) {
     try {
       await GoalDecisionLog.updateMany(
@@ -138,7 +307,8 @@ export const createGoal = asyncHandler(async (req, res) => {
 // @route   GET /api/goals
 // @access  Private
 export const getGoals = asyncHandler(async (req, res) => {
-  const filter = { user_id: req.user._id };
+  const userId = req.user._id;
+  const filter = { user_id: userId };
 
   if (req.query.status) {
     filter.status = req.query.status;
@@ -147,37 +317,58 @@ export const getGoals = asyncHandler(async (req, res) => {
   // 1. Fetch Goals
   const goals = await Goal.find(filter).sort({ rank: 1, created_at: -1 }).lean();
 
-  // 2. Fetch Plans for these goals
-  // Optimization: Fetch all plans for this user in one go and map them in memory
+  // 2. Fetch Plans & Financial Assets for all goals in parallel
   const goalIds = goals.map(g => g._id);
-  const plans = await Plan.find({ goal_id: { $in: goalIds } })
-    .populate('selected_portfolio.products.product_id')
-    .lean();
+  const [plans, assets] = await Promise.all([
+    Plan.find({ goal_id: { $in: goalIds } }).populate('selected_portfolio.products.product_id').lean(),
+    FinancialAsset.find({ user_id: userId }).lean()
+  ]);
 
-  // 3. Merge Plan into Goal
-  const goalsWithPlans = goals.map(goal => {
+  // 3. Merge Plan and REAL-TIME current_amount into Goal
+  const goalsWithLiveStats = goals.map(goal => {
     const plan = plans.find(p => p.goal_id.toString() === goal._id.toString());
-    return { ...goal, plan: plan || null };
+    
+    // Calculate real-time current_amount based on associated assets in Wealth Center
+    const associatedAssets = assets.filter(a => a.asset_details?.linked_goal_id?.toString() === goal._id.toString());
+    const liveCurrentAmount = associatedAssets.reduce((sum, a) => sum + (a.value || 0), 0);
+
+    return { 
+        ...goal, 
+        current_amount: liveCurrentAmount, // OVERWRITE with real asset value
+        plan: plan || null 
+    };
   });
 
-  res.json(goalsWithPlans);
+  res.json(goalsWithLiveStats);
 });
 
 // @desc    Get a single goal by id
 // @route   GET /api/goals/:id
 // @access  Private
 export const getGoalById = asyncHandler(async (req, res) => {
-  const goal = await Goal.findOne({ _id: req.params.id, user_id: req.user._id }).lean();
+  const userId = req.user._id;
+  const goal = await Goal.findOne({ _id: req.params.id, user_id: userId }).lean();
 
   if (!goal) {
     throw new NotFoundError('Goal not found');
   }
 
-  const plan = await Plan.findOne({ goal_id: goal._id })
-    .populate('selected_portfolio.products.product_id')
-    .lean();
+  // Fetch Plan and Associated Assets for real-time progress
+  const [plan, associatedAssets] = await Promise.all([
+    Plan.findOne({ goal_id: goal._id }).populate('selected_portfolio.products.product_id').lean(),
+    FinancialAsset.find({ 
+        user_id: userId, 
+        'asset_details.linked_goal_id': goal._id.toString() 
+    }).lean()
+  ]);
 
-  res.json({ ...goal, plan: plan || null });
+  const liveCurrentAmount = associatedAssets.reduce((sum, a) => sum + (a.value || 0), 0);
+
+  res.json({ 
+    ...goal, 
+    current_amount: liveCurrentAmount, // Real-time value injected directly from assets
+    plan: plan || null 
+  });
 });
 
 // @desc    Update a goal (and optionally its plan)
@@ -236,14 +427,53 @@ export const updateGoal = asyncHandler(async (req, res) => {
 // @route   DELETE /api/goals/:id
 // @access  Private
 export const deleteGoal = asyncHandler(async (req, res) => {
-  const goal = await Goal.findOneAndDelete({ _id: req.params.id, user_id: req.user._id });
+  const goalId = req.params.id;
+  const goal = await Goal.findOne({ _id: goalId, user_id: req.user._id });
 
   if (!goal) {
     throw new NotFoundError('Goal not found');
   }
 
-  // Cleanup Plan
-  await Plan.deleteOne({ goal_id: req.params.id });
+  console.log(`[Goal Deletion] 🗑️ Cleaning up for Goal: ${goal.goal_name}`);
 
-  res.status(200).json({ message: 'Goal and associated Plan removed' });
+  // 1. Unlink Assets (Keep the money, just remove the goal association)
+  // We keep the actual FinancialAsset records but clear the goal link
+  await FinancialAsset.updateMany(
+    { 
+        user_id: req.user._id,
+        'asset_details.linked_goal_id': goalId 
+    },
+    { 
+        $set: { 
+            'asset_details.linked_goal_id': null,
+            'asset_details.is_legacy_goal_asset': true,
+            'asset_details.original_goal_name': goal.goal_name
+        }
+    }
+  );
+  console.log(`[Goal Deletion] 📉 Unlinked existing investment assets (kept in Wealth Center)`);
+
+  // 2. Cleanup linked CashFlows (Stop future recurring contributions)
+  // We MUST delete these as the investment plan is now cancelled
+  const cashFlowResult = await CashFlow.deleteMany({
+    user_id: req.user._id,
+    $or: [
+        { name: `Contribution: ${goal.goal_name}` },
+        { name: `Lump Sum: ${goal.goal_name}` }
+    ]
+  });
+  console.log(`[Goal Deletion] 💸 Stopped ${cashFlowResult.deletedCount} future/recurring contribution records`);
+
+  // 3. Cleanup Plan
+  await Plan.deleteOne({ goal_id: goalId });
+
+  // 4. Finally remove the Goal itself
+  await Goal.deleteOne({ _id: goalId });
+
+  res.status(200).json({ 
+    message: 'Goal removed. Future contributions stopped. Existing assets retained.',
+    cleanupSummary: {
+        cashFlowsDeleted: cashFlowResult.deletedCount
+    }
+  });
 });

@@ -3,9 +3,10 @@ import {
   ArrowUpCircle, ArrowDownCircle, Plus, DollarSign, 
   Repeat, ShoppingBag, Briefcase, Zap, 
   TrendingUp, Home, Car, Layers, Target, Activity,
-  ArrowUpRight, ChevronRight, Filter, Wallet, CreditCard, ArrowDownRight
+  ArrowUpRight, ChevronRight, Filter, Wallet, CreditCard, ArrowDownRight,
+  Trash2
 } from 'lucide-react';
-import { getCashFlows } from '../../services/cashFlowService';
+import { getCashFlows, deleteCashFlow } from '../../services/cashFlowService';
 import { Loader2 } from 'lucide-react';
 import CashFlowProjectionChart from '../../components/wealth/CashFlowProjectionChart';
 import CashFlowFormModal from '../../components/wealth/CashFlowFormModal';
@@ -91,7 +92,7 @@ const SegmentedControl = ({ options, value, onChange }) => (
 );
 
 // ============ SUB-COMPONENT: FLOW ITEM ============
-const FlowItem = ({ item, colorScheme, onEdit, displayAmount, frequencyLabel }) => {
+const FlowItem = ({ item, colorScheme, onEdit, onDelete, displayAmount, frequencyLabel }) => {
   const Icon = getIconForCategory(item.category);
   const schemes = {
     emerald: { bar: 'bg-emerald-500', iconBg: 'bg-emerald-50', iconText: 'text-emerald-600' },
@@ -102,10 +103,12 @@ const FlowItem = ({ item, colorScheme, onEdit, displayAmount, frequencyLabel }) 
 
   return (
     <div 
-      onClick={() => onEdit(item)}
       className="flex items-center justify-between px-5 py-4 bg-white border-b border-slate-50 last:border-0 hover:bg-slate-50 cursor-pointer transition-all group relative overflow-hidden"
     >
-      <div className="flex items-center gap-4">
+      <div 
+        className="flex items-center gap-4 flex-1"
+        onClick={() => onEdit(item)}
+      >
         {/* Vertical Indicator Bar */}
         <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full ${s.bar} opacity-0 group-hover:opacity-100 transition-opacity`}></div>
         
@@ -133,9 +136,24 @@ const FlowItem = ({ item, colorScheme, onEdit, displayAmount, frequencyLabel }) 
         </div>
       </div>
       
-      <div className="text-right">
-        <div className="font-bold text-slate-900 text-base">{formatCurrency(displayAmount)}</div>
-        <div className="text-[10px] text-slate-400 font-medium">{frequencyLabel}</div>
+      <div className="flex items-center gap-4">
+        <div className="text-right" onClick={() => onEdit(item)}>
+          <div className="font-bold text-slate-900 text-base">{formatCurrency(displayAmount)}</div>
+          <div className="text-[10px] text-slate-400 font-medium">{frequencyLabel}</div>
+        </div>
+        
+        {/* Delete Button - Global Style */}
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            if (window.confirm(`Delete ${item.name}?`)) {
+              onDelete(item._id);
+            }
+          }}
+          className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+        >
+          <Trash2 size={16} />
+        </button>
       </div>
     </div>
   );
@@ -163,6 +181,7 @@ const WealthCashflow = () => {
   const [incomes, setIncomes] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
+  const [investments, setInvestments] = useState([]);
   const [allFlows, setAllFlows] = useState([]);
   const [viewMode, setViewMode] = useState('Weekly');
   const [calcMode, setCalcMode] = useState('Planning');
@@ -180,6 +199,7 @@ const WealthCashflow = () => {
       setIncomes(flows.filter(f => f.type === 'Income'));
       setExpenses(flows.filter(f => f.type === 'Expense'));
       setSubscriptions(flows.filter(f => f.type === 'Subscription'));
+      setInvestments(flows.filter(f => f.type === 'Investment'));
     } catch (err) {
       console.error("Failed to fetch cash flows", err);
     } finally {
@@ -189,8 +209,19 @@ const WealthCashflow = () => {
 
   useEffect(() => { fetchFlows(); }, []);
 
-  const handleAdd = (type) => { setEditingFlow(null); setModalType(type); setIsModalOpen(true); };
   const handleEdit = (flow) => { setEditingFlow(flow); setIsModalOpen(true); };
+
+  const handleDelete = async (id) => {
+    try {
+      setLoading(true);
+      await deleteCashFlow(id);
+      await fetchFlows();
+    } catch (err) {
+      console.error("Failed to delete cash flow", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // --- Calculation Logic ---
   const toAnnual = (amount, frequency) => amount * (TO_ANNUAL[frequency] || 0);
@@ -241,7 +272,8 @@ const WealthCashflow = () => {
   const totalIncome = incomes.reduce((sum, item) => sum + getDisplayAmount(item), 0);
   const totalExpenses = expenses.reduce((sum, item) => sum + getDisplayAmount(item), 0);
   const totalSubs = subscriptions.reduce((sum, item) => sum + getDisplayAmount(item), 0);
-  const totalOutflow = totalExpenses + totalSubs;
+  const totalInvestments = investments.reduce((sum, item) => sum + getDisplayAmount(item), 0);
+  const totalOutflow = totalExpenses + totalSubs + totalInvestments;
   const netFlow = totalIncome - totalOutflow;
   const savingsRate = totalIncome > 0 ? (netFlow / totalIncome) * 100 : 0;
 
@@ -307,8 +339,8 @@ const WealthCashflow = () => {
                 </span>
               </div>
 
-              {/* Income / Outflow Summary Row (Replaces text description) */}
-              <div className="flex items-center gap-12 mb-6">
+              {/* Income / Outflow Summary Row */}
+              <div className="flex flex-wrap items-center gap-8 mb-6">
                  <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Income</p>
                     <div className="flex items-center gap-2">
@@ -318,27 +350,44 @@ const WealthCashflow = () => {
                        <span className="text-xl font-bold text-slate-700">{formatCurrency(totalIncome)}</span>
                     </div>
                  </div>
-                 <div className="h-8 w-px bg-slate-200"></div>
+                 <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Outflow</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Expenses</p>
                     <div className="flex items-center gap-2">
                        <div className="w-8 h-8 rounded-full bg-rose-50 flex items-center justify-center text-rose-600">
                           <ArrowDownCircle size={18} />
                        </div>
-                       <span className="text-xl font-bold text-slate-700">{formatCurrency(totalOutflow)}</span>
+                       <span className="text-xl font-bold text-slate-700">{formatCurrency(totalExpenses + totalSubs)}</span>
+                    </div>
+                 </div>
+                 <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
+                 <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Investments</p>
+                    <div className="flex items-center gap-2">
+                       <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
+                          <TrendingUp size={18} />
+                       </div>
+                       <span className="text-xl font-bold text-slate-700">{formatCurrency(totalInvestments)}</span>
                     </div>
                  </div>
               </div>
               
-              {/* Progress Bar */}
+              {/* Progress Bar (Tri-color) */}
               <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden flex mb-2">
-                 <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.min((totalOutflow / (totalIncome || 1)) * 100, 100)}%` }}></div>
-                 <div className="h-full bg-emerald-400 rounded-full -ml-1 border-l-2 border-white" style={{ width: `${Math.max(savingsRate, 0)}%` }}></div>
+                 {/* Expenses: Rose */}
+                 <div className="h-full bg-rose-400" style={{ width: `${Math.min(((totalExpenses + totalSubs) / (totalIncome || 1)) * 100, 100)}%` }}></div>
+                 {/* Investments: Indigo */}
+                 <div className="h-full bg-indigo-500 border-l-2 border-white" style={{ width: `${Math.min((totalInvestments / (totalIncome || 1)) * 100, 100)}%` }}></div>
+                 {/* Surplus: Emerald */}
+                 <div className="h-full bg-emerald-400 border-l-2 border-white" style={{ width: `${Math.max(savingsRate, 0)}%` }}></div>
               </div>
               
               <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                <span>Expenses ({totalIncome > 0 ? ((totalOutflow / totalIncome) * 100).toFixed(0) : 0}%)</span>
-                <span>Surplus ({Math.max(savingsRate, 0).toFixed(0)}%)</span>
+                <div className="flex gap-4">
+                  <span className="text-rose-500">Living ({totalIncome > 0 ? (((totalExpenses + totalSubs) / totalIncome) * 100).toFixed(0) : 0}%)</span>
+                  <span className="text-indigo-500">Invested ({totalIncome > 0 ? ((totalInvestments / totalIncome) * 100).toFixed(0) : 0}%)</span>
+                </div>
+                <span className="text-emerald-500">Free Surplus ({Math.max(savingsRate, 0).toFixed(0)}%)</span>
               </div>
           </div>
         </div>
@@ -406,10 +455,57 @@ const WealthCashflow = () => {
                 item={item} 
                 colorScheme="emerald" 
                 onEdit={handleEdit} 
+                onDelete={handleDelete}
                 displayAmount={getDisplayAmount(item)}
                 frequencyLabel={FREQUENCY_LABELS[viewMode]}
               />
             ))}
+          </div>
+          
+          {/* Investments (Goals & Portfolio) */}
+          <div className="space-y-4 pt-4">
+            <div className="flex items-center justify-between px-2">
+              <h3 className={SECTION_TITLE}>
+                <Target size={18} className="text-indigo-500" />
+                Goals & Investments
+              </h3>
+              <button 
+                onClick={() => handleAdd('Investment')}
+                className="text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-xl transition-colors flex items-center gap-1.5"
+              >
+                <Plus size={14} /> Add
+              </button>
+            </div>
+
+            <div className={`${CARD_BASE} overflow-hidden min-h-[200px]`}>
+               <div className="bg-indigo-50/50 px-6 py-4 border-b border-indigo-50 flex justify-between items-center">
+                   <div className="flex items-center gap-2 text-indigo-900">
+                       <span className="text-xs font-bold uppercase tracking-wider">Total Invested</span>
+                   </div>
+                   <div className="text-indigo-700 font-bold text-sm">
+                       {formatCurrency(totalInvestments)} <span className="text-indigo-400 text-[10px] font-medium">{FREQUENCY_LABELS[viewMode]}</span>
+                   </div>
+               </div>
+              {investments.length === 0 ? (
+                <EmptyState 
+                  icon={TrendingUp} 
+                  title="No active investments" 
+                  actionLabel="+ Setup your first goal" 
+                  onAction={() => handleAdd('Investment')} 
+                  colorClass="text-indigo-300"
+                />
+              ) : investments.map((item) => (
+                <FlowItem 
+                  key={item._id} 
+                  item={item} 
+                  colorScheme="indigo" 
+                  onEdit={handleEdit} 
+                  onDelete={handleDelete}
+                  displayAmount={getDisplayAmount(item)}
+                  frequencyLabel={FREQUENCY_LABELS[viewMode]}
+                />
+              ))}
+            </div>
           </div>
         </div>
 
@@ -446,6 +542,7 @@ const WealthCashflow = () => {
                   item={item} 
                   colorScheme="rose" 
                   onEdit={handleEdit} 
+                  onDelete={handleDelete}
                   displayAmount={getDisplayAmount(item)}
                   frequencyLabel={FREQUENCY_LABELS[viewMode]}
                 />
@@ -493,6 +590,7 @@ const WealthCashflow = () => {
                     item={item} 
                     colorScheme="indigo" 
                     onEdit={handleEdit} 
+                    onDelete={handleDelete}
                     displayAmount={getDisplayAmount(item)}
                     frequencyLabel={FREQUENCY_LABELS[viewMode]}
                   />
