@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Send, Bot, User, Sparkles, GripHorizontal } from 'lucide-react';
+import { X, Send, Bot, User, Sparkles, GripHorizontal, ExternalLink } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -119,43 +119,59 @@ const HelpChatBox = ({ isOpen, onClose }) => {
         }),
       });
 
-      if (!response.ok) throw new Error('Network response was not ok');
+      if (!response.ok || !response.body) throw new Error('Network response was not ok');
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      
-      setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
-      
+
+      setMessages(prev => [...prev, { role: 'assistant', content: '', references: [] }]);
+
       let assistantResponse = '';
+      let finalReferences = [];
+      let thoughtProcess = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
+
         const chunk = decoder.decode(value, { stream: true });
         const lines = chunk.split('\n');
-        
+
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') break;
-            
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.token) {
-                assistantResponse += parsed.token;
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  newMsgs[newMsgs.length - 1].content = assistantResponse;
-                  return newMsgs;
-                });
-              }
-            } catch (e) {
-              console.error('Error parsing chunk', e);
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6).trim();
+          if (!data || data === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.token) {
+              assistantResponse += parsed.token;
+              setMessages(prev => {
+                const newMsgs = [...prev];
+                newMsgs[newMsgs.length - 1].content = assistantResponse;
+                return newMsgs;
+              });
             }
+            if (parsed.references) {
+              finalReferences = parsed.references;
+              thoughtProcess = parsed.thought_process || thoughtProcess;
+            }
+          } catch (err) {
+            console.error('Error parsing SSE chunk', err);
           }
         }
       }
+
+      // Attach final references and thought process
+      setMessages(prev => {
+        const newMsgs = [...prev];
+        if (newMsgs[newMsgs.length - 1]) {
+          newMsgs[newMsgs.length - 1].references = finalReferences;
+          newMsgs[newMsgs.length - 1].thought_process = thoughtProcess;
+        }
+        return newMsgs;
+      });
+
     } catch (error) {
       console.error('Chat error:', error);
       setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I'm having trouble connecting right now. Please try again later." }]);
@@ -232,6 +248,50 @@ const HelpChatBox = ({ isOpen, onClose }) => {
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {msg.content}
                 </ReactMarkdown>
+              )}
+
+              {/* References */}
+              {msg.role === 'assistant' && msg.references && msg.references.length > 0 && (
+                <div className="mt-3 pt-2 border-t border-slate-100 flex flex-col gap-2">
+                  {msg.references.map((ref, idx) => {
+                    const marker = ref.marker || `[${idx + 1}]`;
+                    const title = ref.title || 'Source';
+                    const content = (
+                      <>
+                        <span className="text-slate-500 font-semibold">{marker}</span>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-1 text-[11px] font-semibold">
+                            {ref.url ? <ExternalLink size={10} /> : null} {title}
+                          </div>
+                          {ref.snippet && (
+                            <div className="text-[10px] text-slate-500 line-clamp-2">{ref.snippet}</div>
+                          )}
+                          <div className="text-[10px] text-slate-400">{ref.source || 'Vectara'}</div>
+                        </div>
+                      </>
+                    );
+
+                    const hasUrl = !!ref.url;
+                    return hasUrl ? (
+                      <a
+                        key={idx}
+                        href={ref.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-start gap-2 px-2 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-[11px] text-slate-600 transition-colors"
+                      >
+                        {content}
+                      </a>
+                    ) : (
+                      <div
+                        key={idx}
+                        className="flex items-start gap-2 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600"
+                      >
+                        {content}
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>

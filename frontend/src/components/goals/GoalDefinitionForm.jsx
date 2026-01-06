@@ -102,6 +102,22 @@ const GoalDefinitionForm = ({
                 return;
             }
 
+            // For "custom" with no user input, avoid hitting backend; use a light default form.
+            if (!goalContext?.userInput?.text && category === 'custom') {
+                setFormSchema({
+                    fields: [
+                        { name: 'goal_name', label: 'Goal Name', type: 'text', required: true, placeholder: 'e.g., Custom Goal' },
+                        { name: 'target_amount', label: 'Target Amount ($)', type: 'currency', required: true, min: 0, step: 1000 },
+                        { name: 'due_date', label: 'Target Date', type: 'date', required: false },
+                        { name: 'priority', label: 'Priority', type: 'select', options: ['need', 'want', 'wish'], required: false },
+                        { name: 'notes', label: 'Notes', type: 'textarea', placeholder: 'Describe your goal...' }
+                    ]
+                });
+                setAiError('');
+                setLoadingSchema(false);
+                return;
+            }
+
             // For other types, ask backend for the schema
             setLoadingSchema(true);
             try {

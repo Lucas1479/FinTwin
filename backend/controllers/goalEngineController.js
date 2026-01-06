@@ -13,6 +13,26 @@ import Product from '../models/productModel.js';
 import GoalDecisionLog from '../models/goalDecisionLogModel.js';
 import productTools from '../services/productTools.js';
 
+// Build a stage-aware Vectara query to enrich LLM with grounded knowledge
+const buildRagQueryForStage = (stage, goalContext = {}, userInput = {}) => {
+    const goalName = goalContext.goal_name || goalContext.goal_title || goalContext.category || 'financial goal';
+    const category = goalContext.category || 'general';
+    const text = userInput?.text || '';
+    const base = `Stage: ${stage}. Goal: ${goalName}. Category: ${category}. User input: ${text}`;
+    switch (stage) {
+        case GOAL_ENGINE_STAGES.DEFINITION:
+            return `${base}. Need NZ personal finance references for goal definition, gap analysis, typical targets, KiwiSaver basics.`;
+        case GOAL_ENGINE_STAGES.STRATEGY:
+            return `${base}. Need NZ strategy guardrails: economic exposure patterns, KiwiSaver vs managed fund trade-offs, tax/fee considerations.`;
+        case GOAL_ENGINE_STAGES.PRODUCT:
+            return `${base}. Need portfolio construction references, fee/return ranges, diversification heuristics for KiwiSaver/ETFs in NZ.`;
+        case GOAL_ENGINE_STAGES.SIMULATION:
+            return `${base}. Need feasibility checks, projection assumptions, common pitfalls for NZ retail investors.`;
+        default:
+            return `${base}. General NZ personal finance references.`;
+    }
+};
+
 /**
  * Persist decision to database (GoalDecisionLog)
  * This creates a permanent record for audit trail and analytics
@@ -73,6 +93,10 @@ const persistDecisionLog = async (params) => {
 // @access  Private
 export const generateGoalDecision = asyncHandler(async (req, res) => {
   const { stage, goalContext, userInput, previousDecisions } = req.body || {};
+  const useRagReq = req.body?.useRag;
+  const useRagEnv = process.env.ENABLE_VECTARA_RAG === 'true';
+  // request flag overrides env; otherwise env enables by default
+  const useRag = useRagReq === true || (useRagReq === undefined && useRagEnv);
 
   console.log(`\n[Goal Engine] === Incoming Request ===`);
   console.log(`[Goal Engine] Stage: ${stage}`);
@@ -303,6 +327,25 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
           is_retirement: goalContext.category === 'retirement',
           contribution_mode: goalContext.ai_decision?.strategy_recommendation?.contribution_strategy?.mode
       };
+  }
+
+  // --- RAG enrichment (Vectara) ---
+  let ragContext = null;
+  if (useRag) {
+      const ragQuery = buildRagQueryForStage(stage, enrichedContext, userInput);
+      try {
+          ragContext = await llmService.fetchRagContext({
+              query: ragQuery,
+              stage,
+              goalContext: enrichedContext
+          });
+          if (ragContext) {
+              enrichedContext.external_knowledge = ragContext;
+              console.log(`[Goal Engine] RAG attached from Vectara: summary=${!!ragContext.summary}, passages=${ragContext.passages?.length || 0}`);
+          }
+      } catch (err) {
+          console.warn('[Goal Engine] RAG fetch failed, continue without RAG:', err.message);
+      }
   }
 
   // Build stage-specific prompt + context (includes responseSchema)

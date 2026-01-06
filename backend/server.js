@@ -1,12 +1,13 @@
 import express from 'express';
 import dotenv from 'dotenv';
+
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
 import connectDB from './config/db.js';
 import routes from './routes/index.js';
 
-// Load environment variables
+// Load environment variables (always from backend/.env, independent of CWD)
 dotenv.config();
 
 // Connect to Database

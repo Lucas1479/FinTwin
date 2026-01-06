@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AppError } from '../utils/errors.js';
+import vectaraClient from './vectaraClient.js';
 
 // LLMService: thin abstraction over different LLM providers (Gemini, Bedrock, DeepSeek, etc.)
 // Uses structured output when possible and always returns a unified shape.
@@ -234,6 +235,93 @@ class LLMService {
       toolCalls: allToolCalls,
       raw: finalResponse
     };
+  }
+
+  // ==========================================
+  // RAG support (Vectara)
+  // ==========================================
+
+  /**
+   * Fetch external knowledge from Vectara.
+   * @param {object} params
+   * @param {string} params.query - query text
+   * @param {string} params.stage - goal engine stage
+   * @param {object} params.goalContext - enriched context for hints
+   */
+  async fetchRagContext({ query, stage, goalContext }) {
+    const useRag = process.env.ENABLE_VECTARA_RAG === 'true' || process.env.VECTARA_API_KEY;
+    if (!useRag) {
+      console.log('[LLMService] RAG disabled (ENABLE_VECTARA_RAG not true and no VECTARA_API_KEY).');
+      return null;
+    }
+
+    const defaultQuery = this._buildRagQuery(stage, goalContext);
+    const queryText = query || defaultQuery;
+    try {
+      const rag = await vectaraClient.searchAndSummarize(queryText);
+      return {
+        query: queryText,
+        summary: rag.summary,
+        passages: rag.passages,
+        citations: rag.citations,
+        provider: 'vectara',
+      };
+    } catch (err) {
+      console.warn('[LLMService] Vectara RAG failed, continuing without RAG:', err.message);
+      return null; // fail open
+    }
+  }
+
+  /**
+   * Generate with optional RAG enrichment (non-streaming).
+   * If Vectara is disabled or fails, falls back to normal generate.
+   */
+  async generateWithRag(prompt, context = {}, ragOptions = {}) {
+    const useRagEnv = process.env.ENABLE_VECTARA_RAG === 'true' || process.env.VECTARA_API_KEY;
+    const useRag = ragOptions.useRag ?? useRagEnv;
+    if (!useRag) return this.generate(prompt, context);
+
+    const ragContext = await this.fetchRagContext({
+      query: ragOptions.query,
+      stage: context.stage,
+      goalContext: context.goalContext,
+    });
+
+    const mergedContext = {
+      ...context,
+      external_knowledge: ragContext || context.external_knowledge,
+    };
+
+    const result = await this.generate(prompt, mergedContext);
+    return { ...result, ragContext };
+  }
+
+  _buildRagQuery(stage, goalContext = {}) {
+    const userGoal =
+      goalContext.goal_name ||
+      goalContext.goal_title ||
+      goalContext.category ||
+      'financial goal';
+    const risk =
+      goalContext?.riskTolerance ||
+      goalContext?.risk_profile?.attitude ||
+      goalContext?.ai_decision?.risk_profile?.attitude ||
+      'balanced';
+    const due = goalContext?.due_date || goalContext?.target_date || '';
+    const base = `Contextual info for ${stage} stage. Goal: ${userGoal}. Risk: ${risk}. Due: ${due}.`;
+    if (stage === 'definition') {
+      return `${base} Provide NZ personal finance guidance, KiwiSaver rules, and typical target amounts/gap analysis references.`;
+    }
+    if (stage === 'strategy') {
+      return `${base} Need economic exposure best practices, KiwiSaver vs managed fund trade-offs, NZ tax/fee considerations.`;
+    }
+    if (stage === 'product') {
+      return `${base} Need product selection considerations, fee/return ranges, diversification patterns for KiwiSaver/ETFs in NZ.`;
+    }
+    if (stage === 'simulation') {
+      return `${base} Need feasibility checks, common pitfalls, and NZ-specific assumptions for projections.`;
+    }
+    return `${base} General NZ personal finance references.`;
   }
 
   /**
