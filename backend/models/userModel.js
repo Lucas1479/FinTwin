@@ -13,6 +13,16 @@ const RiskProfileSchema = new mongoose.Schema({
   volatilityTolerance: { type: Number, default: 15 }, // 波动率偏好 %
   retirementAge: { type: Number, default: 65 },
   planningAge: { type: Number, default: 90 }, // 预期寿命
+  investmentExperience: { 
+    type: String, 
+    enum: ['Novice', 'Intermediate', 'Advanced'], 
+    default: 'Intermediate' 
+  }, // 新增：投资经验
+  nzMarketKnowledge: { 
+    type: String, 
+    enum: ['Low', 'Medium', 'High'], 
+    default: 'Medium' 
+  }, // 新增：新西兰市场熟悉程度
 }, { _id: false });
 
 const HouseholdSchema = new mongoose.Schema({

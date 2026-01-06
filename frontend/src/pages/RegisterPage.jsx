@@ -28,7 +28,7 @@ const RegisterPage = () => {
 
     try {
       await register(name, email, password);
-      navigate('/dashboard');
+      navigate('/onboarding');
     } catch (error) {
       console.error(error);
       setMessage('Error registering user');

@@ -1,0 +1,344 @@
+import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { X, Send, Bot, User, Sparkles, GripHorizontal, ExternalLink } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+
+const HelpChatBox = ({ isOpen, onClose }) => {
+  const [messages, setMessages] = useState([
+    { 
+      role: 'assistant', 
+      content: "Hi there! I'm your FinTwin guide. I can help you understand financial terms or navigate the app. What's on your mind?" 
+    }
+  ]);
+  const [input, setInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+  const chatBoxRef = useRef(null);
+
+  // Draggable State
+  const [position, setPosition] = useState({ x: 0, y: 0 }); // Relative offset
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isOpen]);
+
+  // Drag Handlers
+  const handleMouseDown = (e) => {
+    // Only drag from header
+    if (e.target.closest('.drag-handle')) {
+      setIsDragging(true);
+      const rect = chatBoxRef.current.getBoundingClientRect();
+      setDragOffset({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      });
+    }
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (isDragging) {
+        // Calculate new position
+        // We use absolute positioning based on viewport, but keeping it simpler with transform might be better.
+        // However, since it's fixed, we can just update style via ref or state.
+        // Let's use fixed positioning updates.
+        
+        // We need to calculate the new left/top based on mouse minus offset
+        const newX = e.clientX - dragOffset.x;
+        const newY = e.clientY - dragOffset.y;
+
+        // Apply boundaries (simple)
+        const maxX = window.innerWidth - 400; // width
+        const maxY = window.innerHeight - 600; // height
+
+        // For simplicity in this iteration, let's just update the style directly to avoid re-renders if possible,
+        // but state is fine for this frequency.
+        // Actually, let's use a simpler approach: use transform translate.
+        // But initial position is bottom-right fixed.
+        // Let's stick to the current transform approach if we were using it, or just use right/bottom offsets.
+        // EASIEST: Just update `left` and `top` and switch from `bottom/right` CSS to `left/top` CSS on first drag.
+        
+        if (chatBoxRef.current) {
+             chatBoxRef.current.style.right = 'auto';
+             chatBoxRef.current.style.bottom = 'auto';
+             chatBoxRef.current.style.left = `${newX}px`;
+             chatBoxRef.current.style.top = `${newY}px`;
+        }
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, dragOffset]);
+
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!input.trim() || isTyping) return;
+
+    const userMessage = input.trim();
+    setInput('');
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setIsTyping(true);
+
+    try {
+      const response = await fetch('http://localhost:5000/api/help/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}` 
+        },
+        body: JSON.stringify({ 
+          message: userMessage,
+          history: messages.slice(-10) 
+        }),
+      });
+
+      if (!response.ok || !response.body) throw new Error('Network response was not ok');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      setMessages(prev => [...prev, { role: 'assistant', content: '', references: [] }]);
+
+      let assistantResponse = '';
+      let finalReferences = [];
+      let thoughtProcess = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6).trim();
+          if (!data || data === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.token) {
+              assistantResponse += parsed.token;
+              setMessages(prev => {
+                const newMsgs = [...prev];
+                newMsgs[newMsgs.length - 1].content = assistantResponse;
+                return newMsgs;
+              });
+            }
+            if (parsed.references) {
+              finalReferences = parsed.references;
+              thoughtProcess = parsed.thought_process || thoughtProcess;
+            }
+          } catch (err) {
+            console.error('Error parsing SSE chunk', err);
+          }
+        }
+      }
+
+      // Attach final references and thought process
+      setMessages(prev => {
+        const newMsgs = [...prev];
+        if (newMsgs[newMsgs.length - 1]) {
+          newMsgs[newMsgs.length - 1].references = finalReferences;
+          newMsgs[newMsgs.length - 1].thought_process = thoughtProcess;
+        }
+        return newMsgs;
+      });
+
+    } catch (error) {
+      console.error('Chat error:', error);
+      setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I'm having trouble connecting right now. Please try again later." }]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return createPortal(
+    <div 
+      ref={chatBoxRef}
+      onMouseDown={handleMouseDown}
+      className="fixed bottom-6 right-6 z-[9999] w-[400px] h-[600px] bg-white rounded-2xl shadow-2xl border border-slate-100 flex flex-col animate-in slide-in-from-bottom-10 fade-in duration-300 font-sans"
+      style={{ 
+        // Initial static position handled by class names, dynamic updates via style ref
+      }}
+    >
+      
+      {/* Header */}
+      <div className="drag-handle p-4 bg-indigo-600 text-white rounded-t-2xl flex justify-between items-center shadow-md cursor-grab active:cursor-grabbing select-none">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+            <Sparkles size={20} className="text-white" />
+          </div>
+          <div>
+            <h3 className="font-bold text-sm">FinTwin Support</h3>
+            <p className="text-[10px] text-indigo-100 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
+              Online
+            </p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2">
+            {/* Drag Indicator Icon */}
+            <GripHorizontal size={18} className="text-white/40 mr-2" />
+            
+            <button 
+            onClick={onClose}
+            // Stop propagation so clicking close doesn't start drag
+            onMouseDown={(e) => e.stopPropagation()} 
+            className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+            >
+            <X size={20} />
+            </button>
+        </div>
+      </div>
+
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 scrollbar-thin scrollbar-thumb-slate-200" onMouseDown={(e) => e.stopPropagation()}>
+        {messages.map((msg, idx) => (
+          <div 
+            key={idx} 
+            className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
+          >
+            <div className={`
+              w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm
+              ${msg.role === 'user' ? 'bg-indigo-100 text-indigo-600' : 'bg-white text-emerald-600 border border-slate-100'}
+            `}>
+              {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
+            </div>
+            
+            <div className={`
+              max-w-[80%] rounded-2xl p-3.5 text-sm shadow-sm
+              ${msg.role === 'user' 
+                ? 'bg-indigo-600 text-white rounded-tr-none' 
+                : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none prose prose-sm max-w-none'}
+            `}>
+              {msg.role === 'user' ? (
+                msg.content
+              ) : (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {msg.content}
+                </ReactMarkdown>
+              )}
+
+              {/* References */}
+              {msg.role === 'assistant' && msg.references && msg.references.length > 0 && (
+                <div className="mt-3 pt-2 border-t border-slate-100 flex flex-col gap-2">
+                  {msg.references.map((ref, idx) => {
+                    const marker = ref.marker || `[${idx + 1}]`;
+                    const title = ref.title || 'Source';
+                    const content = (
+                      <>
+                        <span className="text-slate-500 font-semibold">{marker}</span>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-1 text-[11px] font-semibold">
+                            {ref.url ? <ExternalLink size={10} /> : null} {title}
+                          </div>
+                          {ref.snippet && (
+                            <div className="text-[10px] text-slate-500 line-clamp-2">{ref.snippet}</div>
+                          )}
+                          <div className="text-[10px] text-slate-400">{ref.source || 'Vectara'}</div>
+                        </div>
+                      </>
+                    );
+
+                    const hasUrl = !!ref.url;
+                    return hasUrl ? (
+                      <a
+                        key={idx}
+                        href={ref.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-start gap-2 px-2 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-[11px] text-slate-600 transition-colors"
+                      >
+                        {content}
+                      </a>
+                    ) : (
+                      <div
+                        key={idx}
+                        className="flex items-start gap-2 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600"
+                      >
+                        {content}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {isTyping && (
+          <div className="flex gap-3">
+             <div className="w-8 h-8 rounded-full bg-white text-emerald-600 border border-slate-100 flex items-center justify-center shrink-0 shadow-sm">
+               <Bot size={16} />
+             </div>
+             <div className="bg-white border border-slate-100 px-4 py-3 rounded-2xl rounded-tl-none shadow-sm">
+               <div className="flex gap-1">
+                 <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></span>
+                 <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-100"></span>
+                 <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-200"></span>
+               </div>
+             </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input Area */}
+      <div className="p-4 bg-white border-t border-slate-100 rounded-b-2xl" onMouseDown={(e) => e.stopPropagation()}>
+        <form onSubmit={handleSubmit} className="relative">
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask about investing, terms, or the app..."
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-4 pr-12 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
+          />
+          <button 
+            type="submit"
+            disabled={!input.trim() || isTyping}
+            className="absolute right-2 top-2 p-1.5 bg-indigo-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 transition-colors shadow-sm"
+          >
+            <Send size={16} />
+          </button>
+        </form>
+        <p className="text-[10px] text-slate-400 text-center mt-2">
+          AI can make mistakes. Please verify important financial information.
+        </p>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+export default HelpChatBox;

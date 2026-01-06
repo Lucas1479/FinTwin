@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import OnboardingQuiz from './pages/OnboardingQuiz';
 import Dashboard from './pages/Dashboard';
 import WealthCenterPage from './pages/WealthCenterPage';
 import GoalsPage from './pages/GoalsPage';
@@ -25,6 +26,7 @@ function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/onboarding" element={<OnboardingQuiz />} />
             
             {/* Protected Routes (Should Wrap in Auth Middleware later) */}
             <Route path="/dashboard" element={<Dashboard />} />
