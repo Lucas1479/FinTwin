@@ -1,14 +1,17 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, Target, Briefcase, ShoppingBag, Gamepad2, Settings, HelpCircle, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Target, Briefcase, ShoppingBag, Gamepad2, Settings, HelpCircle, LogOut, ChevronLeft, ChevronRight, ChevronDown, Clock, Zap, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { useSidebar } from '../../context/SidebarContext';
+import { useSimulation } from '../../context/SimulationContext';
 import { getCurrentUser, logout as logoutService } from '../../services/authService';
 
 const Sidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { isCollapsed, toggleSidebar } = useSidebar();
+  const { timeOffset, setTimeOffset, marketMode, setMarketMode } = useSimulation();
   const [currentUser, setCurrentUser] = useState(null);
+  const [isTimeMachineOpen, setIsTimeMachineOpen] = useState(false);
 
   // Load user data
   useEffect(() => {
@@ -57,7 +60,7 @@ const Sidebar = () => {
     <div 
         className={`
             ${isCollapsed ? 'w-20' : 'w-80'} 
-            h-[calc(100vh-65px)] bg-white border-r border-slate-100 sticky top-[65px] 
+            h-screen bg-white border-r border-slate-100 sticky top-0 
             hidden md:flex flex-col p-4 overflow-y-auto transition-all duration-300 ease-in-out
         `}
     >
@@ -135,6 +138,116 @@ const Sidebar = () => {
             );
           })}
         </nav>
+      </div>
+
+      {/* Time Machine Section */}
+      <div className="mb-8 px-1">
+        {!isCollapsed && <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 ml-4 transition-opacity animate-fade-in">Projections</p>}
+        
+        <button
+          onClick={() => {
+              if (isCollapsed) toggleSidebar();
+              setIsTimeMachineOpen(!isTimeMachineOpen);
+          }}
+          title={isCollapsed ? "Time Machine" : ''}
+          className={`
+              w-full flex items-center gap-4 py-4 rounded-[1.5rem] text-sm font-semibold transition-all duration-300 group relative
+              ${isCollapsed ? 'justify-center px-0' : 'px-6'}
+              ${isTimeMachineOpen 
+                  ? 'bg-brand-50 text-primary shadow-sm' 
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}
+          `}
+        >
+          <Clock size={22} className={`transition-colors shrink-0 ${isTimeMachineOpen ? 'text-primary' : 'text-slate-400 group-hover:text-slate-600'}`} strokeWidth={2} />
+          
+          {!isCollapsed && (
+            <>
+              <div className="whitespace-nowrap overflow-hidden transition-all duration-300 flex-1 text-left">
+                  <div className="leading-none">Time Machine</div>
+              </div>
+              <ChevronDown size={16} className={`transition-transform duration-300 text-slate-400 ${isTimeMachineOpen ? 'rotate-180' : ''}`} />
+            </>
+          )}
+        </button>
+
+        {/* Expandable Panel */}
+        <div className={`
+            overflow-hidden transition-all duration-500 ease-in-out
+            ${isTimeMachineOpen && !isCollapsed ? 'max-h-[600px] opacity-100 mt-2' : 'max-h-0 opacity-0'}
+        `}>
+             <div className="mx-2 p-5 bg-slate-50 rounded-[2rem] border border-slate-100 shadow-inner relative overflow-hidden group">
+                {/* Subtle Gradient Glow */}
+                <div className="absolute -top-12 -right-12 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl group-hover:bg-indigo-500/10 transition-colors duration-700"></div>
+                
+                <div className="relative z-10 space-y-6">
+                    {/* Header Status */}
+                    <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Horizon</span>
+                         {timeOffset > 0 && (
+                            <div className="flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                                <span className="text-[9px] font-black text-indigo-600 uppercase tracking-widest">Active</span>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Year Slider */}
+                    <div className="space-y-3">
+                        <div className="flex justify-between items-end">
+                             <span className="text-3xl font-black text-indigo-600 tracking-tighter">+{timeOffset}<span className="text-sm text-indigo-400 ml-1">years</span></span>
+                        </div>
+                        <input 
+                            type="range" 
+                            min="0" 
+                            max="20" 
+                            step="1" 
+                            value={timeOffset} 
+                            onChange={(e) => setTimeOffset(parseInt(e.target.value))}
+                            className="w-full h-1.5 bg-slate-200 rounded-full appearance-none cursor-pointer accent-indigo-600 transition-all hover:accent-indigo-500"
+                        />
+                         <div className="flex justify-between text-[8px] text-slate-400 font-bold uppercase tracking-wider">
+                            <span>Now</span>
+                            <span>20y</span>
+                        </div>
+                    </div>
+
+                    {/* Market Mode Buttons */}
+                    <div className="space-y-2">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Market Condition</span>
+                        <div className="flex bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
+                            {[
+                                { id: 'Bear', icon: TrendingDown, color: 'text-rose-500' },
+                                { id: 'Neutral', icon: Minus, color: 'text-slate-400' },
+                                { id: 'Bull', icon: TrendingUp, color: 'text-emerald-500' }
+                            ].map((m) => {
+                                const Icon = m.icon;
+                                const isActive = marketMode === m.id;
+                                return (
+                                    <button
+                                        key={m.id}
+                                        onClick={() => setMarketMode(m.id)}
+                                        title={m.id}
+                                        className={`
+                                            flex-1 flex items-center justify-center py-2 rounded-lg transition-all duration-300
+                                            ${isActive ? 'bg-indigo-50 shadow-inner' : 'hover:bg-slate-50'}
+                                        `}
+                                    >
+                                        <Icon size={14} className={`transition-colors ${isActive ? m.color : 'text-slate-300'}`} strokeWidth={3} />
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Disclaimer */}
+                    <div className="pt-4 border-t border-slate-200/50">
+                        <p className="text-[9px] text-slate-400 leading-relaxed font-medium text-center">
+                            Disclaimer: Projections are estimates based on current algorithms.
+                        </p>
+                    </div>
+                </div>
+             </div>
+        </div>
       </div>
 
       <div className="px-1 mt-auto">

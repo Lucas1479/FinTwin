@@ -304,204 +304,140 @@ const StageProduct = ({ goalContext, onSelect, isLoadingAI }) => {
                 </div>
             )}
 
-            {/* 产品详情悬浮卡片 - 精致化重构 */}
+            {/* Product Detail Modal - Compact & Responsive */}
             {detailProduct && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 animate-fade-in">
-                    <div className="relative w-full max-w-[900px] bg-white rounded-[3rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-                        {/* Header */}
-                        <div className="px-10 py-8 flex items-center justify-between border-b border-slate-50">
-                            <div className="flex items-center gap-5">
-                                <div className="w-14 h-14 rounded-[1.5rem] bg-indigo-50 flex items-center justify-center text-indigo-600 font-black text-xl border border-indigo-100/50">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 animate-fade-in overflow-hidden backdrop-blur-[2px]">
+                    <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        {/* Header - Compact */}
+                        <div className="px-6 py-4 flex items-center justify-between border-b border-slate-50 shrink-0 bg-white z-10">
+                            <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 font-black text-sm border border-indigo-100/50 shrink-0">
                                     {(detailProduct.provider ?? "PF").slice(0, 2).toUpperCase()}
                                 </div>
-                                <div>
-                                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-400 mb-1 block">
-                                        {detailProduct.category || 'Investment Product'}
+                                <div className="min-w-0">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 mb-0.5 block">
+                                        {detailProduct.category || 'Product'}
                                     </span>
-                                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">{detailProduct.name}</h2>
-                                    <p className="text-sm text-slate-400 font-medium">{detailProduct.provider}</p>
+                                    <h2 className="text-lg font-black text-slate-900 tracking-tight truncate max-w-[200px]">{detailProduct.name}</h2>
                                 </div>
                             </div>
                             <button
                                 onClick={() => { setDetailProduct(null); setDetailTab('analysis'); }}
-                                className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all active:scale-95"
+                                className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-slate-100 transition-all active:scale-95 shrink-0"
                             >
-                                <span className="text-2xl leading-none">×</span>
+                                <span className="text-xl leading-none">×</span>
                             </button>
                         </div>
 
-                        {/* Tabs Navigation */}
-                        <div className="px-10 py-4 bg-slate-50/30 flex gap-8 border-b border-slate-50">
+                        {/* Tabs - Compact */}
+                        <div className="px-6 py-2 bg-slate-50/50 flex gap-6 border-b border-slate-50 shrink-0 overflow-x-auto no-scrollbar">
                             {[
-                                { id: 'analysis', label: 'DEEP ANALYSIS', icon: Activity },
-                                { id: 'composition', label: 'PORTFOLIO COMPOSITION', icon: PieChart },
-                                { id: 'holdings', label: 'TOP HOLDINGS', icon: Target }
+                                { id: 'analysis', label: 'ANALYSIS', icon: Activity },
+                                { id: 'composition', label: 'MIX', icon: PieChart },
+                                { id: 'holdings', label: 'HOLDINGS', icon: Target }
                             ].map(tab => (
                                 <button
                                     key={tab.id}
                                     onClick={() => setDetailTab(tab.id)}
-                                    className={`flex items-center gap-2.5 py-2 text-[11px] font-black tracking-[0.15em] transition-all relative ${
+                                    className={`flex items-center gap-2 py-2 text-[10px] font-bold tracking-widest transition-all relative whitespace-nowrap ${
                                         detailTab === tab.id ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'
                                     }`}
                                 >
-                                    <tab.icon size={14} strokeWidth={2.5} />
+                                    <tab.icon size={12} strokeWidth={2.5} />
                                     {tab.label}
                                     {detailTab === tab.id && (
-                                        <div className="absolute -bottom-4 left-0 right-0 h-1 bg-indigo-600 rounded-full" />
+                                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
                                     )}
                                 </button>
                             ))}
                         </div>
 
-                        {/* Content Area */}
-                        <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
+                        {/* Content Area - Single Column Flow */}
+                        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-white">
                             {detailTab === 'analysis' && (
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                    {/* Left Column */}
-                                    <div className="space-y-10">
-                                        {/* Stats Row */}
-                                        <div className="grid grid-cols-2 gap-6">
-                                            <div className="bg-slate-50 rounded-[2.5rem] p-8 flex flex-col items-center justify-center text-center border border-slate-100/50">
-                                                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-3">Fees (P.A.)</span>
-                                                <div className="text-4xl font-black text-slate-900 tracking-tighter">
-                                                    {detailProduct.fees ?? '0.00'}<span className="text-xl ml-0.5">%</span>
-                                                </div>
-                                            </div>
-                                            <div className="bg-emerald-50/50 rounded-[2.5rem] p-8 flex flex-col items-center justify-center text-center border border-emerald-100/30">
-                                                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-600/60 mb-3">5Y Return</span>
-                                                <div className="text-4xl font-black text-emerald-600 tracking-tighter">
-                                                    {detailProduct.returns?.['5y']?.toFixed(1) || '0.0'}<span className="text-xl ml-0.5">%</span>
-                                                </div>
+                                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                    {/* Stats Grid */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-slate-50 rounded-2xl p-4 text-center border border-slate-100">
+                                            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Fees</span>
+                                            <div className="text-2xl font-black text-slate-900">
+                                                {detailProduct.fees ?? '0.00'}%
                                             </div>
                                         </div>
-
-                                        {/* Projection Growth Chart Mockup */}
-                                        <div className="space-y-4">
-                                            <div className="flex justify-between items-end px-2">
-                                                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-900">Projection Growth</span>
-                                                <span className="text-[10px] font-bold text-slate-400 italic tracking-wider">5-Year Simulation</span>
-                                            </div>
-                                            <div className="bg-slate-50 rounded-[2.5rem] p-8 h-[200px] flex items-center justify-center border border-slate-100/50 overflow-hidden relative group">
-                                                {/* Gradient background for chart area */}
-                                                <div className="absolute inset-x-8 bottom-8 top-12 bg-white rounded-3xl" />
-                                                <ResponsiveContainer width="100%" height="100%">
-                                                    <AreaChart data={[
-                                                        { x: 0, y: 100 }, { x: 1, y: 105 }, { x: 2, y: 112 }, 
-                                                        { x: 3, y: 125 }, { x: 4, y: 135 }, { x: 5, y: 150 }
-                                                    ]} margin={{ top: 20, right: 10, left: 10, bottom: 0 }}>
-                                                        <defs>
-                                                            <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                                                                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1}/>
-                                                                <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                                                            </linearGradient>
-                                                        </defs>
-                                                        <Area type="monotone" dataKey="y" stroke="#6366f1" strokeWidth={4} fill="url(#chartGradient)" />
-                                                    </AreaChart>
-                                                </ResponsiveContainer>
-                                            </div>
-                                        </div>
-
-                                        {/* Volatility Profile */}
-                                        <div className="space-y-4">
-                                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-900 px-2">Volatility Profile</span>
-                                            <div className="bg-slate-50 rounded-[2.5rem] p-8 border border-slate-100/50">
-                                                <div className="flex gap-1.5 mb-6">
-                                                    {[1, 2, 3, 4, 5, 6, 7].map(level => (
-                                                        <div 
-                                                            key={level} 
-                                                            className={`h-2.5 flex-1 rounded-full transition-all duration-500 ${
-                                                                level <= (detailProduct.riskScore || 4) 
-                                                                ? 'bg-indigo-500' 
-                                                                : 'bg-slate-200'
-                                                            }`} 
-                                                        />
-                                                    ))}
-                                                </div>
-                                                <div className="flex justify-between items-center px-1">
-                                                    <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Level {detailProduct.riskScore || 4}/7</span>
-                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Standardized Risk</span>
-                                                </div>
+                                        <div className="bg-emerald-50/50 rounded-2xl p-4 text-center border border-emerald-100/30">
+                                            <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-600/60 block mb-1">5Y Return</span>
+                                            <div className="text-2xl font-black text-emerald-600">
+                                                {detailProduct.returns?.['5y']?.toFixed(1) || '0.0'}%
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* Right Column */}
-                                    <div className="space-y-10">
-                                        {/* AI Logic Card */}
-                                        <div className="space-y-4">
-                                            <div className="flex items-center gap-2 px-2">
-                                                <Brain size={14} className="text-indigo-600" />
-                                                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-600">AI Selection Logic</span>
-                                            </div>
-                                            <div className="bg-indigo-50/40 rounded-[2.5rem] p-8 border border-indigo-100/30 min-h-[140px] relative overflow-hidden">
-                                                <div className="absolute -top-4 -right-4 opacity-5">
-                                                    <Brain size={100} />
-                                                </div>
-                                                <p className="text-sm text-slate-700 leading-relaxed font-medium relative z-10">
-                                                    {detailProduct.rationale || "Automated selection based on risk-adjusted returns and strategy alignment with your long-term goals."}
-                                                </p>
+                                    {/* AI Rationale */}
+                                    <div className="bg-indigo-50/30 rounded-2xl p-5 border border-indigo-100/30">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <Brain size={12} className="text-indigo-600" />
+                                            <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-600">Why this product?</span>
+                                        </div>
+                                        <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                                            {detailProduct.rationale || "Selected based on risk-adjusted returns and alignment with your goal strategy."}
+                                        </p>
+                                    </div>
+
+                                    {/* Secondary Stats Grid */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                         <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                                            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Strategy</span>
+                                            <div className="text-sm font-bold text-slate-700">
+                                                {detailProduct.riskLevel || detailProduct.strategy || 'Balanced'}
                                             </div>
                                         </div>
-
-                                        {/* Strategy Overview */}
-                                        <div className="space-y-4">
-                                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-900 px-2">Strategy Overview</span>
-                                            <div className="bg-slate-50 rounded-[2.5rem] p-8 border border-slate-100/50">
-                                                <div className="text-lg font-bold text-slate-600 italic">
-                                                    {detailProduct.riskLevel || detailProduct.strategy || 'Balanced'}
-                                                </div>
+                                        <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 text-white relative overflow-hidden">
+                                            <Zap size={40} className="absolute -right-2 -top-2 text-indigo-500/20" />
+                                            <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-400 block mb-1">Weight</span>
+                                            <div className="text-2xl font-black relative z-10">
+                                                {detailProduct.weight_pct || '0.0'}%
                                             </div>
                                         </div>
+                                    </div>
 
-                                        {/* Portfolio Weight Card */}
-                                        <div className="bg-[#101827] rounded-[2.5rem] p-10 text-white relative overflow-hidden shadow-2xl shadow-indigo-500/20 group">
-                                            <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
-                                                <Zap size={60} />
-                                            </div>
-                                            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-400 mb-6 block">Portfolio Weight</span>
-                                            <div className="flex items-baseline gap-2">
-                                                <div className="text-7xl font-black tracking-tighter">
-                                                    {detailProduct.weight_pct || '0.0'}
-                                                </div>
-                                                <div className="text-3xl font-bold text-indigo-400/60">%</div>
-                                            </div>
+                                    {/* Chart */}
+                                    <div className="space-y-2">
+                                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 px-1">Projection</span>
+                                        <div className="h-32 bg-slate-50 rounded-2xl border border-slate-100 p-2 relative overflow-hidden">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <AreaChart data={[
+                                                    { x: 0, y: 100 }, { x: 1, y: 105 }, { x: 2, y: 112 }, 
+                                                    { x: 3, y: 125 }, { x: 4, y: 135 }, { x: 5, y: 150 }
+                                                ]}>
+                                                    <defs>
+                                                        <linearGradient id="compactChartGradient" x1="0" y1="0" x2="0" y2="1">
+                                                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1}/>
+                                                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                                                        </linearGradient>
+                                                    </defs>
+                                                    <Area type="monotone" dataKey="y" stroke="#6366f1" strokeWidth={2} fill="url(#compactChartGradient)" />
+                                                </AreaChart>
+                                            </ResponsiveContainer>
                                         </div>
                                     </div>
                                 </div>
                             )}
 
-                            {detailTab === 'composition' && (
-                                <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                             {detailTab === 'composition' && (
+                                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                                     {/* Asset Mix Section */}
-                                    <div className="space-y-6">
-                                        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-900 px-2">Asset Mix</span>
-                                        <div className="bg-slate-50 rounded-[3rem] p-10 border border-slate-100/50">
-                                            <div className="flex h-5 rounded-full overflow-hidden bg-slate-200 shadow-inner mb-8">
-                                                <div style={{ width: `${detailProduct.allocation?.growth || 60}%` }} className="bg-indigo-500 shadow-lg shadow-indigo-500/20" />
-                                                <div style={{ width: `${detailProduct.allocation?.defensive || 30}%` }} className="bg-sky-400 shadow-lg shadow-sky-400/20" />
-                                                <div style={{ width: `${detailProduct.allocation?.cash || 10}%` }} className="bg-fuchsia-400 shadow-lg shadow-fuchsia-400/20" />
+                                    <div className="space-y-4">
+                                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-900 px-1">Asset Allocation</span>
+                                        <div className="bg-slate-50 rounded-3xl p-6 border border-slate-100">
+                                            <div className="flex h-3 rounded-full overflow-hidden bg-slate-200 shadow-inner mb-6">
+                                                <div style={{ width: `${detailProduct.allocation?.growth || 60}%` }} className="bg-indigo-500" />
+                                                <div style={{ width: `${detailProduct.allocation?.defensive || 30}%` }} className="bg-sky-400" />
+                                                <div style={{ width: `${detailProduct.allocation?.cash || 10}%` }} className="bg-fuchsia-400" />
                                             </div>
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                                <LegendItem label="Growth Assets" value={`${detailProduct.allocation?.growth || 60}%`} color="bg-indigo-500" />
-                                                <LegendItem label="Defensive Assets" value={`${detailProduct.allocation?.defensive || 30}%`} color="bg-sky-400" />
-                                                <LegendItem label="Cash & Liquidity" value={`${detailProduct.allocation?.cash || 10}%`} color="bg-fuchsia-400" />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Detailed breakdown if available */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                                        <div className="space-y-4">
-                                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 px-2">Product Category</span>
-                                            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center justify-between">
-                                                <span className="font-bold text-slate-700">{detailProduct.category}</span>
-                                                <div className="px-3 py-1 bg-slate-100 rounded-full text-[10px] font-black text-slate-400 uppercase tracking-widest">{detailProduct.type}</div>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-4">
-                                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 px-2">Risk Appetite</span>
-                                            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
-                                                <span className="font-bold text-slate-700">{detailProduct.strategy || detailProduct.riskLevel}</span>
+                                            <div className="space-y-3">
+                                                <LegendRow label="Growth Assets" value={`${detailProduct.allocation?.growth || 60}%`} color="bg-indigo-500" />
+                                                <LegendRow label="Defensive Assets" value={`${detailProduct.allocation?.defensive || 30}%`} color="bg-sky-400" />
+                                                <LegendRow label="Cash & Liquidity" value={`${detailProduct.allocation?.cash || 10}%`} color="bg-fuchsia-400" />
                                             </div>
                                         </div>
                                     </div>
@@ -509,59 +445,40 @@ const StageProduct = ({ goalContext, onSelect, isLoadingAI }) => {
                             )}
 
                             {detailTab === 'holdings' && (
-                                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-900 px-2">Top Strategic Holdings</span>
-                                    <div className="space-y-4">
-                                        {detailProduct.topHoldings && detailProduct.topHoldings.length > 0 ? (
-                                            detailProduct.topHoldings.slice(0, 5).map((holding, idx) => {
-                                                const percent = typeof holding.percent === 'number' ? holding.percent : null;
-                                                return (
-                                                    <div key={idx} className="bg-slate-50/50 rounded-[2rem] p-6 border border-slate-100/50 group hover:bg-white hover:shadow-md transition-all">
-                                                        <div className="flex items-center justify-between mb-3">
-                                                            <div className="flex items-center gap-5">
-                                                                <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-xs font-black text-slate-400">
-                                                                    0{idx + 1}
-                                                                </div>
-                                                                <div>
-                                                                    <h4 className="font-bold text-slate-900 truncate max-w-[280px] md:max-w-[400px]">{holding.name}</h4>
-                                                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{holding.type || 'ASSET'} • {holding.country || 'GLOBAL'}</span>
-                                                                </div>
-                                                            </div>
-                                                            <div className="text-right">
-                                                                <div className="text-xl font-black text-indigo-600 tracking-tight">{percent !== null ? `${percent.toFixed(2)}%` : '—'}</div>
-                                                                <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">Weight</span>
-                                                            </div>
-                                                        </div>
-                                                        <div className="h-2 w-full bg-white/80 rounded-full overflow-hidden border border-slate-100 shadow-inner">
-                                                            <div 
-                                                                className="h-full bg-indigo-500 rounded-full transition-all duration-1000 ease-out opacity-80 group-hover:opacity-100"
-                                                                style={{ width: percent !== null ? `${Math.max(percent, 2)}%` : '0%' }}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })
-                                        ) : (
-                                            <div className="text-center py-20 bg-slate-50/50 rounded-[3rem] border border-dashed border-slate-200">
-                                                <Target size={40} className="mx-auto text-slate-200 mb-4" />
-                                                <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">Detailed holdings data not disclosed</p>
+                                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                     {detailProduct.topHoldings?.slice(0, 5).map((holding, idx) => (
+                                        <div key={idx} className="bg-slate-50 rounded-2xl p-4 border border-slate-100 flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-6 h-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-400">
+                                                    {idx + 1}
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-bold text-slate-900 text-xs truncate max-w-[150px]">{holding.name}</h4>
+                                                    <span className="text-[9px] text-slate-400 font-bold uppercase">{holding.type || 'ASSET'}</span>
+                                                </div>
                                             </div>
-                                        )}
-                                    </div>
+                                            <div className="text-right">
+                                                <div className="text-sm font-black text-indigo-600">{holding.percent?.toFixed(1)}%</div>
+                                            </div>
+                                        </div>
+                                     ))}
+                                     {!detailProduct.topHoldings?.length && (
+                                         <div className="text-center py-10 text-slate-400 text-xs">No holdings data available</div>
+                                     )}
                                 </div>
                             )}
                         </div>
 
                         {/* Footer Action */}
-                        <div className="px-10 py-8 bg-white border-t border-slate-50">
+                        <div className="p-4 bg-white border-t border-slate-50 shrink-0">
                             <button 
                                 onClick={() => {
                                     setDetailProduct(null);
                                     navigate(`/marketplace?search=${encodeURIComponent(detailProduct.name)}`);
                                 }}
-                                className="w-full h-16 bg-[#101827] text-white rounded-[1.5rem] text-[12px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-3 hover:bg-indigo-600 transition-all shadow-2xl shadow-slate-200 active:scale-[0.98]"
+                                className="w-full h-12 bg-[#101827] text-white rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-600 transition-all shadow-lg shadow-slate-200 active:scale-[0.98]"
                             >
-                                Deep Analytics in Marketplace <ExternalLink size={14} className="opacity-50" />
+                                View in Marketplace <ExternalLink size={14} className="opacity-50" />
                             </button>
                         </div>
                     </div>
@@ -702,44 +619,44 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
     const portfolioExposure = selectedPortfolio?.calculated_exposure || exposure;
     
     return (
-        <div className="space-y-6 flex flex-col min-h-0">
+        <div className="space-y-4 lg:space-y-6 flex flex-col min-h-0">
             {/* Tab Navigation - Aligned with Playground */}
-            <div className="flex gap-1.5 bg-slate-100/80 p-1.5 rounded-2xl w-fit">
+            <div className="flex gap-1 bg-slate-100/80 p-1 rounded-xl lg:rounded-2xl w-fit">
                 {[
-                    { id: 'projection', label: 'Wealth Projection', icon: TrendingUp },
-                    { id: 'breakdown', label: 'Contribution Breakdown', icon: BarChart3 },
-                    { id: 'portfolio', label: 'Portfolio Summary', icon: PieChart }
+                    { id: 'projection', label: 'Projection', icon: TrendingUp },
+                    { id: 'breakdown', label: 'Breakdown', icon: BarChart3 },
+                    { id: 'portfolio', label: 'Portfolio', icon: PieChart }
                 ].map(tab => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center gap-2.5 py-2 px-5 rounded-xl text-xs font-bold transition-all ${
+                        className={`flex items-center gap-2 py-1.5 px-3 lg:px-5 rounded-lg lg:rounded-xl text-[10px] lg:text-xs font-bold transition-all ${
                             activeTab === tab.id 
                             ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-slate-200/50' 
                             : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
                         }`}
                     >
-                        <tab.icon size={14} strokeWidth={2.5} />
+                        <tab.icon size={12} strokeWidth={2.5} />
                         {tab.label}
                     </button>
                 ))}
             </div>
             
             {/* Main Chart Area - Aligned with Playground */}
-            <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm min-h-[440px] flex flex-col">
+            <div className="bg-white rounded-xl lg:rounded-[2.5rem] p-3 lg:p-8 border border-slate-100 shadow-sm min-h-[280px] lg:min-h-[400px] flex flex-col">
                 {activeTab === 'projection' && (
-                    <div className="flex flex-col gap-6">
-                        <div className="flex flex-col gap-4 mb-8 lg:flex-row lg:items-center lg:justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
-                                    <BarChart3 size={24} strokeWidth={2.5} />
+                    <div className="flex flex-col gap-2 lg:gap-6">
+                        <div className="flex flex-col gap-2 mb-2 lg:mb-8 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="flex items-center gap-3 lg:gap-4">
+                                <div className="w-10 h-10 lg:w-12 lg:h-12 bg-indigo-50 text-indigo-600 rounded-xl lg:rounded-2xl flex items-center justify-center">
+                                    <BarChart3 size={20} lg:size={24} strokeWidth={2.5} />
                                 </div>
                                 <div>
-                                    <h3 className="text-xl font-bold text-slate-900 tracking-tight">Twin Projection</h3>
-                                    <p className="text-xs text-slate-500 font-medium italic">Monte Carlo Outcomes (10th - 90th Percentile)</p>
+                                    <h3 className="text-lg lg:text-xl font-bold text-slate-900 tracking-tight">Twin Projection</h3>
+                                    <p className="text-[10px] lg:text-xs text-slate-500 font-medium italic">Monte Carlo Outcomes</p>
                                 </div>
                             </div>
-                            <div className="flex flex-wrap gap-3 justify-end">
+                            <div className="flex flex-wrap gap-2 lg:gap-3 lg:justify-end">
                                 <MetricBadge label="Horizon" value={`${horizonYears}Y`} />
                                 <MetricBadge label="Exp. Return" value={`${expectedReturn.toFixed(1)}%`} color="text-indigo-600" />
                                 <MetricBadge label="Volatility" value={`${volatility.toFixed(1)}%`} color="text-rose-500" />
@@ -846,10 +763,10 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
                                 <MetricBadge label="Est. Fees" value={`${selectedPortfolio.total_fees_estimate.toFixed(2)}%`} color="text-indigo-600" />
                             )}
                         </div>
-                        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-8 items-start min-h-0">
+                        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-6 lg:gap-8 items-start min-h-0">
                             {/* Left: Pie Chart */}
-                            <div className="flex flex-col items-center justify-center relative bg-slate-50/30 rounded-3xl p-6 border border-slate-100/50">
-                                <div className="w-full h-[200px]">
+                            <div className="flex flex-col items-center justify-center relative bg-slate-50/30 rounded-2xl lg:rounded-3xl p-4 lg:p-6 border border-slate-100/50">
+                                <div className="w-full h-[160px] lg:h-[200px]">
                                     <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                                         <RechartsPieChart>
                                             <Pie
@@ -922,41 +839,41 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
             </div>
             
             {/* Bottom Stats Cards - Better Proportions */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="p-6 bg-emerald-50/40 rounded-[2rem] border border-emerald-100/50 shadow-sm flex flex-col justify-between min-h-[140px]">
-                    <div className="flex items-center gap-2.5 mb-4">
-                        <div className="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center">
-                            <Target size={16} className="text-emerald-600" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 lg:gap-6">
+                <div className="p-3 lg:p-6 bg-emerald-50/40 rounded-xl lg:rounded-[2rem] border border-emerald-100/50 shadow-sm flex flex-col justify-between min-h-[80px] lg:min-h-[140px]">
+                    <div className="flex items-center gap-2 mb-1 lg:mb-4">
+                        <div className="w-7 h-7 lg:w-8 lg:h-8 rounded-lg lg:rounded-xl bg-emerald-100 flex items-center justify-center">
+                            <Target size={14} lg:size={16} className="text-emerald-600" />
                         </div>
-                        <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Success Prob.</span>
+                        <span className="text-[9px] lg:text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Success Prob.</span>
                     </div>
                     <div className="flex items-baseline gap-1">
-                        <p className="text-3xl font-bold text-emerald-700 tracking-tight">{successProbability.toFixed(0)}</p>
-                        <span className="text-lg font-bold text-emerald-600/60">%</span>
+                        <p className="text-2xl lg:text-3xl font-bold text-emerald-700 tracking-tight">{successProbability.toFixed(0)}</p>
+                        <span className="text-base lg:text-lg font-bold text-emerald-600/60">%</span>
                     </div>
                 </div>
                 
-                <div className="p-6 bg-indigo-50/40 rounded-[2rem] border border-indigo-100/50 shadow-sm flex flex-col justify-between min-h-[140px]">
-                    <div className="flex items-center gap-2.5 mb-4">
-                        <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center">
-                            <Wallet size={16} className="text-indigo-600" />
+                <div className="p-3 lg:p-6 bg-indigo-50/40 rounded-xl lg:rounded-[2rem] border border-indigo-100/50 shadow-sm flex flex-col justify-between min-h-[80px] lg:min-h-[140px]">
+                    <div className="flex items-center gap-2 mb-1 lg:mb-4">
+                        <div className="w-6 h-6 lg:w-8 lg:h-8 rounded-lg lg:rounded-xl bg-indigo-100 flex items-center justify-center">
+                            <Wallet size={12} lg:size={16} className="text-indigo-600" />
                         </div>
-                        <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Monthly Sav.</span>
+                        <span className="text-[9px] lg:text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Monthly Sav.</span>
                     </div>
                     <div className="flex items-baseline gap-1">
-                        <span className="text-xl font-bold text-indigo-600/60">$</span>
-                        <p className="text-3xl font-bold text-indigo-700 tracking-tight">{(simParams.monthlyContribution || 0).toLocaleString()}</p>
+                        <span className="text-base lg:text-xl font-bold text-indigo-600/60">$</span>
+                        <p className="text-2xl lg:text-3xl font-bold text-indigo-700 tracking-tight">{(simParams.monthlyContribution || 0).toLocaleString()}</p>
                     </div>
                 </div>
                 
-                <div className="p-6 bg-amber-50/40 rounded-[2rem] border border-amber-100/50 shadow-sm flex flex-col justify-between min-h-[140px]">
-                    <div className="flex items-center gap-2.5 mb-4">
-                        <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center">
-                            <TrendingDown size={16} className="text-amber-600" />
+                <div className="p-3 lg:p-6 bg-amber-50/40 rounded-xl lg:rounded-[2rem] border border-amber-100/50 shadow-sm flex flex-col justify-between min-h-[80px] lg:min-h-[140px]">
+                    <div className="flex items-center gap-2 mb-1 lg:mb-4">
+                        <div className="w-6 h-6 lg:w-8 lg:h-8 rounded-lg lg:rounded-xl bg-amber-100 flex items-center justify-center">
+                            <TrendingDown size={12} lg:size={16} className="text-amber-600" />
                         </div>
-                        <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Glide Path</span>
+                        <span className="text-[9px] lg:text-[10px] font-bold text-amber-700 uppercase tracking-wider">Glide Path</span>
                     </div>
-                    <p className="text-2xl font-bold text-amber-700 tracking-tight">{glidePath?.enabled ? 'Active' : 'Disabled'}</p>
+                    <p className="text-xl lg:text-2xl font-bold text-amber-700 tracking-tight">{glidePath?.enabled ? 'Active' : 'Disabled'}</p>
                 </div>
             </div>
             
@@ -989,9 +906,9 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
 
 // Helper Components for Simulation
 const MetricBadge = ({ label, value, color = "text-slate-700" }) => (
-    <div className="px-5 py-2.5 bg-slate-50 rounded-2xl border border-slate-100 text-center min-w-[110px]">
-        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">{label}</p>
-        <p className={`text-lg font-bold ${color} tracking-tight`}>{value}</p>
+    <div className="px-3 lg:px-5 py-1.5 lg:py-2.5 bg-slate-50 rounded-xl lg:rounded-2xl border border-slate-100 text-center min-w-[90px] lg:min-w-[110px]">
+        <p className="text-[8px] lg:text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5 lg:mb-1">{label}</p>
+        <p className={`text-sm lg:text-lg font-bold ${color} tracking-tight`}>{value}</p>
     </div>
 );
 
@@ -1188,30 +1105,30 @@ const Copilot = ({
     return (
         <div className="h-full flex flex-col">
             {/* Header with Reasoning Toggle */}
-            <div className="flex items-center justify-between mb-4 shrink-0">
+            <div className="flex items-center justify-between mb-2 shrink-0">
                 <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-200">
-                        <Activity size={16} />
+                    <div className="w-6 h-6 lg:w-7 lg:h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+                        <Activity size={12} className="lg:w-[14px] lg:h-[14px]" />
                     </div>
-                    <span className="font-bold text-slate-900 text-sm">FinTwin Copilot</span>
+                    <span className="font-bold text-slate-900 text-xs lg:text-sm">FinTwin Copilot</span>
                 </div>
                 
                 <button 
                     onClick={() => setShowReasoning(!showReasoning)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold transition-all ${
+                    className={`flex items-center gap-1 px-2 py-0.5 lg:px-2.5 lg:py-1 rounded-full text-[9px] lg:text-[10px] font-bold transition-all ${
                         showReasoning 
                         ? 'bg-brand-500 text-white shadow-md shadow-brand-100' 
                         : 'bg-slate-100 text-slate-400'
                     }`}
                 >
-                    <Brain size={12} />
+                    <Brain size={10} />
                     {showReasoning ? 'Reasoning ON' : 'Reasoning OFF'}
                 </button>
             </div>
             
             <div 
                 ref={scrollRef}
-                className="flex-1 bg-slate-50 rounded-2xl p-4 mb-4 overflow-y-auto border border-slate-100 flex flex-col gap-3 min-h-0"
+                className="flex-1 bg-slate-50/50 rounded-lg lg:rounded-2xl p-2 lg:p-3 mb-2 lg:mb-4 overflow-y-auto border border-slate-100/50 flex flex-col gap-2 min-h-0"
             >
                 {messages.map((msg, i) => (
                     <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} group w-full`}>
@@ -1348,7 +1265,7 @@ const GoalEnginePage = () => {
   const [messages, setMessages] = useState([]);
   
   // Resizable Sidebar State (Pixels instead of percentage for better precision)
-  const [leftWidth, setLeftWidth] = useState(450); 
+  const [leftWidth, setLeftWidth] = useState(window.innerWidth > 1440 ? 450 : 340); 
   const [isResizing, setIsResizing] = useState(false);
   
   const containerRef = useRef(null);
@@ -1830,18 +1747,18 @@ const GoalEnginePage = () => {
 
   return (
     <MainLayout>
-      <div className="max-w-[2400px] mx-auto p-4 md:p-6 h-[calc(100vh-64px)] flex flex-col animate-fade-in">
+      <div className="max-w-[2400px] mx-auto p-1.5 md:p-3 lg:p-4 h-[calc(100vh-64px)] flex flex-col animate-fade-in overflow-hidden">
         
         {/* Top Bar: Progress Stepper */}
-        <div className="flex items-center justify-between mb-4 px-2 shrink-0">
+        <div className="flex items-center justify-between mb-1.5 lg:mb-4 px-1 lg:px-2 shrink-0">
             <div className="flex items-center gap-2">
-                <button onClick={() => navigate('/goals')} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-                    <ChevronLeft className="text-slate-400" />
+                <button onClick={() => navigate('/goals')} className="p-1 hover:bg-slate-100 rounded-lg lg:rounded-xl transition-colors">
+                    <ChevronLeft className="text-slate-400" size={18} />
                 </button>
-                <h1 className="text-xl font-bold text-slate-900">Goal Engine</h1>
+                <h1 className="text-base lg:text-xl font-bold text-slate-900">Goal Engine</h1>
             </div>
             
-            <div className="hidden md:flex items-center gap-2">
+            <div className="hidden md:flex items-center gap-1.5 lg:gap-2">
                 {STAGES.map((stage, idx) => {
                     const Icon = stage.icon;
                     const isActive = idx === currentStage;
@@ -1850,22 +1767,22 @@ const GoalEnginePage = () => {
                     return (
                         <div key={stage.id} className="flex items-center">
                             <div className={`
-                                flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all
+                                flex items-center gap-2 px-3 lg:px-4 py-1.5 lg:py-2 rounded-full text-xs lg:text-sm font-bold transition-all
                                 ${isActive ? 'bg-slate-900 text-white shadow-lg' : 
                                   isCompleted ? 'bg-slate-100 text-slate-900' : 'text-slate-300'}
                             `}>
-                                <Icon size={16} />
-                                <span className={!isActive ? "hidden md:inline" : ""}>{stage.label}</span>
+                                <Icon size={14} />
+                                <span className={!isActive ? "hidden xl:inline" : ""}>{stage.label}</span>
                             </div>
                             {idx < STAGES.length - 1 && (
-                                <div className={`w-8 h-0.5 mx-1 ${isCompleted ? 'bg-slate-200' : 'bg-slate-100'}`}></div>
+                                <div className={`w-4 lg:w-8 h-0.5 mx-0.5 lg:mx-1 ${isCompleted ? 'bg-slate-200' : 'bg-slate-100'}`}></div>
                             )}
                         </div>
                     );
                 })}
             </div>
 
-            <div className="w-12 md:w-24"></div> {/* Spacer */}
+            <div className="w-8 md:w-12 lg:w-24"></div> {/* Spacer */}
         </div>
 
         {/* Main Split View - RESIZABLE LAYOUT */}
@@ -1878,8 +1795,8 @@ const GoalEnginePage = () => {
             <div 
                 className="
                     order-2 lg:order-1
-                    h-[400px] lg:h-full 
-                    bg-white/50 border border-slate-100 rounded-[2rem] p-4 backdrop-blur-sm 
+                    h-[280px] lg:h-full 
+                    bg-white/50 border border-slate-100 rounded-xl lg:rounded-[2rem] p-2 lg:p-4 backdrop-blur-sm 
                     flex flex-col overflow-hidden
                 "
                 style={{ width: window.innerWidth >= 1024 ? `${leftWidth}px` : '100%' }}
@@ -1913,15 +1830,15 @@ const GoalEnginePage = () => {
                 className="
                     order-1 lg:order-2
                     flex-1 lg:h-full 
-                    bg-white border border-slate-100 rounded-[2rem] shadow-sm p-6 md:p-8 
+                    bg-white border border-slate-100 rounded-xl lg:rounded-[2rem] shadow-sm p-3 md:p-4 lg:p-8 
                     flex flex-col overflow-hidden min-w-0
                 "
             >
-                <div className="flex-1 overflow-y-auto no-scrollbar">
+                <div className="flex-1 overflow-y-auto no-scrollbar pb-4">
                     {currentStage === 0 && (
-                        <div className="max-w-2xl mx-auto py-2">
-                             <h2 className="text-2xl font-bold text-slate-900 mb-2">Define your Goal</h2>
-                             <p className="text-slate-500 mb-6">Start by setting the basic parameters. Copilot will help check feasibility.</p>
+                        <div className="max-w-2xl mx-auto py-1">
+                             <h2 className="text-xl lg:text-2xl font-bold text-slate-900 mb-1">Define your Goal</h2>
+                             <p className="text-xs lg:text-sm text-slate-500 mb-4 lg:mb-6">Start by setting the basic parameters. Copilot will help check feasibility.</p>
                              <GoalDefinitionForm 
                                 onSubmit={handleCreate}
                                 onChange={handleContextUpdate}
@@ -1931,8 +1848,8 @@ const GoalEnginePage = () => {
                         </div>
                     )}
                     {currentStage === 1 && (
-                         <div className="max-w-3xl mx-auto py-4">
-                            <h2 className="text-2xl font-bold text-slate-900 mb-6">Choose your Strategy</h2>
+                         <div className="max-w-3xl mx-auto py-2">
+                            <h2 className="text-xl lg:text-2xl font-bold text-slate-900 mb-4 lg:mb-6">Choose your Strategy</h2>
                             <StageStrategy 
                                 goalContext={goalContext} 
                                 onChange={setGoalContext} 
@@ -1941,8 +1858,8 @@ const GoalEnginePage = () => {
                         </div>
                     )}
                     {currentStage === 2 && (
-                         <div className="max-w-3xl mx-auto py-4">
-                            <h2 className="text-2xl font-bold text-slate-900 mb-6">Select Investment Vehicle</h2>
+                         <div className="max-w-3xl mx-auto py-2">
+                            <h2 className="text-xl lg:text-2xl font-bold text-slate-900 mb-4 lg:mb-6">Select Investment Vehicle</h2>
                             <StageProduct 
                                 goalContext={goalContext} 
                                 isLoadingAI={isLoadingAI}
@@ -1956,8 +1873,8 @@ const GoalEnginePage = () => {
                         </div>
                     )}
                     {currentStage === 3 && (
-                         <div className="max-w-4xl mx-auto h-full py-4">
-                            <h2 className="text-2xl font-bold text-slate-900 mb-6">Simulation & Impact</h2>
+                         <div className="max-w-5xl mx-auto h-full py-2">
+                            <h2 className="text-xl lg:text-2xl font-bold text-slate-900 mb-4 lg:mb-6">Simulation & Impact</h2>
                             <StageSimulation goalContext={goalContext} isLoadingAI={isLoadingAI} />
                         </div>
                     )}
@@ -1965,27 +1882,27 @@ const GoalEnginePage = () => {
 
                 {/* Navigation Footer (For Stages 1, 2, 3) */}
                 {currentStage > 0 && (
-                    <div className="pt-6 mt-4 border-t border-slate-50 flex justify-between items-center shrink-0">
+                    <div className="pt-4 lg:pt-6 mt-2 lg:mt-4 border-t border-slate-50 flex justify-between items-center shrink-0">
                         <button 
                             onClick={handleBack}
-                            className="px-6 py-3 rounded-full text-slate-500 font-bold hover:bg-slate-50 transition-colors"
+                            className="px-4 lg:px-6 py-2 lg:py-3 rounded-full text-slate-500 text-sm font-bold hover:bg-slate-50 transition-colors"
                         >
                             Back
                         </button>
                         {currentStage < 3 ? (
                             <button 
                                 onClick={handleNext}
-                                className="btn-primary-rounded flex items-center gap-2 px-8"
+                                className="btn-primary-rounded flex items-center gap-2 px-6 lg:px-8 py-2 lg:py-3 text-sm"
                             >
-                                Continue <ChevronRight size={18} />
+                                Continue <ChevronRight size={16} />
                             </button>
                         ) : (
                              <button 
                                 onClick={handleFinalCommit}
                                 disabled={submitting}
-                                className="btn-primary-rounded bg-green-600 hover:bg-green-700 flex items-center gap-2 px-8 shadow-green-200"
+                                className="btn-primary-rounded bg-green-600 hover:bg-green-700 flex items-center gap-2 px-6 lg:px-8 py-2 lg:py-3 text-sm shadow-green-200"
                             >
-                                {submitting ? 'Launching...' : 'Launch Goal Plan'} <CheckCircle2 size={18} />
+                                {submitting ? 'Launching...' : 'Launch Goal Plan'} <CheckCircle2 size={16} />
                             </button>
                         )}
                     </div>

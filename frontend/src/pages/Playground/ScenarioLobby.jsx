@@ -55,21 +55,25 @@ const ScenarioLobby = ({ onEditScenario, profiles, setProfiles, scenarios, setSc
     <div className="space-y-12 animate-in fade-in duration-700">
       {/* 1. Full-Width Background Profiles */}
       <section>
-        <div className="flex items-center justify-between mb-6 px-4">
-          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2.5">
-            <UserCircle2 className="text-indigo-500" size={16} strokeWidth={2.5} />
-            Simulation Backgrounds
-          </h2>
+        <div className="flex items-center justify-between mb-6 px-2">
+          <div className="flex items-center gap-3">
+             <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <UserCircle2 size={18} strokeWidth={2.5} />
+             </div>
+             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-widest">
+               Simulation Backgrounds
+             </h2>
+          </div>
           <button
             onClick={() => setIsProfileModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-95"
+            className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:border-indigo-200 hover:text-indigo-600 transition-all shadow-sm active:scale-95 group"
           >
-            <PlusCircle size={14} />
+            <PlusCircle size={14} className="group-hover:text-indigo-600 transition-colors" />
             New Background
           </button>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           {profiles.map(profile => (
             <ProfileRow 
               key={profile.id} 
@@ -85,14 +89,18 @@ const ScenarioLobby = ({ onEditScenario, profiles, setProfiles, scenarios, setSc
 
       {/* 2. Scenarios List */}
       <section>
-        <div className="flex items-center justify-between mb-6 px-4">
-          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2.5">
-            <Play className="text-indigo-500" size={16} strokeWidth={2.5} />
-            Saved Life Paths
-          </h2>
+        <div className="flex items-center justify-between mb-6 px-2 pt-8 border-t border-slate-200/50">
+          <div className="flex items-center gap-3">
+             <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <Play size={18} strokeWidth={2.5} fill="currentColor" className="ml-0.5" />
+             </div>
+             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-widest">
+               Saved Life Paths
+             </h2>
+          </div>
           <button
             onClick={() => setIsPathModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+            className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95"
           >
             <PlusCircle size={14} />
             Run New Path
@@ -101,45 +109,75 @@ const ScenarioLobby = ({ onEditScenario, profiles, setProfiles, scenarios, setSc
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {scenarios.map(scenario => (
-            <div key={scenario.id} className="bg-white p-7 rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 transition-all group relative overflow-hidden">
-              <div className="flex justify-between items-start mb-6">
-                <div className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                  scenario.status === 'safe' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+            <div key={scenario.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 hover:border-indigo-100 transition-all group relative overflow-hidden flex flex-col h-full">
+              
+              {/* Header Status */}
+              <div className="flex justify-between items-start mb-5">
+                <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${
+                  scenario.status === 'safe' 
+                    ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
+                    : 'bg-rose-50 text-rose-600 border-rose-100'
                 }`}>
                   {scenario.status}
                 </div>
-                <div className="flex flex-col items-end gap-1.5">
-                  <div className="text-[10px] font-semibold text-slate-400 bg-slate-50 px-3 py-1 rounded-xl border border-slate-100">
-                    Background: <span className="text-indigo-600 font-bold">{profiles.find(p => p.id === scenario.profileId)?.name || 'Unknown'}</span>
-                  </div>
-                  {scenario.goalId && (
-                    <div className="text-[10px] font-semibold text-slate-400 bg-indigo-50/50 px-3 py-1 rounded-xl border border-indigo-100">
-                    Goal: <span className="text-indigo-600 font-bold">{goals.find(g => g.id === scenario.goalId)?.name || 'Unknown'}</span>
-                    </div>
-                  )}
+                
+                {/* Linked Entities Badge */}
+                <div className="flex gap-1">
+                   {scenario.goalId && (
+                      <div className="w-6 h-6 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center text-indigo-600" title="Has Goal">
+                         <Target size={12} />
+                      </div>
+                   )}
+                   <div className="w-6 h-6 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400" title="Has Profile">
+                         <UserCircle2 size={12} />
+                   </div>
                 </div>
               </div>
-              <h3 className="text-lg font-bold text-slate-900 mb-6 group-hover:text-indigo-600 transition-colors leading-tight">{scenario.name}</h3>
-              <div className="space-y-4 mb-8">
+
+              <h3 className="text-lg font-bold text-slate-900 mb-2 group-hover:text-indigo-600 transition-colors leading-tight line-clamp-2">
+                  {scenario.name}
+              </h3>
+              
+              <div className="text-xs text-slate-500 mb-6 font-medium">
+                  Based on <span className="text-slate-700 font-semibold">{profiles.find(p => p.id === scenario.profileId)?.name || 'Unknown'}</span>
+              </div>
+
+              <div className="mt-auto space-y-5">
+                {/* Progress Bar */}
                 <div>
-                  <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-                    <span>Survival Chance</span>
+                  <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                    <span>Survival Probability</span>
                     <span className={scenario.successProbability >= 70 ? 'text-emerald-600' : 'text-rose-600'}>{scenario.successProbability}%</span>
                   </div>
-                  <div className="w-full bg-slate-50 h-2 rounded-full overflow-hidden p-0.5 border border-slate-100 shadow-inner">
-                    <div className={`h-full rounded-full transition-all duration-1000 ${scenario.successProbability >= 70 ? 'bg-emerald-500' : 'bg-rose-500'}`} style={{ width: `${scenario.successProbability}%` }} />
+                  <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                    <div 
+                        className={`h-full rounded-full transition-all duration-1000 ${scenario.successProbability >= 70 ? 'bg-emerald-500' : 'bg-rose-500'}`} 
+                        style={{ width: `${scenario.successProbability}%` }} 
+                    />
                   </div>
                 </div>
+
+                <button
+                  onClick={() => onEditScenario(scenario.id)}
+                  className="w-full py-3 rounded-xl border border-slate-200 text-slate-600 font-bold uppercase tracking-widest text-[10px] hover:border-indigo-600 hover:text-indigo-600 hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 group/btn"
+                >
+                  Enter Decision Space
+                  <TrendingUp size={14} className="text-slate-400 group-hover/btn:text-indigo-600 transition-colors" />
+                </button>
               </div>
-              <button
-                onClick={() => onEditScenario(scenario.id)}
-                className="w-full bg-slate-900 text-white font-bold uppercase tracking-widest text-[11px] py-4 rounded-2xl hover:bg-indigo-600 transition-all flex items-center justify-center gap-3 group/btn"
-              >
-                Enter Decision Space
-                <TrendingUp size={16} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-              </button>
             </div>
           ))}
+          
+          {/* Add New Placeholder Card */}
+          <button 
+             onClick={() => setIsPathModalOpen(true)}
+             className="border-2 border-dashed border-slate-200 rounded-[2rem] p-6 flex flex-col items-center justify-center text-center gap-4 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all group min-h-[280px]"
+          >
+             <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
+                <PlusCircle size={24} className="text-slate-300 group-hover:text-indigo-500 transition-colors" />
+             </div>
+             <span className="text-xs font-bold text-slate-400 uppercase tracking-widest group-hover:text-indigo-600">Create New Path</span>
+          </button>
         </div>
       </section>
 
@@ -193,13 +231,13 @@ const ProfileRow = ({ profile, isExpanded, onToggle, onUpdate, onDelete }) => {
   };
 
   return (
-    <div className={`bg-white rounded-[2.5rem] border transition-all duration-500 ${isExpanded ? 'border-indigo-200 shadow-xl shadow-indigo-500/10 ring-1 ring-indigo-50/50' : 'border-slate-100 shadow-sm hover:border-slate-200'}`}>
-      <div className="px-10 py-6 flex items-center justify-between cursor-pointer group" onClick={onToggle}>
-        <div className="flex items-center gap-8 flex-1">
-          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-300 ${isExpanded ? 'bg-indigo-600 text-white scale-110 rotate-3' : 'bg-slate-50 text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600'}`}>
-            <UserCircle2 size={22} />
+    <div className={`bg-white rounded-[1.5rem] border transition-all duration-300 ${isExpanded ? 'border-indigo-200 shadow-xl shadow-indigo-500/10 ring-1 ring-indigo-50/50' : 'border-slate-100 shadow-sm hover:border-indigo-100 hover:shadow-md'}`}>
+      <div className="px-6 py-5 flex items-center justify-between cursor-pointer group" onClick={onToggle}>
+        <div className="flex items-center gap-6 flex-1">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300 ${isExpanded ? 'bg-indigo-600 text-white scale-110 rotate-3' : 'bg-slate-50 text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600'}`}>
+            <UserCircle2 size={20} />
           </div>
-          <div className={`grid flex-1 gap-x-12 gap-y-6 transition-all duration-500 ${isExpanded ? 'grid-cols-5' : 'grid-cols-4'}`}>
+          <div className={`grid flex-1 gap-x-8 gap-y-4 transition-all duration-500 ${isExpanded ? 'grid-cols-5' : 'grid-cols-4'}`}>
             <Stat label="Background Name" value={profile.name} isPrimary />
             <Stat label="Net Worth Base" value={`$${netWorth.toLocaleString()}`} />
             <Stat label="Age / Ret." value={`${profile.identity.age} / ${profile.identity.retirementAge}`} />
@@ -217,25 +255,25 @@ const ProfileRow = ({ profile, isExpanded, onToggle, onUpdate, onDelete }) => {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-4 self-start mt-1">
-          <button onClick={(e) => onDelete(e, profile.id)} className="p-2 text-slate-200 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${isExpanded ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'bg-slate-50 text-slate-300'}`}>
-            {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+        <div className="flex items-center gap-2 self-start mt-1">
+          <button onClick={(e) => onDelete(e, profile.id)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${isExpanded ? 'bg-indigo-50 text-indigo-600' : 'bg-white text-slate-300'}`}>
+            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </div>
         </div>
       </div>
 
       {isExpanded && (
-        <div className="px-10 pb-10 animate-in slide-in-from-top-4 duration-500">
-          <div className="border-t border-slate-50 pt-8 mt-2">
-            <div className="flex gap-2 mb-10 bg-slate-50/50 p-1.5 rounded-[1.5rem] w-fit border border-slate-100">
+        <div className="px-6 pb-6 animate-in slide-in-from-top-4 duration-500">
+          <div className="border-t border-slate-50 pt-6 mt-2">
+            <div className="flex gap-2 mb-8 bg-slate-50/50 p-1.5 rounded-[1rem] w-fit border border-slate-100">
               <TabBtn id="identity" label="Identity" active={activeTab === 'identity'} onClick={setActiveTab} icon={<Info size={14} />} />
               <TabBtn id="financials" label="Balance Sheet" active={activeTab === 'financials'} onClick={setActiveTab} icon={<Wallet size={14} />} />
               <TabBtn id="income" label="Earnings" active={activeTab === 'income'} onClick={setActiveTab} icon={<Landmark size={14} />} />
               <TabBtn id="preferences" label="Risk Profile" active={activeTab === 'preferences'} onClick={setActiveTab} icon={<ShieldCheck size={14} />} />
             </div>
 
-            <div className="grid grid-cols-12 gap-10">
+            <div className="grid grid-cols-12 gap-8">
               <div className="col-span-12 lg:col-span-8 space-y-6">
                 {activeTab === 'identity' && (
                   <div className="grid grid-cols-2 gap-x-10 gap-y-8">
@@ -291,13 +329,13 @@ const ProfileRow = ({ profile, isExpanded, onToggle, onUpdate, onDelete }) => {
 
               {/* Minimalist Background Health Sidebar */}
               <div className="col-span-12 lg:col-span-4">
-                <div className="bg-slate-50 rounded-[2.5rem] p-8 border border-slate-100 h-full flex flex-col">
-                  <h5 className="font-bold text-xs text-slate-900 uppercase tracking-wider mb-10 flex items-center gap-3">
+                <div className="bg-slate-50 rounded-[1.5rem] p-6 border border-slate-100 h-full flex flex-col">
+                  <h5 className="font-bold text-xs text-slate-900 uppercase tracking-wider mb-8 flex items-center gap-3">
                     <Activity size={16} className="text-indigo-500" strokeWidth={2.5} />
                     Background Health
                   </h5>
                   
-                  <div className="space-y-10 flex-1">
+                  <div className="space-y-8 flex-1">
                     <Metric 
                       label="Liquidity Ratio" 
                       percentage={((localProfile.financials.cash / Math.max(totalAssets, 1)) * 100)} 
@@ -315,10 +353,10 @@ const ProfileRow = ({ profile, isExpanded, onToggle, onUpdate, onDelete }) => {
                     />
                   </div>
 
-                  <div className="mt-12">
+                  <div className="mt-8">
                     <button 
                       onClick={() => onUpdate(localProfile)} 
-                      className="w-full bg-slate-900 text-white font-bold uppercase tracking-widest text-[11px] py-5 rounded-[1.5rem] hover:bg-indigo-600 shadow-xl shadow-slate-200 transition-all flex items-center justify-center gap-3"
+                      className="w-full bg-slate-900 text-white font-bold uppercase tracking-widest text-[11px] py-4 rounded-xl hover:bg-indigo-600 shadow-xl shadow-slate-200 transition-all flex items-center justify-center gap-3"
                     >
                       <Save size={16} /> Commit Changes
                     </button>

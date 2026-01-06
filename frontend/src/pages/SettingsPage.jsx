@@ -131,10 +131,10 @@ const SettingsPage = () => {
     <MainLayout>
       <div className="max-w-[1400px] mx-auto animate-fade-in px-6">
         {/* Page Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 pt-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 pt-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Settings</h1>
-            <p className="text-slate-500 mt-0.5 font-medium text-xs">Manage your FinTwin profile and AI engine parameters</p>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Settings</h1>
+            <p className="text-slate-500 mt-1 text-sm">Manage your FinTwin profile and AI engine parameters</p>
           </div>
           
           <div className="flex gap-2">

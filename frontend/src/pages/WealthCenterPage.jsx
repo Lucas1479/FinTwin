@@ -1,11 +1,14 @@
-import React, { useState, useEffect, createContext } from 'react';
+import React, { useState, useEffect, createContext, useMemo } from 'react';
 import * as wealthService from '../services/wealthService';
 import MainLayout from '../components/layout/MainLayout';
 import AddAssetModal from '../components/wealth/AssetFormModal'; // Renamed import
 import WealthOverview from './wealth/WealthOverview';
 import WealthPortfolio from './wealth/WealthPortfolio';
 import WealthCashflow from './wealth/WealthCashflow';
-import { LayoutDashboard, Wallet, ArrowRightLeft } from 'lucide-react';
+import { LayoutDashboard, Wallet, ArrowRightLeft, Zap } from 'lucide-react';
+import { useSimulatedData, useSimulation } from '../context/SimulationContext';
+import { getCashFlows } from '../services/cashFlowService';
+import { getGoals } from '../services/goalService';
 
 export const WealthContext = createContext(null);
 
@@ -14,17 +17,23 @@ const WealthCenterPage = () => {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'portfolio' | 'cashflow'
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState(null);
+  const { timeOffset, marketMode } = useSimulation();
+  
   const [data, setData] = useState({
     summary: { netWorth: 0, totalAssets: 0, totalLiabilities: 0, liquidCapital: 0 },
     assets: [],
-    liabilities: []
+    liabilities: [],
+    cashFlows: [],
+    goals: []
   });
 
   const fetchData = async () => {
     try {
-      const [summary, assets] = await Promise.all([
+      const [summary, assets, cashFlows, goals] = await Promise.all([
         wealthService.getWealthSummary(),
-        wealthService.getAssets()
+        wealthService.getAssets(),
+        getCashFlows(),
+        getGoals()
       ]);
       
       const allItems = assets; 
@@ -34,7 +43,9 @@ const WealthCenterPage = () => {
       setData({
         summary,
         assets: actualAssets,
-        liabilities: actualLiabilities
+        liabilities: actualLiabilities,
+        cashFlows: cashFlows || [],
+        goals: goals || []
       });
     } catch (error) {
       console.error('Failed to fetch wealth data:', error);
@@ -57,8 +68,21 @@ const WealthCenterPage = () => {
     setTimeout(() => setEditingAsset(null), 300);
   };
 
+  // --- Simulation Interceptor ---
+  // The hook returns { assets, goals, wealth, cashFlows } - we use 'wealth' as our live summary
+  const simulatedData = useSimulatedData({
+    assets: data.assets,
+    liabilities: data.liabilities,
+    cashFlows: data.cashFlows,
+    goals: data.goals,
+    wealth: data.summary // Map 'summary' to 'wealth' for engine compatibility
+  });
+
   const contextValue = { 
-    data, 
+    data: {
+        ...simulatedData,
+        summary: simulatedData?.wealth || data.summary // Use the authoritative summary from engine
+    } || data, 
     loading, 
     onAddAsset: () => { setEditingAsset(null); setIsAddModalOpen(true); },
     onEditAsset: handleEditAsset
@@ -70,9 +94,20 @@ const WealthCenterPage = () => {
         <div className="max-w-[1600px] mx-auto px-4 lg:px-6 py-8">
           
           {/* Level 1: Page Title */}
-          <div className="mb-4">
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Wealth Center</h1>
-            <p className="text-slate-500 mt-1 text-sm">Your financial command center & asset manager.</p>
+          <div className="mb-8">
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Wealth Center</h1>
+              {timeOffset > 0 && (
+                <div className="bg-indigo-600 text-white text-[10px] font-black uppercase px-2 py-1 rounded flex items-center gap-1 shadow-sm animate-pulse">
+                  <Zap size={12} fill="currentColor" /> Simulation Mode
+                </div>
+              )}
+            </div>
+            <p className="text-slate-500 mt-1 text-sm">
+              {timeOffset > 0 
+                ? `Projecting ${timeOffset} years into the future (${marketMode} market conditions)` 
+                : "Your financial command center & asset manager."}
+            </p>
           </div>
 
           {/* Level 2: Navigation Tabs */}

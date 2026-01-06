@@ -2,41 +2,92 @@ import React, { useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { TrendingUp, Clock } from 'lucide-react';
 
-const FundingFlowWidget = ({ goals = [], profile }) => {
+const FundingFlowWidget = ({ cashFlows = [], profile }) => {
   const [frequency, setFrequency] = useState('Monthly'); // 'Weekly' or 'Monthly'
 
-  // Extract surplus from profile or fallback
-  // In our model, we don't have a direct 'monthlySurplus' field yet, 
-  // so we mock it based on NZ average or user's income if available
-  const monthlySurplus = 1850; 
-  const displaySurplus = frequency === 'Monthly' ? monthlySurplus : Math.round(monthlySurplus / 4.33);
+  const TO_ANNUAL = { 'Weekly': 52, 'Fortnightly': 26, 'Monthly': 12, 'Yearly': 1, 'One-Off': 0 };
+  const toAnnual = (amount, freq) => amount * (TO_ANNUAL[freq] || 0);
+
+  // 1. Process real-time cash flow data
+  const processedData = useMemo(() => {
+    // Separate by type
+    const incomes = cashFlows.filter(f => f.type === 'Income');
+    const fixedOutflows = cashFlows.filter(f => f.type === 'Expense' || f.type === 'Subscription');
+    const investments = cashFlows.filter(f => f.type === 'Investment');
+
+    // Calculate annual values
+    const annualIncome = incomes.reduce((sum, f) => sum + toAnnual(f.amount, f.frequency), 0);
+    const annualLiving = fixedOutflows.reduce((sum, f) => sum + toAnnual(f.amount, f.frequency), 0);
+    const annualInvested = investments.reduce((sum, f) => sum + toAnnual(f.amount, f.frequency), 0);
+
+    // Calculate monthly equivalents
+    const monthlyIncome = annualIncome / 12;
+    const monthlyLiving = annualLiving / 12;
+    const monthlyInvested = annualInvested / 12;
+
+    const preInvestmentSurplus = Math.max(0, monthlyIncome - monthlyLiving);
+    const realSurplus = Math.max(0, preInvestmentSurplus - monthlyInvested);
+
+    // 2. Aggregate investments by Goal name
+    // We parse the name: "Product Name (Goal Name)" to extract "Goal Name"
+    const goalAggregates = {};
+    investments.forEach(i => {
+        // Extract string between parentheses or use the full name
+        const match = i.name.match(/\(([^)]+)\)/);
+        const goalName = match ? match[1] : i.name.replace('Contribution: ', '');
+        
+        const amount = toAnnual(i.amount, i.frequency) / 12;
+        goalAggregates[goalName] = (goalAggregates[goalName] || 0) + amount;
+    });
+
+    const investmentItems = Object.entries(goalAggregates).map(([name, monthly]) => ({
+        name,
+        monthly,
+        percentage: preInvestmentSurplus > 0 ? (monthly / preInvestmentSurplus * 100) : 0
+    }));
+
+    return {
+        totalIncome: monthlyIncome,
+        livingExpenses: monthlyLiving,
+        preInvestmentSurplus,
+        investedAmount: monthlyInvested,
+        freeCash: realSurplus,
+        investmentItems
+    };
+  }, [cashFlows]);
+
+  const displaySurplus = frequency === 'Monthly' 
+    ? processedData.preInvestmentSurplus 
+    : processedData.preInvestmentSurplus / 4.33;
 
   // Define color palette matching GoalHeatmap and Brand
-  const COLORS = ['#312e81', '#4338ca', '#4f46e5', '#6366f1', '#818cf8', '#a5b4fc'];
+  const COLORS = ['#4f46e5', '#818cf8', '#a5b4fc', '#c7d2fe', '#6366f1'];
 
-  // Mock allocation logic: In reality, this would be defined in user.allocation.goalPriorities
+  // 2. Build Pie Data based on Pre-investment Surplus
   const flowData = useMemo(() => {
-    const mockGoals = [
-      { title: 'Buy First Home', weight: 0.45 },
-      { title: 'Retirement Fund', weight: 0.25 },
-      { title: 'Emergency Fund', weight: 0.20 },
-      { title: 'Europe Trip', weight: 0.10 },
-    ];
-
-    const sourceGoals = goals.length > 0 
-      ? goals.slice(0, 4).map((g, i) => ({ 
-          title: g.title || g.goal_name, 
-          weight: [0.4, 0.3, 0.2, 0.1][i] || 0.05 
-        }))
-      : mockGoals;
-
-    return sourceGoals.map((goal, idx) => ({
-      name: goal.title,
-      value: Math.round(displaySurplus * goal.weight),
+    const factor = frequency === 'Monthly' ? 1 : 4.33;
+    
+    // a. Start with specific investments
+    const slices = processedData.investmentItems.map((item, idx) => ({
+      name: item.name,
+      value: Math.round(item.monthly / factor),
       color: COLORS[idx % COLORS.length],
-      percentage: Math.round(goal.weight * 100)
-    }));
-  }, [goals, displaySurplus]);
+      percentage: Math.round(item.percentage)
+    })).filter(s => s.value > 0);
+
+    // b. Add the "Free Cash" (Real Surplus) slice
+    const freeCashValue = Math.round(processedData.freeCash / factor);
+    if (freeCashValue > 0 || slices.length === 0) {
+        slices.push({
+            name: 'Free Cash (Unallocated)',
+            value: freeCashValue,
+            color: '#10b981', // Emerald 500
+            percentage: Math.round(processedData.preInvestmentSurplus > 0 ? (processedData.freeCash / processedData.preInvestmentSurplus * 100) : 100)
+        });
+    }
+
+    return slices;
+  }, [processedData, frequency]);
 
   const totalAllocated = flowData.reduce((sum, item) => sum + item.value, 0);
 

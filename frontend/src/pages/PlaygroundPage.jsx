@@ -113,7 +113,7 @@ const PlaygroundPage = () => {
         <div className="max-w-[1600px] mx-auto px-4 lg:px-8 py-8">
           
           {/* Header Section - Refined Title */}
-          <div className="mb-2">
+          <div className="mb-8">
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Playground</h1>
             <p className="text-slate-500 text-sm mt-1">Design backgrounds and test life scenarios in a risk-free environment.</p>
           </div>

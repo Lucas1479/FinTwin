@@ -45,35 +45,65 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 // ============ COMPACT KPI CARD ============
-const KpiCard = ({ title, value, change, icon: Icon }) => {
+const KpiCard = ({ title, value, change, icon: Icon, breakdown }) => {
   const valStr = new Intl.NumberFormat('en-NZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
   const [integerPart, decimalPart] = valStr.split('.');
   const isPositive = change >= 0;
 
   return (
-    <div className={`${CARD_BASE} flex flex-col justify-between min-h-[140px]`}>
-      <div className="flex justify-between items-start">
-        <p className="text-sm font-semibold text-slate-500">{title}</p>
-        <button className="w-8 h-8 rounded-full border border-slate-100 flex items-center justify-center hover:bg-slate-50 transition-colors group">
-          <ArrowUpRight size={14} className="text-slate-400 group-hover:text-indigo-600 transition-colors" />
-        </button>
+    <div className={`${CARD_BASE} flex flex-col justify-between min-h-[140px] relative overflow-hidden`}>
+      <div className="relative z-10">
+        <div className="flex justify-between items-start">
+          <p className="text-sm font-semibold text-slate-500">{title}</p>
+          <div className={`p-1.5 rounded-lg bg-slate-50 text-slate-400`}>
+            <Icon size={14} />
+          </div>
+        </div>
+
+        <div className="mt-2">
+          <div className="flex items-baseline font-bold text-slate-900">
+            <span className="text-2xl tracking-tight">${integerPart}</span>
+            <span className="text-lg text-slate-300 ml-0.5">.{decimalPart}</span>
+          </div>
+          
+          {change !== undefined && !breakdown && (
+            <div className="flex items-center gap-1.5 mt-2">
+              <span className={`flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded ${isPositive ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                {isPositive ? '↑' : '↓'} {Math.abs(change)}%
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">vs last month</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="mt-2">
-        <div className="flex items-baseline font-bold text-slate-900">
-          <span className="text-2xl tracking-tight">${integerPart}</span>
-          <span className="text-lg text-slate-300 ml-0.5">.{decimalPart}</span>
-        </div>
-        
-        {change !== undefined && (
-          <div className="flex items-center gap-1.5 mt-2">
-            <span className={`flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded ${isPositive ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-              {isPositive ? '↑' : '↓'} {Math.abs(change)}%
-            </span>
-            <span className="text-[10px] text-slate-400 font-medium">vs last month</span>
+      {breakdown && (
+        <div className="mt-4 relative z-10">
+          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden flex">
+            {breakdown.map((item, idx) => (
+              <div 
+                key={idx} 
+                className={`${item.color} h-full transition-all duration-500`} 
+                style={{ width: `${item.percent}%` }}
+                title={`${item.label}: ${item.percent}%`}
+              ></div>
+            ))}
           </div>
-        )}
-      </div>
+          <div className="flex justify-between mt-2">
+            {breakdown.map((item, idx) => (
+              <div key={idx} className="flex flex-col">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">{item.label}</span>
+                <span className={`text-[10px] font-bold ${item.textColor}`}>${(item.value / 1000).toFixed(1)}k</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {/* Background Subtle Gradient for Breakdown Card */}
+      {breakdown && (
+        <div className="absolute right-0 bottom-0 w-24 h-24 bg-gradient-to-tl from-slate-50 to-transparent pointer-events-none"></div>
+      )}
     </div>
   );
 };
@@ -143,6 +173,28 @@ const WealthDashboardGrid = ({ assets, liabilities, summary, onOpenLiquidity }) 
     ? ((summary.totalLiabilities / summary.totalAssets) * 100).toFixed(1) 
     : 0;
 
+  const liquidityBreakdown = useMemo(() => {
+    let cash = 0;
+    let funds = 0;
+    assets.forEach(a => {
+      // 1. Spendable: Banking and Physical Cash
+      if (['Cash_Bank', 'Cash_Physical'].includes(a.category)) {
+        cash += a.value;
+      }
+      
+      // 2. Allocated: Managed Funds OR any asset explicitly linked to a goal
+      // This ensures that when we create a Goal Portfolio, it's counted here.
+      if (['Invest_ManagedFund'].includes(a.category) || a.asset_details?.linked_goal_id) {
+        funds += a.value;
+      }
+    });
+    const total = (cash + funds) || 1;
+    return [
+      { label: 'Spendable', value: cash, percent: (cash / total * 100).toFixed(0), color: 'bg-emerald-500', textColor: 'text-emerald-600' },
+      { label: 'Allocated', value: funds, percent: (funds / total * 100).toFixed(0), color: 'bg-indigo-500', textColor: 'text-indigo-600' }
+    ];
+  }, [assets]);
+
   return (
     <div className="space-y-6">
       
@@ -151,14 +203,19 @@ const WealthDashboardGrid = ({ assets, liabilities, summary, onOpenLiquidity }) 
         <KpiCard title="Net Worth" value={summary.netWorth} change={5.2} icon={Wallet} />
         <KpiCard title="Total Assets" value={summary.totalAssets} change={3.8} icon={TrendingUp} />
         <KpiCard title="Total Liabilities" value={summary.totalLiabilities} change={-2.1} icon={CreditCard} />
-        <KpiCard title="Liquid Capital" value={summary.liquidCapital} change={8.4} icon={DollarSign} />
+        <KpiCard 
+          title="Liquid Capital" 
+          value={summary.liquidCapital} 
+          icon={DollarSign} 
+          breakdown={liquidityBreakdown}
+        />
       </div>
 
       {/* === ROW 2: Money Flow & Liquidity === */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         
         {/* LEFT: Wealth Trend */}
-        <div className={`${CARD_BASE} xl:col-span-2`}>
+        <div className={`${CARD_BASE} xl:col-span-2 min-w-0`}>
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-base font-bold text-slate-900">Wealth Trend</h3>
             <div className="flex items-center gap-4">
@@ -176,8 +233,8 @@ const WealthDashboardGrid = ({ assets, liabilities, summary, onOpenLiquidity }) 
             </div>
           </div>
           
-          <div className="h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[220px] min-w-0">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
               <BarChart data={trendData} barGap={8} margin={{ top: 5, right: 0, left: -25, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} dy={5} />

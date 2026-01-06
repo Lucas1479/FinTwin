@@ -8,6 +8,8 @@ import GoalSummaryWidget from '../components/goals/GoalSummaryWidget';
 import SavingsOverviewWidget from '../components/goals/SavingsOverviewWidget';
 import GoalFilters from '../components/goals/GoalFilters';
 import GoalDetailModal from '../components/goals/GoalDetailModal';
+import { useSimulatedData, useSimulation } from '../context/SimulationContext';
+import { Zap } from 'lucide-react';
 
 // Mock data to match the design
 const MOCK_GOALS = [
@@ -53,6 +55,16 @@ const GoalsPage = () => {
   const [goals, setGoals] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedGoal, setSelectedGoal] = useState(null);
+  const { timeOffset, marketMode } = useSimulation();
+
+  // --- Simulation Integration ---
+  const simulatedData = useSimulatedData({
+    goals: goals,
+    assets: [], // Add if GoalsPage needs asset info later
+    cashFlows: []
+  });
+
+  const displayGoals = simulatedData?.goals || goals;
 
   // Filter state
   const [filters, setFilters] = useState({
@@ -82,7 +94,7 @@ const GoalsPage = () => {
 
   // Derived state: Filtered and Sorted Goals
   const processedGoals = useMemo(() => {
-    let result = [...goals];
+    let result = [...displayGoals]; // Use simulated goals as base
     const now = new Date();
     const currentYear = now.getFullYear();
 
@@ -136,7 +148,7 @@ const GoalsPage = () => {
     });
 
     return result;
-  }, [goals, filters]);
+  }, [displayGoals, filters]);
 
   const handleReset = () => {
     setFilters({ dateRange: 'all', sortBy: 'date_asc', status: 'all' });
@@ -194,13 +206,24 @@ const GoalsPage = () => {
 
   return (
     <MainLayout>
-      <div className="max-w-[1600px] mx-auto p-4 md:p-6 animate-fade-in space-y-6">
+      <div className="max-w-[1600px] mx-auto p-4 md:p-6 animate-fade-in space-y-8">
         
         {/* Header Section */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pt-2">
           <div>
-             <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Goals</h1>
-             <p className="text-slate-500 mt-1 font-medium text-sm">Create financial goals and manage your savings</p>
+             <div className="flex items-center gap-3">
+                <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Goals</h1>
+                {timeOffset > 0 && (
+                  <div className="bg-indigo-600 text-white text-[10px] font-black uppercase px-2 py-1 rounded flex items-center gap-1 shadow-sm animate-pulse">
+                    <Zap size={12} fill="currentColor" /> Simulation Mode
+                  </div>
+                )}
+             </div>
+             <p className="text-slate-500 mt-1 text-sm">
+                {timeOffset > 0 
+                  ? `Projecting ${timeOffset} years into the future (${marketMode} market conditions)` 
+                  : "Create financial goals and manage your savings"}
+             </p>
           </div>
           
           <Link 
@@ -257,7 +280,7 @@ const GoalsPage = () => {
             <div className="lg:col-span-3 xl:col-span-1 flex flex-col gap-5">
                  {/* Summary widget always shows TOTAL stats, ignoring filters for "big picture" context */}
                  <div className="h-auto">
-                    <GoalSummaryWidget goals={goals} />
+                    <GoalSummaryWidget goals={displayGoals} />
                  </div>
                  <div className="flex-1 min-h-[240px]">
                     <SavingsOverviewWidget />
