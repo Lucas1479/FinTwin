@@ -60,7 +60,7 @@ const Sidebar = () => {
     <div 
         className={`
             ${isCollapsed ? 'w-20' : 'w-80'} 
-            h-[calc(100vh-65px)] bg-white border-r border-slate-100 sticky top-[65px] 
+            h-screen bg-white border-r border-slate-100 sticky top-0 
             hidden md:flex flex-col p-4 overflow-y-auto transition-all duration-300 ease-in-out
         `}
     >
