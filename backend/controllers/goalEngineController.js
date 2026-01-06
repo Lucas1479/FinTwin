@@ -101,8 +101,48 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
       const userId = req.user._id;
 
       // Helper: convert amount to annual based on frequency
-      const TO_ANNUAL = { Weekly: 52, Fortnightly: 26, Monthly: 12, Yearly: 1, 'One-Off': 0 };
-      const toAnnual = (amount, frequency) => amount * (TO_ANNUAL[frequency] || 0);
+      // IMPORTANT:
+      // - CashFlowModel uses: 'Weekly' | 'Fortnightly' | 'Monthly' | 'Yearly' | 'One-Off'
+      // - PlanModel uses: 'weekly' | 'fortnightly' | 'monthly' | 'lump_sum'
+      // For multi-goal budgeting, we must support both (case-insensitive + synonyms).
+      const normalizeFrequency = (frequency) => {
+          if (!frequency) return null;
+          const raw = String(frequency).trim();
+          if (!raw) return null;
+
+          const key = raw
+              .toLowerCase()
+              .replace(/\s+/g, '_')
+              .replace(/-/g, '_');
+
+          if (key === 'weekly') return 'weekly';
+          if (key === 'fortnightly') return 'fortnightly';
+          if (key === 'monthly') return 'monthly';
+          if (key === 'yearly' || key === 'annually' || key === 'annual') return 'yearly';
+
+          // Treat one-off / lump sum as non-recurring for surplus budgeting
+          if (key === 'one_off' || key === 'oneoff') return 'one_off';
+          if (key === 'lump_sum' || key === 'lumpsum') return 'lump_sum';
+
+          return null;
+      };
+
+      const TO_ANNUAL = {
+          weekly: 52,
+          fortnightly: 26,
+          monthly: 12,
+          yearly: 1,
+          one_off: 0,
+          lump_sum: 0
+      };
+
+      const toAnnual = (amount, frequency) => {
+          const amt = Number(amount) || 0;
+          if (!amt) return 0;
+          const f = normalizeFrequency(frequency);
+          const multiplier = f ? (TO_ANNUAL[f] ?? 0) : 0;
+          return amt * multiplier;
+      };
 
       const [assets, cashFlows, userDoc, plans, goals] = await Promise.all([
           FinancialAsset.find({ user_id: userId }).lean(),

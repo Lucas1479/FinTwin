@@ -3,6 +3,8 @@ import userRoutes from './userRoutes.js';
 import figmaRoutes from './figmaRoutes.js';
 import productRoutes from './productRoutes.js';
 import cashFlowRoutes from './cashFlowRoutes.js'; // New Import
+import playgroundRoutes from './playgroundRoutes.js'; // New Import
+import helpController from '../../controllers/helpController.js';
 
 import goalRoutes from './goalRoutes.js';
 
@@ -17,6 +19,8 @@ router.use('/products', productRoutes);
 router.use('/goals', goalRoutes);
 router.use('/wealth', wealthCentreRoutes);
 router.use('/cashflow', cashFlowRoutes); // New Route
+router.use('/playground', playgroundRoutes); // New Route
+router.use('/help', helpController);
 
 // Health Check for /api/health
 router.get('/health', (req, res) => {

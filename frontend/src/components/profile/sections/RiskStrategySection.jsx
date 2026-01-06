@@ -1,6 +1,8 @@
-import { Shield, TrendingUp, AlertTriangle, Target } from 'lucide-react';
+import { Shield, TrendingUp, AlertTriangle, Target, RotateCcw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const RiskStrategySection = ({ data, onChange }) => {
+  const navigate = useNavigate();
   const riskLevels = [
     { id: 'Conservative', name: 'Conservative', desc: 'Focus on stability and capital preservation.', color: 'bg-blue-500', icon: Shield },
     { id: 'Balanced', name: 'Balanced', desc: 'A mix of growth and defensive assets.', color: 'bg-green-500', icon: Target },
@@ -119,15 +121,56 @@ const RiskStrategySection = ({ data, onChange }) => {
         </div>
       </div>
 
+      {/* Experience & Market Knowledge */}
+      <div className="pt-6 border-t border-slate-50 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Investment Experience</label>
+          <select 
+            className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-slate-900 font-bold focus:ring-2 focus:ring-brand-500 transition-all"
+            value={data.investmentExperience || 'Intermediate'}
+            onChange={(e) => updateRisk('investmentExperience', e.target.value)}
+          >
+            <option value="Novice">Novice</option>
+            <option value="Intermediate">Intermediate</option>
+            <option value="Advanced">Advanced</option>
+          </select>
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">NZ Market Knowledge</label>
+          <select 
+            className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-slate-900 font-bold focus:ring-2 focus:ring-brand-500 transition-all"
+            value={data.nzMarketKnowledge || 'Medium'}
+            onChange={(e) => updateRisk('nzMarketKnowledge', e.target.value)}
+          >
+            <option value="Low">Low (New to Market)</option>
+            <option value="Medium">Medium (Familiar)</option>
+            <option value="High">High (Expert)</option>
+          </select>
+        </div>
+      </div>
+
       {/* AI Strategy Insights Mini-Banner */}
-      <div className="bg-slate-900 rounded-3xl p-6 text-white flex items-center gap-6">
-          <div className="w-12 h-12 rounded-2xl bg-brand-500 flex items-center justify-center shrink-0 shadow-lg shadow-brand-500/20">
+      <div className="bg-slate-900 rounded-3xl p-6 text-white flex flex-col md:flex-row items-center gap-6 relative overflow-hidden group">
+          <div className="w-12 h-12 rounded-2xl bg-brand-500 flex items-center justify-center shrink-0 shadow-lg shadow-brand-500/20 z-10">
              <Target size={24} />
           </div>
-          <div>
+          <div className="flex-1 z-10 text-center md:text-left">
             <p className="text-sm font-bold">AI Strategy Impact</p>
             <p className="text-xs text-slate-400 mt-1">Based on a <span className="text-brand-400">{data.level}</span> profile, the engine will prioritize diversified growth assets with a {data.retirementAge ? data.retirementAge - 30 : 35}-year horizon.</p>
           </div>
+          
+          {/* Integrated Retake Action */}
+          <div className="z-10 pt-4 md:pt-0 border-t md:border-t-0 border-white/10 w-full md:w-auto flex justify-center">
+            <button 
+              onClick={() => navigate('/onboarding')}
+              className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap backdrop-blur-sm"
+            >
+              <RotateCcw size={14} /> Retake Quiz
+            </button>
+          </div>
+
+          {/* Background decoration */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-brand-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-brand-500/20 transition-all duration-700"></div>
       </div>
     </div>
   );

@@ -1,48 +1,64 @@
 import React, { useState, useEffect } from 'react';
 import { PlusCircle, Play, Copy, Trash2, Edit2, UserCircle2, Briefcase, TrendingUp, X, ChevronDown, ChevronUp, Wallet, Landmark, TrendingDown, Info, ShieldCheck, Save, BarChart3, Activity, Target } from 'lucide-react';
 
-const ScenarioLobby = ({ onEditScenario, profiles, setProfiles, scenarios, setScenarios, goals = [], goalsLoading }) => {
-  const [loading, setLoading] = useState(true);
+const ScenarioLobby = ({
+  onEditScenario,
+  onCreateScenario,
+  onDeleteScenario,
+  onCreateProfile,
+  onUpdateProfile,
+  onDeleteProfile,
+  profiles,
+  scenarios,
+  goals = [],
+  goalsLoading,
+  loading
+}) => {
   const [expandedProfileId, setExpandedProfileId] = useState(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isPathModalOpen, setIsPathModalOpen] = useState(false);
 
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 600));
-      setLoading(false);
-    };
-    loadData();
-  }, []);
-
-  const handleUpdateProfile = (updatedProfile) => {
-    setProfiles(profiles.map(p => p.id === updatedProfile.id ? updatedProfile : p));
+  const handleUpdateProfile = async (updatedProfile) => {
+    if (!onUpdateProfile) return;
+    try {
+      await onUpdateProfile(updatedProfile);
+    } catch (err) {
+      console.error('[ScenarioLobby] Failed to update background', err);
+    }
   };
 
-  const handleDeleteProfile = (e, id) => {
-    e.stopPropagation();
-    if (profiles.length <= 1) return alert("You must have at least one simulation profile.");
-    setProfiles(profiles.filter(p => p.id !== id));
+  const handleDeleteProfile = async (e, profileId) => {
+    e?.stopPropagation?.();
+    if (!onDeleteProfile || !profileId) return;
+    if (!window.confirm('Delete this background?')) return;
+    try {
+      await onDeleteProfile(profileId);
+    } catch (err) {
+      console.error('[ScenarioLobby] Failed to delete background', err);
+    }
   };
 
-  const handleCreateScenario = (data) => {
-    const selectedProfile = profiles.find(p => p.id === data.profileId) || profiles[0];
-    const selectedGoalId = data.goalId || goals[0]?.id || null;
-    const newScenario = {
-      id: `sim_${Date.now()}`,
-      name: data.name || "New Scenario",
-      profileId: selectedProfile.id,
-      goalId: selectedGoalId,
-      status: "safe",
-      successProbability: 50,
-      monthlyContribution: Math.round(selectedProfile.income.annualGross / 60),
-      retirementAge: selectedProfile.identity.retirementAge,
-    };
-    setScenarios([newScenario, ...scenarios]);
-    setIsPathModalOpen(false);
+  const handleCreateProfile = async (newProfile) => {
+    if (!onCreateProfile) return;
+    try {
+      await onCreateProfile(newProfile);
+      setIsProfileModalOpen(false);
+    } catch (err) {
+      console.error('[ScenarioLobby] Failed to create background', err);
+    }
   };
 
+  const handleCreateScenario = async (payload) => {
+    if (!onCreateScenario) return;
+    try {
+      await onCreateScenario(payload);
+      setIsPathModalOpen(false);
+    } catch (err) {
+      console.error('[ScenarioLobby] Failed to create scenario', err);
+    }
+  };
+
+  // loading state is now passed from parent
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -147,23 +163,35 @@ const ScenarioLobby = ({ onEditScenario, profiles, setProfiles, scenarios, setSc
                 <div>
                   <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                     <span>Survival Probability</span>
-                    <span className={scenario.successProbability >= 70 ? 'text-emerald-600' : 'text-rose-600'}>{scenario.successProbability}%</span>
+                    <span className={(scenario.successProbability || 0) >= 70 ? 'text-emerald-600' : 'text-rose-600'}>{(scenario.successProbability || 0)}%</span>
                   </div>
                   <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
                     <div 
-                        className={`h-full rounded-full transition-all duration-1000 ${scenario.successProbability >= 70 ? 'bg-emerald-500' : 'bg-rose-500'}`} 
-                        style={{ width: `${scenario.successProbability}%` }} 
+                        className={`h-full rounded-full transition-all duration-1000 ${(scenario.successProbability || 0) >= 70 ? 'bg-emerald-500' : 'bg-rose-500'}`} 
+                        style={{ width: `${(scenario.successProbability || 0)}%` }} 
                     />
                   </div>
                 </div>
 
-                <button
-                  onClick={() => onEditScenario(scenario.id)}
-                  className="w-full py-3 rounded-xl border border-slate-200 text-slate-600 font-bold uppercase tracking-widest text-[10px] hover:border-indigo-600 hover:text-indigo-600 hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 group/btn"
-                >
-                  Enter Decision Space
-                  <TrendingUp size={14} className="text-slate-400 group-hover/btn:text-indigo-600 transition-colors" />
-                </button>
+                <div className="flex gap-2">
+                    <button
+                    onClick={() => onEditScenario(scenario.id)}
+                    className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold uppercase tracking-widest text-[10px] hover:border-indigo-600 hover:text-indigo-600 hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 group/btn"
+                    >
+                    Enter Decision Space
+                    <TrendingUp size={14} className="text-slate-400 group-hover/btn:text-indigo-600 transition-colors" />
+                    </button>
+                    
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if(window.confirm('Delete this scenario?')) onDeleteScenario(scenario.id);
+                        }}
+                        className="p-3 rounded-xl border border-slate-200 text-slate-400 hover:text-rose-500 hover:border-rose-200 hover:bg-rose-50 transition-all"
+                    >
+                        <Trash2 size={16} />
+                    </button>
+                </div>
               </div>
             </div>
           ))}
@@ -184,10 +212,7 @@ const ScenarioLobby = ({ onEditScenario, profiles, setProfiles, scenarios, setSc
       {isProfileModalOpen && (
         <CreateProfileModal 
           onClose={() => setIsProfileModalOpen(false)} 
-          onSave={(newProfile) => {
-            setProfiles([...profiles, { ...newProfile, id: `prof_${Date.now()}` }]);
-            setIsProfileModalOpen(false);
-          }}
+          onSave={handleCreateProfile}
         />
       )}
 

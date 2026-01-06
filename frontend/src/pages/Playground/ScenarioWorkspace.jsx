@@ -1,48 +1,97 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, Save, CheckCircle2, TrendingUp, Shield, ShoppingBag, Activity, Target, Zap, Info, ChevronRight, BarChart3, PieChart as PieChartIcon, RefreshCw, AlertCircle, Plus, Minus, ArrowRightLeft, Landmark, Wallet, Briefcase, TrendingDown } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Cell, Pie, ReferenceLine, BarChart, Bar } from 'recharts';
+import productService from '../../services/productService';
 
-// --- Constants & Enhanced Mock Data ---
+// --- Helper: compute exposure using real product allocation (fallback to strategy tags) ---
+const computeExposureFromProducts = (portfolio, productsMap) => {
+  if (!portfolio) return { growth: 0, defensive: 0, liquidity: 0 };
+  return portfolio.products.reduce(
+    (acc, item) => {
+      const product = productsMap[item.productId] || {};
+      const weightFactor = (item.weight || 0) / 100;
 
-const MOCK_PRODUCTS = [
-  { id: 'prod_1', name: 'Vanguard Total Stock Market (VTI)', growth: 100, defensive: 0, liquidity: 0, fee: 0.03, risk: 'High' },
-  { id: 'prod_2', name: 'MSCI World Index Fund', growth: 95, defensive: 5, liquidity: 0, fee: 0.15, risk: 'High' },
-  { id: 'prod_3', name: 'NZ Top 50 Fund', growth: 90, defensive: 10, liquidity: 0, fee: 0.20, risk: 'High' },
-  { id: 'prod_4', name: 'Global Bond ETF (BND)', growth: 0, defensive: 100, liquidity: 0, fee: 0.04, risk: 'Low' },
-  { id: 'prod_5', name: 'NZ Fixed Interest Fund', growth: 5, defensive: 95, liquidity: 0, fee: 0.35, risk: 'Low' },
-  { id: 'prod_6', name: 'Term Deposit (6-month)', growth: 0, defensive: 0, liquidity: 100, fee: 0, risk: 'Minimal' },
-  { id: 'prod_7', name: 'High Interest Savings Account', growth: 0, defensive: 0, liquidity: 100, fee: 0, risk: 'Minimal' },
-  { id: 'prod_8', name: 'Smart Beta Alpha Fund', growth: 110, defensive: -10, liquidity: 0, fee: 0.85, risk: 'Very High' },
-];
+      // Prefer detailed allocation if available
+      const alloc = product.allocation || {};
+      const growthAlloc =
+        (alloc.equities || 0) + (alloc.property || 0) + (alloc.other || 0);
+      const defensiveAlloc = (alloc.bonds || 0);
+      const liquidityAlloc = (alloc.cash || 0);
 
-const INITIAL_PORTFOLIOS = [
-  { 
-    id: 'p1', 
-    name: 'Smart Saver (Low Cost)', 
-    products: [
-      { productId: 'prod_1', weight: 50 },
-      { productId: 'prod_4', weight: 30 },
-      { productId: 'prod_7', weight: 20 }
-    ]
-  },
-  { 
-    id: 'p2', 
-    name: 'Global Diversifier', 
-    products: [
-      { productId: 'prod_2', weight: 60 },
-      { productId: 'prod_5', weight: 25 },
-      { productId: 'prod_6', weight: 15 }
-    ]
-  },
-  { 
-    id: 'p3', 
-    name: 'Alpha Growth (High Alpha)', 
-    products: [
-      { productId: 'prod_8', weight: 80 },
-      { productId: 'prod_3', weight: 20 }
-    ]
-  },
-];
+      if (growthAlloc + defensiveAlloc + liquidityAlloc > 0) {
+        acc.growth += growthAlloc * weightFactor;
+        acc.defensive += defensiveAlloc * weightFactor;
+        acc.liquidity += liquidityAlloc * weightFactor;
+      } else {
+        // Fallback by strategy/category
+        const strategy = (product.riskLevel || product.strategy || '').toLowerCase();
+        const category = (product.category || '').toLowerCase();
+        if (category.includes('term') || category.includes('cash') || category.includes('savings')) {
+          acc.liquidity += 100 * weightFactor;
+        } else if (strategy.includes('defensive') || strategy.includes('conservative')) {
+          acc.defensive += 100 * weightFactor;
+        } else if (strategy.includes('balanced')) {
+          acc.growth += 60 * weightFactor;
+          acc.defensive += 40 * weightFactor;
+        } else {
+          acc.growth += 100 * weightFactor;
+        }
+      }
+      return acc;
+    },
+    { growth: 0, defensive: 0, liquidity: 0 }
+  );
+};
+
+// --- Helper: build default portfolios (approximate AI Stage 3 intent) ---
+const pickTop = (arr, n) => arr.slice(0, n).map(p => p.id);
+const buildDefaultPortfolios = (products = []) => {
+  if (!products.length) return [];
+  // Buckets
+  const growth = products
+    .filter(p => (p.strategy || p.riskLevel || '').match(/Growth|Aggressive/i))
+    .sort((a, b) => (b.returns?.['5y'] || 0) - (a.returns?.['5y'] || 0) || (a.fees || 0) - (b.fees || 0));
+  const balanced = products
+    .filter(p => (p.strategy || p.riskLevel || '').match(/Balanced/i))
+    .sort((a, b) => (a.fees || 0) - (b.fees || 0));
+  const defensive = products
+    .filter(p => (p.strategy || p.riskLevel || '').match(/Defensive|Conservative/i))
+    .sort((a, b) => (a.fees || 0) - (b.fees || 0));
+  const liquidity = products
+    .filter(p => (p.category || '').match(/TermDeposit|Savings/i))
+    .sort((a, b) => (a.fees || 0) - (b.fees || 0));
+
+  const pickOrFallback = (bucket, fallbackBucket) => {
+    const chosen = bucket.length ? bucket : fallbackBucket;
+    return chosen.length ? chosen[0] : null;
+  };
+
+  const g1 = pickOrFallback(growth, balanced);
+  const g2 = pickOrFallback(growth.slice(1), balanced);
+  const d1 = pickOrFallback(defensive, balanced);
+  const d2 = pickOrFallback(defensive.slice(1), balanced);
+  const l1 = pickOrFallback(liquidity, defensive.length ? defensive : balanced);
+
+  const mkProduct = (p, weight) => (p ? { productId: p.id, weight } : null);
+
+  return [
+    {
+      id: 'p1',
+      name: 'Smart Saver (Low Cost)',
+      products: [mkProduct(g1, 50), mkProduct(d1, 30), mkProduct(l1, 20)].filter(Boolean),
+    },
+    {
+      id: 'p2',
+      name: 'Global Diversifier',
+      products: [mkProduct(g1, 60), mkProduct(d1, 25), mkProduct(l1, 15)].filter(Boolean),
+    },
+    {
+      id: 'p3',
+      name: 'Alpha Growth',
+      products: [mkProduct(g1, 70), mkProduct(g2 || d1, 20), mkProduct(l1, 10)].filter(Boolean),
+    },
+  ].filter(p => p.products.length > 0);
+};
 
 const FALLBACK_GOALS = [
   { id: 'goal_1', name: 'Dream Home in Auckland', category: 'home', target_amount: 1200000, current_amount: 150000, due_date: '2030-12-31', icon: 'home' },
@@ -127,8 +176,10 @@ const ConfigCard = ({ title, icon: Icon, children, isActive, badge }) => (
   </div>
 );
 
-const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles, goals = [], goalsLoading }) => {
+const ScenarioWorkspace = ({ scenarioId, scenario, onBack, onSave, profiles, goals = [], goalsLoading }) => {
   const [loading, setLoading] = useState(true);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [products, setProducts] = useState([]);
   const [isSaved, setIsSaved] = useState(false);
   const [activeProfile, setActiveProfile] = useState(null);
   const [activeGoal, setActiveGoal] = useState(null);
@@ -142,9 +193,41 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles, goals = [],
   const [isInflationAdjusted, setIsInflationAdjusted] = useState(true);
 
   // --- Stage 3 State: Portfolio ---
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState('p1');
-  const [customPortfolios, setCustomPortfolios] = useState(INITIAL_PORTFOLIOS);
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState(null);
+  const [customPortfolios, setCustomPortfolios] = useState([]);
   const [isSwapping, setIsSwapping] = useState(null); 
+
+  const productsMap = useMemo(
+    () => Object.fromEntries((products || []).map(p => [p.id, p])),
+    [products]
+  );
+
+  // Load real products (approx AI Stage 3)
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      setProductsLoading(true);
+      try {
+        const resp = await productService.getProducts({ limit: 150, sortBy: 'fees', sortOrder: 'asc' });
+        const list = resp?.products || [];
+        if (!mounted) return;
+        setProducts(list);
+        const defaults = buildDefaultPortfolios(list);
+        setCustomPortfolios(defaults);
+        if (defaults[0]) {
+          setSelectedPortfolioId(defaults[0].id);
+        }
+      } catch (err) {
+        console.error('[ScenarioWorkspace] Failed to load products', err);
+      } finally {
+        if (mounted) setProductsLoading(false);
+      }
+    };
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const activePortfolio = useMemo(() => 
     customPortfolios.find(p => p.id === selectedPortfolioId), 
@@ -156,17 +239,10 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles, goals = [],
     [goals]
   );
 
-  const portfolioExposure = useMemo(() => {
-    if (!activePortfolio) return { growth: 0, defensive: 0, liquidity: 0 };
-    return activePortfolio.products.reduce((acc, item) => {
-      const prod = MOCK_PRODUCTS.find(p => p.id === item.productId);
-      const weightFactor = item.weight / 100;
-      acc.growth += prod.growth * weightFactor;
-      acc.defensive += prod.defensive * weightFactor;
-      acc.liquidity += prod.liquidity * weightFactor;
-      return acc;
-    }, { growth: 0, defensive: 0, liquidity: 0 });
-  }, [activePortfolio]);
+  const portfolioExposure = useMemo(
+    () => computeExposureFromProducts(activePortfolio, productsMap),
+    [activePortfolio, productsMap]
+  );
 
   useEffect(() => {
     setExposure({
@@ -180,15 +256,23 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles, goals = [],
     const init = async () => {
       setLoading(true);
       await new Promise(resolve => setTimeout(resolve, 800));
-      
-      const profile = profiles.find(p => p.id === scenario?.profileId) || profiles[0];
+
+      const profile =
+        profiles.find(p => p.id === scenario?.profileId) ||
+        scenario?.profile ||
+        profiles[0];
       const goal = goalOptions.find(g => g.id === scenario?.goalId) || goalOptions[0];
       
       setActiveProfile(profile);
-      setActiveProfileId(profile?.id || null);
+      setActiveProfileId(profile?.id || scenario?.profileId || null);
       setActiveGoal(goal);
       setActiveGoalId(goal?.id || null);
-      setMonthlyContribution(scenario?.monthlyContribution || Math.round(profile.income.annualGross / 60));
+      setMonthlyContribution(
+        scenario?.monthlyContribution ??
+        (profile?.income?.annualGross ? Math.round(profile.income.annualGross / 60) : 0)
+      );
+      setLumpSum(scenario?.lumpSum ?? 10000);
+      setIsInflationAdjusted(scenario?.isInflationAdjusted ?? true);
       setLoading(false);
     };
     init();
@@ -255,7 +339,7 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles, goals = [],
     }
   };
 
-  if (loading) {
+  if (loading || productsLoading) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
@@ -312,7 +396,26 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles, goals = [],
           </div>
         </div>
         
-        <button onClick={() => setIsSaved(true)} className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-bold transition-all ${isSaved ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-900 text-white hover:bg-indigo-600 shadow-xl shadow-slate-200 active:scale-95'}`}>
+        <button 
+            onClick={() => {
+                onSave(scenarioId, {
+                    goalId: activeGoalId,
+                    backgroundId: activeProfileId,
+                    profile: activeProfile,
+                    monthlyContribution,
+                    lumpSum, // Ensure this is handled by backend if needed, or mapped to something existing
+                    // Assuming inflationAdjusted is also a parameter
+                    // Add result metrics to save if desired
+                    successProbability,
+                    isInflationAdjusted,
+                    status: successProbability >= 70 ? 'safe' : 'risky'
+                    // exposure?
+                });
+                setIsSaved(true);
+                setTimeout(() => setIsSaved(false), 2000);
+            }} 
+            className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-bold transition-all ${isSaved ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-900 text-white hover:bg-indigo-600 shadow-xl shadow-slate-200 active:scale-95'}`}
+        >
           {isSaved ? <CheckCircle2 size={18} /> : <Save size={18} />}
           {isSaved ? 'Life Path Saved' : 'Commit Decision'}
         </button>
@@ -424,34 +527,44 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles, goals = [],
                 ))}
               </div>
 
-              <div className="space-y-3">
-                {activePortfolio.products.map((item, idx) => {
-                  const product = MOCK_PRODUCTS.find(p => p.id === item.productId);
-                  return (
-                    <div key={`${activePortfolio.id}_${idx}`} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 group">
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Asset {idx + 1}</p>
-                          <h4 className="text-sm font-bold text-slate-900 truncate pr-4">{product.name}</h4>
+              {!activePortfolio || !activePortfolio.products?.length ? (
+                <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm text-slate-500">
+                  Portfolio is not ready yet. Please retry or adjust filters.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {activePortfolio.products.map((item, idx) => {
+                    const product = productsMap[item.productId] || {};
+                    return (
+                      <div key={`${activePortfolio.id}_${idx}`} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 group">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Asset {idx + 1}</p>
+                            <h4 className="text-sm font-bold text-slate-900 truncate pr-4">{product.name || 'Product'}</h4>
+                          </div>
+                          <button 
+                            onClick={() => setIsSwapping({ portfolioId: activePortfolio.id, productIndex: idx })}
+                            className="p-1.5 bg-white rounded-lg text-slate-400 hover:text-indigo-600 hover:shadow-sm transition-all shrink-0"
+                          >
+                            <ArrowRightLeft size={14} />
+                          </button>
                         </div>
-                        <button 
-                          onClick={() => setIsSwapping({ portfolioId: activePortfolio.id, productIndex: idx })}
-                          className="p-1.5 bg-white rounded-lg text-slate-400 hover:text-indigo-600 hover:shadow-sm transition-all shrink-0"
-                        >
-                          <ArrowRightLeft size={14} />
-                        </button>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex gap-2">
-                          <span className="text-[10px] font-semibold text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-100">Fee: {product.fee}%</span>
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${product.risk === 'High' ? 'text-rose-600 bg-rose-50 border-rose-100' : 'text-emerald-600 bg-emerald-50 border-emerald-100'}`}>{product.risk} Risk</span>
+                        <div className="flex items-center justify-between">
+                          <div className="flex gap-2">
+                            <span className="text-[10px] font-semibold text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-100">Fee: {product.fees ?? product.metrics?.fees?.total ?? 0}%</span>
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
+                              (product.riskLevel || '').toLowerCase().includes('aggressive') || (product.riskLevel || '').toLowerCase().includes('growth')
+                                ? 'text-rose-600 bg-rose-50 border-rose-100'
+                                : 'text-emerald-600 bg-emerald-50 border-emerald-100'
+                            }`}>{product.riskLevel || product.strategy || 'Risk'}</span>
+                          </div>
+                          <span className="text-sm font-bold text-indigo-600">{item.weight}%</span>
                         </div>
-                        <span className="text-sm font-bold text-indigo-600">{item.weight}%</span>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </ConfigCard>
         </div>
@@ -500,7 +613,7 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles, goals = [],
                   />
                   <Tooltip 
                     contentStyle={{ borderRadius: '1.2rem', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '12px 20px' }}
-                    labelFormatter={(y) => `Year ${y} (Age ${activeProfile.identity.age + y})`}
+                    labelFormatter={(y) => `Year ${y} (Age ${(activeProfile?.identity?.age || 30) + y})`}
                   />
                   
                   <Area type="monotone" dataKey="high" stroke="none" fill="#6366f1" fillOpacity={0.05} />
@@ -584,7 +697,7 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles, goals = [],
               <p className="text-slate-500 text-sm mb-8 font-medium">Select a different asset to replace in your portfolio.</p>
               
               <div className="grid grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                {MOCK_PRODUCTS.map(p => (
+                {products.map(p => (
                   <button 
                     key={p.id}
                     onClick={() => handleSwapProduct(p.id)}
@@ -592,9 +705,9 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, profiles, goals = [],
                   >
                     <h4 className="text-sm font-bold text-slate-900 mb-2 group-hover:text-indigo-900 transition-colors">{p.name}</h4>
                     <div className="flex flex-wrap gap-2">
-                      <span className="text-[10px] font-semibold bg-white px-2 py-1 rounded border border-slate-100 uppercase text-slate-400">Fee: {p.fee}%</span>
-                      <span className="text-[10px] font-semibold bg-white px-2 py-1 rounded border border-slate-100 uppercase text-slate-400">G: {p.growth}%</span>
-                      <span className="text-[10px] font-semibold bg-white px-2 py-1 rounded border border-slate-100 uppercase text-slate-400">D: {p.defensive}%</span>
+                      <span className="text-[10px] font-semibold bg-white px-2 py-1 rounded border border-slate-100 uppercase text-slate-400">Fee: {p.fees ?? p.metrics?.fees?.total ?? 0}%</span>
+                      <span className="text-[10px] font-semibold bg-white px-2 py-1 rounded border border-slate-100 uppercase text-slate-400">{p.riskLevel || p.strategy}</span>
+                      <span className="text-[10px] font-semibold bg-white px-2 py-1 rounded border border-slate-100 uppercase text-slate-400">{p.category}</span>
                     </div>
                   </button>
                 ))}
