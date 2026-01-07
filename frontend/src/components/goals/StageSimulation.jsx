@@ -359,8 +359,8 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
               )}
             </div>
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-6 lg:gap-8 items-start min-h-0">
-              <div className="flex flex-col items-center justify-center relative bg-slate-50/30 rounded-2xl lg:rounded-3xl p-4 lg:p-6 border border-slate-100/50">
-                <div className="w-full h-[160px] lg:h-[200px]">
+              <div className="flex flex-col items-center justify-center bg-slate-50/30 rounded-2xl lg:rounded-3xl p-4 lg:p-6 border border-slate-100/50">
+                <div className="w-full h-[160px] lg:h-[200px] relative">
                   <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                     <RechartsPieChart>
                       <PieChart
@@ -389,10 +389,10 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
                       />
                     </RechartsPieChart>
                   </ResponsiveContainer>
-                </div>
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pt-4">
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">Total</span>
-                  <span className="text-xl font-bold text-slate-900">100%</span>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Total</span>
+                    <span className="text-xl font-bold text-slate-900 tracking-tight">100%</span>
+                  </div>
                 </div>
 
                 <div className="w-full mt-6 space-y-2.5">
@@ -448,67 +448,150 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 lg:gap-6">
-        <div className="p-3 lg:p-6 bg-emerald-50/40 rounded-xl lg:rounded-[2rem] border border-emerald-100/50 shadow-sm flex flex-col justify-between min-h-[80px] lg:min-h-[140px]">
-          <div className="flex items-center gap-2 mb-1 lg:mb-4">
-            <div className="w-7 h-7 lg:w-8 lg:h-8 rounded-lg lg:rounded-xl bg-emerald-100 flex items-center justify-center">
-              <Target size={14} className="text-emerald-600" />
+      <div className="bg-slate-50/50 border border-slate-200 rounded-3xl p-6 lg:p-10 shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-200">
+          {/* Success Probability */}
+          <div className="pb-8 md:pb-0 md:pr-10">
+            <div className="flex items-center gap-2 mb-5">
+              <div className={`w-2 h-2 rounded-full shadow-sm ${
+                successProbability > 70 ? 'bg-emerald-500 shadow-emerald-200' : 
+                successProbability > 40 ? 'bg-amber-500 shadow-amber-200' : 
+                'bg-rose-500 shadow-rose-200'
+              }`} />
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Confidence Level</span>
             </div>
-            <span className="text-[9px] lg:text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Success Prob.</span>
-          </div>
-          <div className="flex items-baseline gap-1">
-            <p className="text-2xl lg:text-3xl font-bold text-emerald-700 tracking-tight">{successProbability.toFixed(0)}</p>
-            <span className="text-base lg:text-lg font-bold text-emerald-600/60">%</span>
-          </div>
-        </div>
-
-        <div className="p-3 lg:p-6 bg-indigo-50/40 rounded-xl lg:rounded-[2rem] border border-indigo-100/50 shadow-sm flex flex-col justify-between min-h-[80px] lg:min-h-[140px]">
-          <div className="flex items-center gap-2 mb-1 lg:mb-4">
-            <div className="w-6 h-6 lg:w-8 lg:h-8 rounded-lg lg:rounded-xl bg-indigo-100 flex items-center justify-center">
-              <Wallet size={12} className="text-indigo-600" />
+            <div className="flex items-baseline gap-3 mb-4">
+              <span className="text-5xl font-black text-slate-900 tracking-tighter">{successProbability.toFixed(0)}%</span>
+              <span className={`text-[10px] font-black px-2 py-0.5 rounded-md tracking-wider ${
+                successProbability > 70 ? 'bg-emerald-100 text-emerald-700' : 
+                successProbability > 40 ? 'bg-amber-100 text-amber-700' : 
+                'bg-rose-100 text-rose-700'
+              }`}>
+                {successProbability > 70 ? 'HIGH' : successProbability > 40 ? 'FAIR' : 'LOW'}
+              </span>
             </div>
-            <span className="text-[9px] lg:text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Monthly Sav.</span>
-          </div>
-          <div className="flex items-baseline gap-1">
-            <span className="text-base lg:text-xl font-bold text-indigo-600/60">$</span>
-            <p className="text-2xl lg:text-3xl font-bold text-indigo-700 tracking-tight">
-              {(simParams.monthlyContribution || 0).toLocaleString()}
+            <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+              <div 
+                className={`h-full transition-all duration-1000 ease-out ${
+                  successProbability > 70 ? 'bg-emerald-500' : 
+                  successProbability > 40 ? 'bg-amber-500' : 
+                  'bg-rose-500'
+                }`}
+                style={{ width: `${successProbability}%` }}
+              />
+            </div>
+            <p className="mt-4 text-[10px] text-slate-500 font-medium leading-relaxed">
+              Probability of meeting the <span className="font-bold text-slate-700">${(targetAmount/1000).toFixed(0)}k</span> target under market volatility.
             </p>
           </div>
-        </div>
 
-        <div className="p-3 lg:p-6 bg-amber-50/40 rounded-xl lg:rounded-[2rem] border border-amber-100/50 shadow-sm flex flex-col justify-between min-h-[80px] lg:min-h-[140px]">
-          <div className="flex items-center gap-2 mb-1 lg:mb-4">
-            <div className="w-6 h-6 lg:w-8 lg:h-8 rounded-lg lg:rounded-xl bg-amber-100 flex items-center justify-center">
-              <TrendingDown size={12} className="text-amber-600" />
+          {/* Monthly Plan */}
+          <div className="py-8 md:py-0 md:px-10">
+            <div className="flex items-center gap-2 mb-5">
+              <div className="w-2 h-2 rounded-full bg-indigo-500 shadow-sm shadow-indigo-200" />
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Funding Strategy</span>
             </div>
-            <span className="text-[9px] lg:text-[10px] font-bold text-amber-700 uppercase tracking-wider">Glide Path</span>
+            <div className="flex items-baseline gap-1 mb-2">
+              <span className="text-xl font-bold text-slate-400">$</span>
+              <span className="text-5xl font-black text-slate-900 tracking-tighter">
+                {(simParams.monthlyContribution || 0).toLocaleString()}
+              </span>
+              <span className="text-[10px] font-black text-slate-400 ml-1 uppercase tracking-widest">/ Month</span>
+            </div>
+            <div className="inline-flex items-center gap-2 px-2 py-1 bg-white border border-slate-200 rounded-lg shadow-sm">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Yearly Total</span>
+              <span className="text-xs font-black text-indigo-600">${((simParams.monthlyContribution || 0) * 12).toLocaleString()}</span>
+            </div>
+            <p className="mt-4 text-[10px] text-slate-500 font-medium">
+              Fixed recurring contribution for the next <span className="font-bold text-slate-700">{horizonYears} years</span>.
+            </p>
           </div>
-          <p className="text-xl lg:text-2xl font-bold text-amber-700 tracking-tight">
-            {glidePath?.enabled ? 'Active' : 'Disabled'}
-          </p>
+
+          {/* Risk Controls */}
+          <div className="pt-8 md:pt-0 md:pl-10">
+            <div className="flex items-center gap-2 mb-5">
+              <div className="w-2 h-2 rounded-full bg-slate-400 shadow-sm" />
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Risk Management</span>
+            </div>
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-2xl font-black text-slate-900 tracking-tight">
+                {glidePath?.enabled ? 'Glide Path' : 'Static Strategy'}
+              </span>
+              <div className={`px-2 py-0.5 rounded text-[9px] font-black tracking-widest border ${
+                glidePath?.enabled ? 'bg-indigo-50 border-indigo-100 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-500'
+              }`}>
+                {glidePath?.enabled ? 'ACTIVE' : 'FIXED'}
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-500 font-medium leading-relaxed mt-4">
+              {glidePath?.enabled 
+                ? `Systematic de-risking logic will trigger ${glidePath.start_years_before_goal} years before the goal date to protect capital.` 
+                : 'Asset allocation is fixed. Consider a Glide Path if you prefer automated risk reduction as the goal approaches.'}
+            </p>
+          </div>
         </div>
       </div>
 
-      <div className="bg-slate-900 p-6 rounded-[2rem] text-white relative overflow-hidden shadow-xl shadow-indigo-500/10">
-        <div className="absolute top-0 right-0 p-6 opacity-5 rotate-12">
-          <Zap size={80} />
+      <div className="bg-slate-950 p-6 lg:p-10 rounded-[2.5rem] text-white relative overflow-hidden shadow-2xl shadow-indigo-500/10">
+        <div className="absolute top-0 right-0 p-10 opacity-10 rotate-12">
+          <Zap size={120} />
         </div>
-        <h4 className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest mb-4 flex items-center gap-2">
-          <AlertCircle size={12} /> Simulation Insight
-        </h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
-          <div className="space-y-1">
-            <p className="text-[9px] font-bold text-indigo-200/60 uppercase tracking-wider">Expected Outcome</p>
-            <p className="text-xl font-bold text-white tracking-tight">
-              ${(summaryData[summaryData.length - 1]?.median || 0).toLocaleString()}
-            </p>
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="p-2 bg-indigo-500 rounded-xl">
+              <AlertCircle size={16} className="text-white" />
+            </div>
+            <div>
+              <h4 className="text-[10px] font-black text-indigo-300 uppercase tracking-[0.2em]">Simulation Insight</h4>
+              <p className="text-sm text-slate-400">Monte Carlo 100th-90th Percentile Outcomes</p>
+            </div>
           </div>
-          <div className="space-y-1 border-l border-white/10 pl-8">
-            <p className="text-[9px] font-bold text-rose-300/60 uppercase tracking-wider">Downside (10th)</p>
-            <p className="text-xl font-bold text-white tracking-tight">
-              ${(summaryData[summaryData.length - 1]?.low || 0).toLocaleString()}
-            </p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-12">
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold text-rose-400/80 uppercase tracking-widest">Downside Case (10th)</p>
+              <p className="text-3xl font-black text-white tracking-tight">
+                ${(summaryData[summaryData.length - 1]?.low || 0).toLocaleString()}
+              </p>
+              <p className="text-[10px] text-slate-500">90% chance of exceeding this</p>
+            </div>
+            
+            <div className="space-y-2 relative">
+              <div className="hidden md:block absolute -left-6 top-0 bottom-0 w-px bg-white/10" />
+              <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Expected Outcome (50th)</p>
+              <p className="text-4xl font-black text-white tracking-tight">
+                ${(summaryData[summaryData.length - 1]?.median || 0).toLocaleString()}
+              </p>
+              <p className="text-[10px] text-indigo-300/60 font-medium">Most likely scenario</p>
+            </div>
+
+            <div className="space-y-2 relative">
+              <div className="hidden md:block absolute -left-6 top-0 bottom-0 w-px bg-white/10" />
+              <p className="text-[10px] font-bold text-emerald-400/80 uppercase tracking-widest">Upside Case (90th)</p>
+              <p className="text-3xl font-black text-white tracking-tight">
+                ${(summaryData[summaryData.length - 1]?.high || 0).toLocaleString()}
+              </p>
+              <p className="text-[10px] text-slate-500">10% chance of exceeding this</p>
+            </div>
+          </div>
+
+          <div className="mt-10 pt-8 border-t border-white/5 flex flex-wrap gap-8 items-center justify-between">
+            <div className="flex gap-8">
+              <div>
+                <span className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Total Contributions</span>
+                <span className="text-sm font-bold text-slate-300">${(summaryData[summaryData.length - 1]?.contributions || 0).toLocaleString()}</span>
+              </div>
+              <div>
+                <span className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Est. Market Growth</span>
+                <span className="text-sm font-bold text-emerald-400">
+                  +${((summaryData[summaryData.length - 1]?.median || 0) - (summaryData[summaryData.length - 1]?.contributions || 0)).toLocaleString()}
+                </span>
+              </div>
+            </div>
+            <div className="px-4 py-2 bg-white/5 rounded-2xl border border-white/10 flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Digital Twin Active</span>
+            </div>
           </div>
         </div>
       </div>

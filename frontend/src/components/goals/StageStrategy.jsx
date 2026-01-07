@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { 
     Zap, 
     ShoppingBag, 
@@ -74,17 +76,8 @@ const StageStrategy = ({ goalContext, onChange, isLoadingAI }) => {
         cash: exposure.liquidity ?? 0
     };
 
-    // Sanitize markdown for the AI insight bubble
-    const sanitizeMarkdown = (text) => {
-        if (!text) return '';
-        return text
-            .replace(/#+\s*/g, '')
-            .replace(/\*\*(.*?)\*\*/g, '$1')
-            .replace(/\*(.*?)\*/g, '$1')
-            .replace(/`([^`]*)`/g, '$1')
-            .trim();
-    };
-    const insightText = sanitizeMarkdown(aiStrategyRationale || aiRationale);
+    // Use the raw rationale for markdown rendering
+    const insightText = aiStrategyRationale || aiRationale;
 
     const clampTotal = (next) => {
         const total = next.growth + next.defensive + next.liquidity;
@@ -188,38 +181,40 @@ const StageStrategy = ({ goalContext, onChange, isLoadingAI }) => {
                             </span>
                         )}
                     </div>
-                    <p className="text-slate-700 text-sm leading-relaxed max-w-2xl font-medium">
-                        "{insightText || "I've designed a structure that maximizes your employer match while keeping some funds liquid."}"
-                    </p>
+                    <div className="prose prose-sm prose-slate max-w-none text-slate-700 leading-relaxed text-xs font-medium">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {insightText || "I've designed a structure that maximizes your employer match while keeping some funds liquid."}
+                        </ReactMarkdown>
+                    </div>
                     {riskProfile && (
                         <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500 font-bold">
-                            <span className="px-2 py-1 rounded-full bg-white/70 border border-slate-200">风险档: {riskProfile.attitude || '—'}</span>
+                            <span className="px-2 py-1 rounded-full bg-white/70 border border-slate-200">Risk Profile: {riskProfile.attitude || '—'}</span>
                             {riskProfile.volatility_tolerance_pct !== undefined && (
-                                <span className="px-2 py-1 rounded-full bg-white/70 border border-slate-200">波动容忍: ±{riskProfile.volatility_tolerance_pct}%</span>
+                                <span className="px-2 py-1 rounded-full bg-white/70 border border-slate-200">Volatility Tolerance: ±{riskProfile.volatility_tolerance_pct}%</span>
                             )}
                             {riskProfile.max_drawdown_allowed_pct !== undefined && (
-                                <span className="px-2 py-1 rounded-full bg-white/70 border border-slate-200">最大回撤: {riskProfile.max_drawdown_allowed_pct}%</span>
+                                <span className="px-2 py-1 rounded-full bg-white/70 border border-slate-200">Max Drawdown: {riskProfile.max_drawdown_allowed_pct}%</span>
                             )}
                         </div>
                     )}
                     {contributionHint && (
                         <div className="mt-3 text-[12px] text-slate-600 font-semibold flex gap-3 flex-wrap">
                             <span className="px-2 py-1 rounded-full bg-white/70 border border-slate-200">
-                                投资方式: {contributionHint.mode || 'recurring'}
+                                Investment Mode: {contributionHint.mode || 'recurring'}
                             </span>
                             {(contributionHint.monthly_amount ?? contributionHint.monthly_amount_hint) !== undefined && (
                                 <span className="px-2 py-1 rounded-full bg-white/70 border border-slate-200">
-                                    月投入参考: ${contributionHint.monthly_amount ?? contributionHint.monthly_amount_hint}
+                                    Monthly Contribution: ${contributionHint.monthly_amount ?? contributionHint.monthly_amount_hint}
                                 </span>
                             )}
                             {(contributionHint.lump_sum_amount ?? contributionHint.lump_sum_hint) > 0 && (
                                 <span className="px-2 py-1 rounded-full bg-white/70 border border-slate-200">
-                                    一次性参考: ${contributionHint.lump_sum_amount ?? contributionHint.lump_sum_hint}
+                                    Lump Sum: ${contributionHint.lump_sum_amount ?? contributionHint.lump_sum_hint}
                                 </span>
                             )}
                             {contributionHint.reserve_for_other_goals_pct !== undefined && (
                                 <span className="px-2 py-1 rounded-full bg-white/70 border border-slate-200">
-                                    预留其他目标: {contributionHint.reserve_for_other_goals_pct}%
+                                    Reserve for Other Goals: {contributionHint.reserve_for_other_goals_pct}%
                                 </span>
                             )}
                         </div>

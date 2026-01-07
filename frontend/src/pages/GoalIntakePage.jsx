@@ -395,10 +395,11 @@ const Copilot = ({
         return formattedText;
     };
 
-    const handleSend = async () => {
-        if (!inputText.trim()) return;
+    const handleSend = async (overrideText) => {
+        const textToSend = typeof overrideText === 'string' ? overrideText : inputText;
+        if (!textToSend.trim()) return;
         
-        const userMsg = { role: 'user', text: inputText };
+        const userMsg = { role: 'user', text: textToSend };
         setMessages(prev => [...prev, userMsg]);
         setInputText('');
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -531,6 +532,8 @@ const Copilot = ({
             setIsLoading(false);
         }
     };
+
+    const hasUserMessages = messages.some(m => m.role === 'user');
 
     return (
         <div className="h-full flex flex-col">
@@ -711,6 +714,25 @@ const Copilot = ({
                     </div>
                 )}
             </div>
+
+            {/* Quick Options */}
+            {currentStageLabel === 'definition' && !hasUserMessages && (
+                <div className="flex flex-wrap justify-end gap-2 mb-3">
+                    {[
+                        "I want a retirement plan that lets me travel overseas once a year.",
+                        "I want to save for my child's university education.",
+                        "What's a realistic goal for a first-home deposit?"
+                    ].map((opt, idx) => (
+                        <button
+                            key={idx}
+                            onClick={() => handleSend(opt)}
+                            className="px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-full text-[11px] text-indigo-700 font-bold hover:bg-indigo-100 transition-all active:scale-95 shadow-sm text-left"
+                        >
+                            {opt}
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {/* Input Area */}
             <div className="relative shrink-0">
@@ -1193,15 +1215,15 @@ const GoalEnginePage = () => {
       }));
   };
 
-  const getGreeting = (stageIdx) => {
-    const greetings = {
-        0: "Let's define your target. I can help you calculate how much you need or check if your plan is feasible. Example: \"I want a retirement plan that lets me travel overseas once a year.\"",
-        1: "Now for the strategy. I'll analyze your goal timeline and suggest an asset allocation mix.",
-        2: "I'm searching for investment products that match your strategy. This may take a moment...",
-        3: "Final check. Ready to launch?"
+    const getGreeting = (stageIdx) => {
+      const greetings = {
+          0: "Let's define your target. I can help you calculate how much you need or check if your plan is feasible. Try one of the options below to get started:",
+          1: "Now for the strategy. I'll analyze your goal timeline and suggest an asset allocation mix.",
+          2: "I'm searching for investment products that match your strategy. This may take a moment...",
+          3: "Final check. Ready to launch?"
+      };
+      return { role: 'system', text: greetings[stageIdx] || "How can I help?" };
     };
-    return { role: 'system', text: greetings[stageIdx] || "How can I help?" };
-  };
 
   // Initialize greeting on mount
   useEffect(() => {

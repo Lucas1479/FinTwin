@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { 
     Clock, 
     Heart, 
@@ -18,7 +20,8 @@ import {
     Scale,
     Activity,
     ChevronRight,
-    CheckCircle2
+    CheckCircle2,
+    Check
 } from 'lucide-react';
 
 // Combined Stage 1: Goal & Vision
@@ -210,7 +213,7 @@ const GoalVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
                                     <div 
                                         key={key}
                                         onClick={() => setFormData(prev => ({ ...prev, lifestyle_tier: key }))}
-                                        className={`cursor-pointer border rounded-xl p-3 flex items-center gap-3 transition-all ${
+                                        className={`cursor-pointer border rounded-xl p-5 flex items-center gap-3 transition-all ${
                                             isSelected ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500' : 'border-slate-200 bg-white hover:bg-slate-50'
                                         }`}
                                     >
@@ -703,48 +706,42 @@ const GapFeasibilityForm = ({ initialValues, onChange, onSubstageSubmit, needsRe
             </div>
 
             {/* Gap Analysis Card */}
-            <div className={`relative rounded-3xl p-8 shadow-xl border-2 transition-all duration-500 overflow-hidden ${
+            <div className={`relative rounded-3xl p-6 border-2 transition-all duration-500 overflow-hidden ${
                 isFeasible 
-                    ? 'bg-white border-emerald-100 shadow-emerald-100/20' 
-                    : 'bg-slate-900 border-slate-800 shadow-slate-900/20'
+                    ? 'bg-white border-emerald-100 shadow-sm' 
+                    : 'bg-white border-rose-100 shadow-sm'
             }`}>
-                {/* Decorative Elements */}
-                <div className={`absolute top-0 right-0 w-64 h-64 blur-3xl opacity-20 -mr-32 -mt-32 rounded-full ${isFeasible ? 'bg-emerald-400' : 'bg-indigo-500'}`} />
-                <div className={`absolute bottom-0 left-0 w-48 h-48 blur-3xl opacity-10 -ml-24 -mb-24 rounded-full ${isFeasible ? 'bg-blue-400' : 'bg-rose-500'}`} />
-
                 <div className="relative z-10">
-                    <div className="flex items-center justify-between mb-8">
+                    <div className="flex items-center justify-between mb-6">
                         <div>
-                            <div className={`text-[10px] font-black uppercase tracking-[0.2em] mb-1 ${
-                                isFeasible ? 'text-slate-400' : 'text-slate-500'
-                            }`}>
+                            <div className="text-[10px] font-black uppercase tracking-[0.2em] mb-1 text-slate-400">
                                 Feasibility Analysis
                             </div>
-                            <h4 className={`text-xl font-black ${isFeasible ? 'text-slate-900' : 'text-white'}`}>
+                            <h4 className="text-lg font-black text-slate-900">
                                 {isFeasible ? 'Plan is on Track' : 'Adjustment Needed'}
                             </h4>
                         </div>
-                        <div className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-black ${
+                        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black ${
                             isFeasible 
-                                ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' 
-                                : 'bg-amber-500 text-white shadow-lg shadow-amber-900/20'
+                                ? 'bg-emerald-500 text-white shadow-md shadow-emerald-100' 
+                                : 'bg-rose-500 text-white shadow-md shadow-rose-100'
                         }`}>
-                            {isFeasible ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                            {isFeasible ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
                             {isFeasible ? 'ACHIEVABLE' : 'GAP DETECTED'}
                         </div>
                     </div>
                     
-                    <div className="grid grid-cols-3 gap-8 mb-8">
+                    <div className="grid grid-cols-3 gap-4 mb-6">
                         {[
-                            { label: 'Required', value: requiredNestEgg, color: isFeasible ? 'text-slate-900' : 'text-white' },
-                            { label: 'Projected', value: projectedAssets, color: 'text-emerald-500' },
-                            { label: 'Gap', value: gap, color: isFeasible ? 'text-slate-400' : 'text-amber-400' }
+                            { label: 'Required', value: requiredNestEgg, color: 'text-slate-900', bgColor: 'bg-slate-50' },
+                            { label: 'Projected', value: projectedAssets, color: 'text-emerald-600', bgColor: 'bg-emerald-50/50' },
+                            { label: 'Gap', value: gap, color: isFeasible ? 'text-slate-400' : 'text-rose-600', bgColor: isFeasible ? 'bg-slate-50' : 'bg-rose-50/50' }
                         ].map((item, i) => (
-                            <div key={i}>
-                                <div className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${isFeasible ? 'text-slate-400' : 'text-slate-500'}`}>
+                            <div key={i} className={`p-3 rounded-2xl ${item.bgColor} border border-white/50`}>
+                                <div className="text-[9px] font-bold uppercase tracking-wider mb-1 text-slate-500">
                                     {item.label}
                                 </div>
-                                <div className={`text-3xl font-black ${item.color}`}>
+                                <div className={`text-xl font-black ${item.color}`}>
                                     ${(item.value / 1000).toFixed(0)}k
                                 </div>
                             </div>
@@ -752,21 +749,19 @@ const GapFeasibilityForm = ({ initialValues, onChange, onSubstageSubmit, needsRe
                     </div>
 
                     {/* Progress Bar */}
-                    <div className="mb-8">
-                        <div className="flex justify-between items-end mb-3">
-                            <span className={`text-xs font-bold ${isFeasible ? 'text-slate-500' : 'text-slate-400'}`}>
+                    <div className="mb-6 px-1">
+                        <div className="flex justify-between items-end mb-2">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">
                                 Goal Coverage
                             </span>
-                            <span className={`text-lg font-black ${isFeasible ? 'text-emerald-600' : 'text-emerald-400'}`}>
+                            <span className={`text-sm font-black ${isFeasible ? 'text-emerald-600' : 'text-rose-600'}`}>
                                 {feasibilityScore.toFixed(0)}%
                             </span>
                         </div>
-                        <div className={`h-4 rounded-full overflow-hidden p-1 ${
-                            isFeasible ? 'bg-slate-100' : 'bg-slate-800'
-                        }`}>
+                        <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
                             <div 
-                                className={`h-full rounded-full transition-all duration-1000 ease-out shadow-sm ${
-                                    isFeasible ? 'bg-gradient-to-r from-emerald-400 to-emerald-600' : 'bg-gradient-to-r from-amber-400 to-amber-600'
+                                className={`h-full rounded-full transition-all duration-1000 ease-out ${
+                                    isFeasible ? 'bg-emerald-500' : 'bg-rose-500'
                                 }`}
                                 style={{ width: `${Math.min(100, feasibilityScore)}%` }}
                             />
@@ -774,21 +769,21 @@ const GapFeasibilityForm = ({ initialValues, onChange, onSubstageSubmit, needsRe
                     </div>
 
                     {/* Status Alert */}
-                    <div className={`p-5 rounded-2xl border ${
+                    <div className={`p-4 rounded-2xl border ${
                         isFeasible 
-                            ? 'bg-emerald-50/50 border-emerald-100 text-emerald-800' 
-                            : 'bg-amber-500/10 border-amber-500/20 text-amber-200'
+                            ? 'bg-emerald-50 border-emerald-100 text-emerald-800' 
+                            : 'bg-rose-50 border-rose-100 text-rose-800'
                     }`}>
-                        <div className="flex gap-4">
-                            <div className={`p-2 rounded-xl shrink-0 ${isFeasible ? 'bg-white text-emerald-600' : 'bg-amber-500 text-white'}`}>
-                                {isFeasible ? <Check size={20} /> : <AlertCircle size={20} />}
+                        <div className="flex gap-3">
+                            <div className={`p-1.5 rounded-lg shrink-0 ${isFeasible ? 'bg-white text-emerald-600' : 'bg-white text-rose-600 shadow-sm'}`}>
+                                {isFeasible ? <Check size={16} /> : <AlertCircle size={16} />}
                             </div>
                             <div>
-                                <div className="font-bold text-sm mb-1">{isFeasible ? 'Excellent Progress' : 'Strategy Required'}</div>
-                                <p className={`text-xs leading-relaxed ${isFeasible ? 'text-emerald-700/80' : 'text-amber-200/70'}`}>
+                                <div className="font-bold text-xs mb-0.5">{isFeasible ? 'Looking Good!' : 'Strategy Required'}</div>
+                                <p className="text-[10px] leading-relaxed opacity-80">
                                     {isFeasible 
-                                        ? "Your current savings trajectory and assets are well-aligned with your retirement vision. Proceed to Strategy to fine-tune your asset allocation."
-                                        : `There's a shortfall of $${(gap/1000).toFixed(0)}k. Don't worry—most people have a gap at this stage. In the next step, we'll design a strategy to bridge this.`}
+                                        ? "Your trajectory is well-aligned with your retirement vision. Proceed to Strategy to optimize your plan."
+                                        : `There's a shortfall of $${(gap/1000).toFixed(0)}k. Don't worry—we'll design a custom strategy to bridge this in the next stage.`}
                                 </p>
                             </div>
                         </div>
@@ -798,16 +793,19 @@ const GapFeasibilityForm = ({ initialValues, onChange, onSubstageSubmit, needsRe
 
             {/* AI Recommendation */}
             {initialValues.ai_decision?.rationale && (
-                <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-3xl p-6 border-2 border-purple-200">
-                    <div className="flex items-start gap-3">
-                        <div className="p-2 bg-white rounded-xl shadow-sm">
-                            <Brain size={20} className="text-purple-600" />
+                <div className="bg-gradient-to-br from-indigo-50/50 to-purple-50/50 rounded-3xl p-6 border border-indigo-100/50 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-100/20 rounded-full -mr-16 -mt-16 blur-3xl" />
+                    <div className="flex items-start gap-4 relative z-10">
+                        <div className="p-2.5 bg-white rounded-xl shadow-sm shrink-0">
+                            <Brain size={20} className="text-indigo-600" />
                         </div>
-                        <div className="flex-1">
-                            <div className="text-xs font-bold text-purple-600 uppercase tracking-wider mb-2">AI Recommendation</div>
-                            <p className="text-sm text-slate-700 leading-relaxed">
-                                {initialValues.ai_decision.rationale}
-                            </p>
+                        <div className="flex-1 min-w-0">
+                            <div className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] mb-3">AI Recommendation</div>
+                            <div className="prose prose-sm prose-slate max-w-none text-slate-700 leading-relaxed text-xs">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {initialValues.ai_decision.rationale}
+                                </ReactMarkdown>
+                            </div>
                         </div>
                     </div>
                 </div>
