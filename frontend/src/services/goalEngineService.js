@@ -12,15 +12,21 @@ const goalEngineService = {
    * @param {Object} params.goalContext - The current state of the goal
    * @param {Object} [params.userInput] - User's chat message or form input
    * @param {Array} [params.previousDecisions] - History of decisions (optional)
+   * @param {string} [params.substage] - Current substage (for multi-step stages)
+   * @param {Object} [params.substageData] - Data from completed substages
+   * @param {boolean} [params.useRag] - Whether to use RAG enrichment
    * @returns {Promise<{ text: string, json: { ai_decision: Object, form_schema: Object } }>}
    */
-  generateDecision: async ({ stage, goalContext, userInput, previousDecisions = [] }) => {
+  generateDecision: async ({ stage, goalContext, userInput, previousDecisions = [], substage, substageData, useRag }) => {
     try {
       const response = await api.post('/goals/engine/generate', {
         stage,
         goalContext,
         userInput,
-        previousDecisions
+        previousDecisions,
+        substage,
+        substageData,
+        useRag
       });
       
       // Ensure we return a consistent structure even if backend varies
@@ -34,10 +40,12 @@ const goalEngineService = {
   /**
    * Stream a prompt from the AI Goal Engine.
    * @param {Object} params
+   * @param {string} params.substage - Current substage (for multi-step stages)
+   * @param {Object} params.substageData - Data from completed substages
    * @param {Function} onChunk - Callback for each text chunk (for reasoning)
    * @returns {Promise<Object>} - The final complete JSON data
    */
-  generateDecisionStream: async ({ stage, goalContext, userInput, previousDecisions = [] }, onChunk) => {
+  generateDecisionStream: async ({ stage, goalContext, userInput, previousDecisions = [], substage, substageData, useRag }, onChunk) => {
     try {
       const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/goals/engine/generate`, {
         method: 'POST',
@@ -53,6 +61,9 @@ const goalEngineService = {
           goalContext,
           userInput,
           previousDecisions,
+          substage,
+          substageData,
+          useRag,
           stream: true
         })
       });

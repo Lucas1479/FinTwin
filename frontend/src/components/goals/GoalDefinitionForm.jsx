@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowRight, Sparkles } from 'lucide-react';
 
-import RetirementGoalForm from './forms/RetirementGoalForm';
 import HomeGoalForm from './forms/HomeGoalForm';
 import EmergencyGoalForm from './forms/EmergencyGoalForm';
 import VehicleGoalForm from './forms/VehicleGoalForm';
@@ -170,11 +169,12 @@ const GoalDefinitionForm = ({
         
         // Only reset details if actually changing category manually
         if (newCategory !== goalContext.category) {
-             setGoalContext(prev => ({ 
-                ...prev, 
+             const updates = { 
                 category: newCategory,
                 goal_details: {} // Reset details on category switch
-            }));
+            };
+            setGoalContext(prev => ({ ...prev, ...updates }));
+            if (onChange) onChange(updates);
         }
     };
 
@@ -186,13 +186,7 @@ const GoalDefinitionForm = ({
     // 4. Render Logic
     const renderSpecificForm = () => {
         switch (goalContext.category) {
-            case 'retirement':
-                return (
-                    <RetirementGoalForm 
-                        initialValues={goalContext} 
-                        onChange={handleFormChange} 
-                    />
-                );
+            // Retirement is now handled by GoalIntakePage's specialized substages
             case 'home':
                 return (
                     <HomeGoalForm 

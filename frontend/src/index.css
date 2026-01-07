@@ -51,7 +51,10 @@
   .input-rounded {
     border-radius: var(--radius-input);
     border: 1px solid #e2e8f0;
-    padding: 0.875rem 1.25rem;
+    padding-top: 0.875rem;
+    padding-bottom: 0.875rem;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
     transition: all 0.2s;
     background-color: #f8fafc;
   }
@@ -61,6 +64,10 @@
     border-color: var(--color-primary);
     box-shadow: 0 0 0 4px var(--color-brand-100);
     outline: none;
+  }
+
+  .input-with-icon {
+    padding-left: 3rem !important;
   }
 
   .btn-primary-rounded {

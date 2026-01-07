@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Send, Bot, User, Sparkles, GripHorizontal, ExternalLink } from 'lucide-react';
+import { X, Send, Bot, User, Sparkles, GripHorizontal, ExternalLink, Maximize2, Minimize2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -13,9 +13,13 @@ const HelpChatBox = ({ isOpen, onClose }) => {
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [expandedRef, setExpandedRef] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const chatBoxRef = useRef(null);
+
+  // Resize State
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Draggable State
   const [position, setPosition] = useState({ x: 0, y: 0 }); // Relative offset
@@ -186,7 +190,9 @@ const HelpChatBox = ({ isOpen, onClose }) => {
     <div 
       ref={chatBoxRef}
       onMouseDown={handleMouseDown}
-      className="fixed bottom-6 right-6 z-[9999] w-[400px] h-[600px] bg-white rounded-2xl shadow-2xl border border-slate-100 flex flex-col animate-in slide-in-from-bottom-10 fade-in duration-300 font-sans"
+      className={`fixed bottom-6 right-6 z-[9999] bg-white rounded-2xl shadow-2xl border border-slate-100 flex flex-col animate-in slide-in-from-bottom-10 fade-in duration-300 font-sans transition-all duration-300 ${
+        isExpanded ? 'w-[600px] h-[800px]' : 'w-[400px] h-[600px]'
+      }`}
       style={{ 
         // Initial static position handled by class names, dynamic updates via style ref
       }}
@@ -207,17 +213,27 @@ const HelpChatBox = ({ isOpen, onClose }) => {
           </div>
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
             {/* Drag Indicator Icon */}
-            <GripHorizontal size={18} className="text-white/40 mr-2" />
+            <GripHorizontal size={18} className="text-white/40 mr-1" />
             
+            {/* Resize Button */}
             <button 
-            onClick={onClose}
-            // Stop propagation so clicking close doesn't start drag
-            onMouseDown={(e) => e.stopPropagation()} 
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              onClick={() => setIsExpanded(!isExpanded)}
+              onMouseDown={(e) => e.stopPropagation()} 
+              className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+              title={isExpanded ? "Minimize" : "Expand"}
             >
-            <X size={20} />
+              {isExpanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+            </button>
+
+            <button 
+              onClick={onClose}
+              // Stop propagation so clicking close doesn't start drag
+              onMouseDown={(e) => e.stopPropagation()} 
+              className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+            >
+              <X size={20} />
             </button>
         </div>
       </div>
@@ -256,38 +272,52 @@ const HelpChatBox = ({ isOpen, onClose }) => {
                   {msg.references.map((ref, idx) => {
                     const marker = ref.marker || `[${idx + 1}]`;
                     const title = ref.title || 'Source';
-                    const content = (
+                    const hasUrl = !!ref.url;
+                    const refKey = `${idx}-${title}-${marker}`;
+                    const isOpen = expandedRef === refKey;
+
+                    const contentHeader = (
                       <>
                         <span className="text-slate-500 font-semibold">{marker}</span>
                         <div className="flex-1">
                           <div className="flex items-center gap-1 text-[11px] font-semibold">
-                            {ref.url ? <ExternalLink size={10} /> : null} {title}
+                            {hasUrl ? <ExternalLink size={10} /> : null} {title}
                           </div>
-                          {ref.snippet && (
+                          {!hasUrl && ref.snippet && (
                             <div className="text-[10px] text-slate-500 line-clamp-2">{ref.snippet}</div>
                           )}
-                          <div className="text-[10px] text-slate-400">{ref.source || 'Vectara'}</div>
+                          <div className="text-[10px] text-slate-400">{ref.source || 'KnowledgeBase'}</div>
                         </div>
                       </>
                     );
 
-                    const hasUrl = !!ref.url;
-                    return hasUrl ? (
-                      <a
-                        key={idx}
-                        href={ref.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-start gap-2 px-2 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-[11px] text-slate-600 transition-colors"
-                      >
-                        {content}
-                      </a>
-                    ) : (
+                    if (hasUrl) {
+                      return (
+                        <a
+                          key={idx}
+                          href={ref.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-start gap-2 px-2 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-[11px] text-slate-600 transition-colors"
+                        >
+                          {contentHeader}
+                        </a>
+                      );
+                    }
+
+                    // No URL: collapsible to show snippet
+                    return (
                       <div
                         key={idx}
-                        className="flex items-start gap-2 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600"
+                        className="flex flex-col gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600 cursor-pointer hover:bg-slate-100"
+                        onClick={() => setExpandedRef(isOpen ? null : refKey)}
                       >
-                        {content}
+                        <div className="flex items-start gap-2">{contentHeader}</div>
+                        {ref.snippet && isOpen && (
+                          <div className="mt-1 p-2 bg-white border border-slate-200 rounded text-[11px] text-slate-600 shadow-sm whitespace-pre-wrap">
+                            {ref.snippet}
+                          </div>
+                        )}
                       </div>
                     );
                   })}

@@ -207,14 +207,14 @@ const StageStrategy = ({ goalContext, onChange, isLoadingAI }) => {
                             <span className="px-2 py-1 rounded-full bg-white/70 border border-slate-200">
                                 投资方式: {contributionHint.mode || 'recurring'}
                             </span>
-                            {contributionHint.monthly_amount_hint !== undefined && (
+                            {(contributionHint.monthly_amount ?? contributionHint.monthly_amount_hint) !== undefined && (
                                 <span className="px-2 py-1 rounded-full bg-white/70 border border-slate-200">
-                                    月投入参考: ${contributionHint.monthly_amount_hint}
+                                    月投入参考: ${contributionHint.monthly_amount ?? contributionHint.monthly_amount_hint}
                                 </span>
                             )}
-                            {contributionHint.lump_sum_hint !== undefined && contributionHint.lump_sum_hint > 0 && (
+                            {(contributionHint.lump_sum_amount ?? contributionHint.lump_sum_hint) > 0 && (
                                 <span className="px-2 py-1 rounded-full bg-white/70 border border-slate-200">
-                                    一次性参考: ${contributionHint.lump_sum_hint}
+                                    一次性参考: ${contributionHint.lump_sum_amount ?? contributionHint.lump_sum_hint}
                                 </span>
                             )}
                             {contributionHint.reserve_for_other_goals_pct !== undefined && (
@@ -358,8 +358,8 @@ const StageStrategy = ({ goalContext, onChange, isLoadingAI }) => {
                                     <input
                                         type="number"
                                         className="w-28 text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
-                                        value={contributionHint?.monthly_amount_hint ?? contributionHint?.monthly_amount ?? ''}
-                                        onChange={(e) => setContributionValue('monthly_amount_hint', Number(e.target.value))}
+                                        value={contributionHint?.monthly_amount ?? contributionHint?.monthly_amount_hint ?? ''}
+                                        onChange={(e) => setContributionValue('monthly_amount', Number(e.target.value))}
                                         placeholder="0"
                                     />
                                 </div>
@@ -371,8 +371,8 @@ const StageStrategy = ({ goalContext, onChange, isLoadingAI }) => {
                                     <input
                                         type="number"
                                         className="w-28 text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
-                                        value={contributionHint?.lump_sum_hint ?? contributionHint?.lump_sum ?? ''}
-                                        onChange={(e) => setContributionValue('lump_sum_hint', Number(e.target.value))}
+                                        value={contributionHint?.lump_sum_amount ?? contributionHint?.lump_sum_hint ?? contributionHint?.lump_sum ?? ''}
+                                        onChange={(e) => setContributionValue('lump_sum_amount', Number(e.target.value))}
                                         placeholder="0"
                                     />
                                 </div>

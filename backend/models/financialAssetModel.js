@@ -256,6 +256,35 @@ const FinancialAssetSchema = new mongoose.Schema(
       description: "Used by AI to calculate Available Funds vs Net Worth",
     },
 
+    // --- Goal Allocation Tracking ---
+    allocated_to_goal_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Goal',
+      required: false,
+      index: true,
+      description: "Which goal this asset is allocated to (null = unallocated/available)",
+    },
+    
+    allocated_amount: {
+      type: Number,
+      required: false,
+      min: 0,
+      description: "Amount allocated to the goal (supports partial allocations)",
+    },
+    
+    allocation_date: {
+      type: Date,
+      required: false,
+      description: "When this asset was allocated to the goal",
+    },
+    
+    allocation_notes: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      description: "Optional notes about the allocation",
+    },
+
     // --- Polymorphic Details (The Magic Pocket) ---
     asset_details: {
       type: mongoose.Schema.Types.Mixed,
@@ -307,5 +336,8 @@ FinancialAssetSchema.index({ user_id: 1, record_type: 1, category: 1 });
 
 // Liquidity check: "Show all liquid assets for emergency fund calculation"
 FinancialAssetSchema.index({ user_id: 1, is_liquid: 1 });
+
+// Goal allocation: "Show unallocated assets available for new goals"
+FinancialAssetSchema.index({ user_id: 1, allocated_to_goal_id: 1 });
 
 export default mongoose.model('FinancialAsset', FinancialAssetSchema);

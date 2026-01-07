@@ -62,13 +62,13 @@ const RegisterPage = () => {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                   <User className="h-5 w-5 text-slate-400" />
                 </div>
                 <input
                   type="text"
                   required
-                  className="input-rounded w-full pl-10 bg-slate-50"
+                  className="input-rounded input-with-icon w-full bg-slate-50"
                   placeholder="John Doe"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -79,13 +79,13 @@ const RegisterPage = () => {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Email address</label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                   <Mail className="h-5 w-5 text-slate-400" />
                 </div>
                 <input
                   type="email"
                   required
-                  className="input-rounded w-full pl-10 bg-slate-50"
+                  className="input-rounded input-with-icon w-full bg-slate-50"
                   placeholder="name@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -97,13 +97,13 @@ const RegisterPage = () => {
                 <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
                     <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                         <Lock className="h-5 w-5 text-slate-400" />
                         </div>
                         <input
                         type="password"
                         required
-                        className="input-rounded w-full pl-10 bg-slate-50"
+                        className="input-rounded input-with-icon w-full bg-slate-50"
                         placeholder="••••••••"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
@@ -113,13 +113,13 @@ const RegisterPage = () => {
                 <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Confirm</label>
                     <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                         <Lock className="h-5 w-5 text-slate-400" />
                         </div>
                         <input
                         type="password"
                         required
-                        className="input-rounded w-full pl-10 bg-slate-50"
+                        className="input-rounded input-with-icon w-full bg-slate-50"
                         placeholder="••••••••"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
