@@ -9,8 +9,8 @@ import {
 } from 'lucide-react';
 import LocationPickerModal from '../LocationPickerModal';
 
-const HomeGoalForm = ({ initialValues, onChange }) => {
-    // Local state
+const HomeGoalForm = ({ initialValues, onChange, activeSubstage = 'goal_discovery', substageData = {}, onSubstageSubmit }) => {
+    // --- Discovery state (unchanged) ---
     const [details, setDetails] = useState({
         location: initialValues.goal_details?.location || '',
         coordinates: initialValues.goal_details?.coordinates || null,
@@ -24,19 +24,54 @@ const HomeGoalForm = ({ initialValues, onChange }) => {
         due_date: initialValues.due_date || ''
     });
 
+    // --- GAP substage state ---
+    const [gapForm, setGapForm] = useState(() => ({
+        monthly_income: '',
+        liquid_assets: '',
+        investments: '',
+        debts: '',
+        region_policy: '',
+        property_price_estimate: 800000,
+        deposit_percentage: 20,
+        is_first_home: true,
+        ...substageData
+    }));
+
+    // --- Assumptions substage state ---
+    const [assumptionForm, setAssumptionForm] = useState(() => ({
+        expected_return_pct: 6,
+        inflation_pct: 2.5,
+        risk_attitude: 'balanced',
+        cashflow_flexibility: 'medium',
+        mortgage_rate_pct: 6,
+        loan_term_years: 30,
+        ...substageData
+    }));
+
+    useEffect(() => {
+        // Sync substage data when active substage switches or new data arrives
+        if (activeSubstage === 'gap_analysis') {
+            setGapForm(prev => ({ ...prev, ...substageData }));
+        }
+        if (activeSubstage === 'assumptions') {
+            setAssumptionForm(prev => ({ ...prev, ...substageData }));
+        }
+    }, [activeSubstage, substageData]);
+
     // Calculated derived value (Target Amount = Price * Deposit %)
     const targetAmount = Math.round(details.property_price_estimate * (details.deposit_percentage / 100));
 
-    // Propagate changes up
+    // Propagate changes up (goal_discovery only)
     useEffect(() => {
-        onChange({
+        if (activeSubstage !== 'goal_discovery') return;
+        onChange?.({
             ...initialValues,
             goal_name: meta.goal_name,
             target_amount: targetAmount, // Auto-calculated!
             due_date: meta.due_date,
             goal_details: details
         });
-    }, [details, meta, targetAmount]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [details, meta, targetAmount, activeSubstage]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleDetailChange = (key, value) => {
         setDetails(prev => ({ ...prev, [key]: value }));
@@ -55,6 +90,114 @@ const HomeGoalForm = ({ initialValues, onChange }) => {
         setIsMapOpen(false);
     };
 
+    // --- GAP UI ---
+    if (activeSubstage === 'gap_analysis') {
+        const updateGap = (k, v) => setGapForm(prev => ({ ...prev, [k]: v }));
+        const handleSubmit = (e) => { e.preventDefault(); onSubstageSubmit?.(gapForm); };
+        return (
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Monthly Income</label>
+                        <input className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                            type="number" value={gapForm.monthly_income} onChange={(e) => updateGap('monthly_income', e.target.value)} />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Liquid Assets</label>
+                        <input className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                            type="number" value={gapForm.liquid_assets} onChange={(e) => updateGap('liquid_assets', e.target.value)} />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Investments</label>
+                        <input className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                            type="number" value={gapForm.investments} onChange={(e) => updateGap('investments', e.target.value)} />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Debt / Loans</label>
+                        <input className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                            type="number" value={gapForm.debts} onChange={(e) => updateGap('debts', e.target.value)} />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Estimated Property Price ($)</label>
+                        <input className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                            type="number" value={gapForm.property_price_estimate} onChange={(e) => updateGap('property_price_estimate', e.target.value)} />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Deposit Target (%)</label>
+                        <input className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                            type="number" value={gapForm.deposit_percentage} onChange={(e) => updateGap('deposit_percentage', Number(e.target.value))} />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <input type="checkbox" checked={gapForm.is_first_home} onChange={(e) => updateGap('is_first_home', e.target.checked)} />
+                        <span className="text-sm text-slate-700">First Home Buyer?</span>
+                    </div>
+                </div>
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Policy / Tax Constraints</label>
+                    <textarea className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                        rows={3} value={gapForm.region_policy} onChange={(e) => updateGap('region_policy', e.target.value)} />
+                </div>
+                <div className="flex justify-end pt-2 border-t border-slate-100">
+                    <button type="submit" className="btn-primary-rounded px-5 py-2 text-sm">Save & review</button>
+                </div>
+            </form>
+        );
+    }
+
+    // --- Assumptions UI ---
+    if (activeSubstage === 'assumptions') {
+        const updateAssume = (k, v) => setAssumptionForm(prev => ({ ...prev, [k]: v }));
+        const handleSubmit = (e) => { e.preventDefault(); onSubstageSubmit?.(assumptionForm); };
+        return (
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Expected Return (%)</label>
+                        <input className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                            type="number" value={assumptionForm.expected_return_pct} onChange={(e) => updateAssume('expected_return_pct', Number(e.target.value))} />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Inflation (%)</label>
+                        <input className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                            type="number" value={assumptionForm.inflation_pct} onChange={(e) => updateAssume('inflation_pct', Number(e.target.value))} />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Mortgage Rate (%)</label>
+                        <input className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                            type="number" value={assumptionForm.mortgage_rate_pct} onChange={(e) => updateAssume('mortgage_rate_pct', Number(e.target.value))} />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Loan Term (Years)</label>
+                        <input className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                            type="number" value={assumptionForm.loan_term_years} onChange={(e) => updateAssume('loan_term_years', Number(e.target.value))} />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Risk Attitude</label>
+                        <select className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                            value={assumptionForm.risk_attitude} onChange={(e) => updateAssume('risk_attitude', e.target.value)}>
+                            <option value="conservative">Conservative</option>
+                            <option value="balanced">Balanced</option>
+                            <option value="growth">Growth</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Cashflow Flexibility</label>
+                        <select className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                            value={assumptionForm.cashflow_flexibility} onChange={(e) => updateAssume('cashflow_flexibility', e.target.value)}>
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                </div>
+                <div className="flex justify-end pt-2 border-t border-slate-100">
+                    <button type="submit" className="btn-primary-rounded px-5 py-2 text-sm">Save & review</button>
+                </div>
+            </form>
+        );
+    }
+
+    // --- Discovery UI (default) ---
     return (
         <div className="space-y-8 animate-fade-in">
              {/* Header / Intro */}

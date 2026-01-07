@@ -50,7 +50,7 @@ const LoginPage = () => {
                   Email address
                 </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                     <Mail className="h-5 w-5 text-slate-400" />
                   </div>
                   <input
@@ -58,7 +58,7 @@ const LoginPage = () => {
                     name="email"
                     type="email"
                     required
-                    className="input-rounded w-full pl-10 bg-slate-50"
+                    className="input-rounded input-with-icon w-full bg-slate-50"
                     placeholder="name@company.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -70,7 +70,7 @@ const LoginPage = () => {
                   Password
                 </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                     <Lock className="h-5 w-5 text-slate-400" />
                   </div>
                   <input
@@ -78,7 +78,7 @@ const LoginPage = () => {
                     name="password"
                     type="password"
                     required
-                    className="input-rounded w-full pl-10 bg-slate-50"
+                    className="input-rounded input-with-icon w-full bg-slate-50"
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}

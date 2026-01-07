@@ -25,26 +25,141 @@ General rules for ALL stages:
 - Be conservative with assumptions; prefer under-promising and over-delivering.
 `.trim();
 
-function getStagePrompt(stage) {
-  switch (stage) {
-    case GOAL_ENGINE_STAGES.DEFINITION:
-      return `
-Stage: 1 · Definition & Diagnostics (Reality Check)
+// ==========================================
+// SUBSTAGE-SPECIFIC PROMPTS (Definition Stage)
+// ==========================================
 
-Goal:
-- Clean and complete the goal definition based on USER INPUT and current context.
-- Run a simple feasibility/gap check using current_amount and contribution_plan if available.
+function getGoalDiscoverySubstagePrompt() {
+  return `
+Stage: 1.1 · Goal Discovery
 
-CRITICAL: "Chat-to-Form" Logic
-- If the 'userInput' contains specific intent (e.g., "I want to save 50k by 2030", "retirement at 60"), you MUST extract these values.
-- Return these extracted values in the "ai_decision" object using keys that match the form schema.
-- ALWAYS determine and return the "category" in "ai_decision". It MUST be one of: 'retirement', 'home', 'education', 'wealth', 'travel', 'vehicle', 'emergency', 'custom'. (Lowercase only).
+Goal: Extract the user's core goal intention and categorize it.
 
 What you must do:
-- Normalise fields (e.g. ensure positive numbers, sensible dates).
-- Compute simple gap metrics: target_amount - current_amount (if both are present).
-- Propose 2–3 adjustment options: e.g. "increase recurring_amount", "delay due_date", "lower target_amount".
+- Determine the goal category (retirement/home/education/wealth/travel/vehicle/emergency/custom)
+- Extract goal_name from user input
+- Extract priority (need/want/wish)
+- Category-specific extraction:
+  * Retirement: living_expense_pa, location
+  * Home: property_price_estimate, deposit_percentage, location, is_first_home
+  * Other: target_amount, due_date
+- Provide user_guidance asking for any missing critical discovery fields
+- Set next_substage to 'assumptions'
+
+Rules:
+- Return JSON only. Focus on discovery fields ONLY.
+- Your rationale should confirm what you understood and ask clarifying questions.
+- Don't mention assumptions or gap analysis yet.
 `.trim();
+}
+
+function getAssumptionsSubstagePrompt(substageData = {}) {
+  const discovery = substageData?.goal_discovery || {};
+  const category = discovery.category || 'general';
+  
+  return `
+Stage: 1.2 · Assumptions
+
+Goal: Define key financial assumptions for planning.
+
+Background context from Goal Discovery:
+- Category: ${category}
+- Goal: ${discovery.goal_name || 'Financial goal'}
+${discovery.living_expense_pa ? `- Living expense: $${discovery.living_expense_pa}/year` : ''}
+${discovery.property_price_estimate ? `- Property price: $${discovery.property_price_estimate}` : ''}
+${discovery.target_amount ? `- Target: $${discovery.target_amount}` : ''}
+
+What you must do:
+- Return common assumptions: expected_return_pct, inflation_pct, risk_attitude
+- Category-specific assumptions:
+  * Retirement: retirement_age, life_expectancy, include_superannuation
+  * Home: mortgage_rate_pct, loan_term_years
+- Provide user_guidance explaining the recommended assumptions
+- Set next_substage to 'gap_analysis'
+
+Rules:
+- Return JSON only. Focus on assumptions fields ONLY.
+- Your rationale should explain why these assumptions make sense for this goal.
+- Reference NZ context: typical returns 5-7%, inflation 2-3%, retirement age 65, NZ Super available.
+`.trim();
+}
+
+function getGapAnalysisSubstagePrompt(substageData = {}) {
+  const discovery = substageData?.goal_discovery || {};
+  const assumptions = substageData?.assumptions || {};
+  const category = discovery.category || 'general';
+  
+  return `
+Stage: 1.3 · Gap Analysis & Feasibility Check
+
+Goal: Display the user's REAL financial position and provide a GENTLE feasibility assessment.
+
+Background context:
+- Category: ${category}
+- Goal: ${discovery.goal_name || 'Financial goal'}
+${discovery.living_expense_pa ? `- Living expense: $${discovery.living_expense_pa}/year` : ''}
+${discovery.target_amount ? `- Target: $${discovery.target_amount}` : ''}
+${assumptions.expected_return_pct ? `- Expected return: ${assumptions.expected_return_pct}%` : ''}
+${assumptions.retirement_age ? `- Retirement age: ${assumptions.retirement_age}` : ''}
+${assumptions.life_expectancy ? `- Life expectancy: ${assumptions.life_expectancy}` : ''}
+
+CRITICAL: Real Financial Data (AVAILABLE Assets Only)
+- Check context.real_financial_snapshot for AVAILABLE (unallocated) assets
+- IMPORTANT: These amounts EXCLUDE assets already bound to other goals (similar to how monthly_surplus excludes contributions to other goals)
+- If real_financial_snapshot.has_data === true:
+  * Return those EXACT values (liquid_assets, investments, debts, current_super_balance, monthly_income)
+  * Your rationale should say: "Based on your available assets from Wealth Centre (excluding amounts already allocated to other goals)..."
+  * If user has multiple retirement goals, only show unallocated KiwiSaver
+- If real_financial_snapshot.has_data === false:
+  * Return null/0 for asset fields
+  * Your rationale should say: "We don't have your financial data yet. Please update in Wealth Centre."
+
+What you must do:
+1. Return available asset fields (use real_financial_snapshot if available):
+   - liquid_assets: Cash & savings (immediate access, unallocated)
+   - investments: Other investments excluding KiwiSaver (unallocated)
+   - current_super_balance: Available KiwiSaver balance (unallocated)
+   - debts: Total liabilities (all debts, not goal-specific)
+   - monthly_income: Monthly income from cash flow
+
+2. Calculate required amount (if not already in context):
+   - Retirement: living_expense_pa × 25 (simple 25x rule)
+   - Home: property_price_estimate
+   - Other: target_amount
+
+3. Calculate gap (required - current_total)
+
+4. Provide GENTLE user_guidance:
+   - If gap is large: "Consider adjusting your timeline or target. Gap is common for long-term goals."
+   - If gap is manageable: "Your goal looks achievable with consistent contributions."
+   - NEVER say the goal is impossible
+   - ALWAYS offer constructive next steps
+
+5. Set next_substage to 'done'
+
+Rules:
+- Return JSON only. Focus on gap_analysis fields ONLY.
+- Be ENCOURAGING, not discouraging. Gap is normal for low-net-worth individuals.
+- Your rationale should be 2-3 sentences, empathetic and constructive.
+- Reference NZ context: KiwiSaver, NZ Super baseline, typical savings rates.
+`.trim();
+}
+
+function getStagePrompt(stage, substage = null, substageData = {}) {
+  if (stage === GOAL_ENGINE_STAGES.DEFINITION) {
+    // Substage-specific prompts for Definition stage
+    if (substage === 'assumptions') {
+      return getAssumptionsSubstagePrompt(substageData);
+    }
+    if (substage === 'gap_analysis') {
+      return getGapAnalysisSubstagePrompt(substageData);
+    }
+    // Default: goal_discovery or initial input
+    return getGoalDiscoverySubstagePrompt();
+  }
+  
+  // Other stages remain the same
+  switch (stage) {
 
     case GOAL_ENGINE_STAGES.STRATEGY:
       return `
@@ -53,26 +168,48 @@ Stage: 2 · Strategic Guardrails (Risk & Structure)
 Goal:
 - Recommend an appropriate ECONOMIC EXPOSURE (growth / defensive / liquidity) and CONTRIBUTION STRUCTURE based on the goal context AND simulated user profile. Do NOT pick specific products here.
 
+**CRITICAL - Use Definition Stage Data:**
+You MUST use the parameters that the user provided in Definition stage (Stage 1), which are in context.goalContext.goal_details:
+- retirement_age, life_expectancy, living_expense_pa (for retirement goals)
+- expected_return_pct, inflation_pct (user's assumptions for projections)
+- risk_attitude, cashflow_flexibility (user's risk profile)
+- target_amount, due_date, priority (goal parameters)
+- liquid_assets, investments, debts, current_super_balance, monthly_income (AVAILABLE assets from Gap Analysis)
+
+IMPORTANT: The asset amounts (liquid_assets, investments, current_super_balance) represent AVAILABLE (unallocated) assets only - they exclude amounts already bound to other goals. This is similar to how monthly_surplus excludes contributions to other goals.
+
+These are the REAL values the user confirmed. DO NOT fabricate or re-estimate these values.
+
 Analysis Logic:
-1. Use context.goalContext.simulation_data (user_profile, financials, target_exposure, contribution_strategy_hint). Pay special attention to 'user_profile.vision_statement' to ensure strategy aligns with user's life philosophy.
-2. Respect goal-level risk guardrails: volatility_tolerance_pct, max_drawdown_allowed_pct, goal priority & horizon.
-3. Exposure-first: propose economic_exposure { growth, defensive, liquidity } summing to ~100%. If horizon permits, include glide_path (when to start de-risking, end_state exposure).
-4. Contribution: propose contribution_strategy (mode: lump_sum / recurring / hybrid; monthly_amount; lump_sum_amount; income_linked; escalation_rate_pct).
-5. Implementation_notes: only hint wrappers (e.g., kiwisaver / managed_fund / cash) and product_count_hint; DO NOT list specific funds.
+1. **Start with Definition data**: Read context.goalContext.goal_details for all user-confirmed parameters (retirement_age, living_expense_pa, expected_return_pct, inflation_pct, risk_attitude, etc.).
+2. **Enrich with real financial position**: Use context.goalContext.simulation_data.financials for current cash flow and surplus (monthly_income, monthly_surplus, liquid_capital).
+3. **Calculate contribution requirement**:
+   - For retirement: Use living_expense_pa × (life_expectancy - retirement_age), adjust for inflation_pct and NZ Super if applicable
+   - Calculate funding gap: target_amount - (current_super_balance + liquid_assets + investments - debts)
+   - Use expected_return_pct and years_to_goal to calculate required monthly_amount
+   - Ensure monthly_amount ≤ available monthly_surplus (from simulation_data.financials)
+4. **Risk alignment**: Use risk_attitude from goal_details (not derived profile) to set economic_exposure. If user selected 'balanced', don't override to 'growth' without justification.
+5. **Glide path**: If horizon > 15 years and goal is retirement, include glide_path to de-risk before goal date.
+6. **Implementation_notes**: Only hint wrappers (e.g., kiwisaver / managed_fund / cash) and product_count_hint; DO NOT list specific funds.
 
 What you must do:
 - Populate 'ai_decision.strategy_recommendation':
-   - economic_exposure (growth/defensive/liquidity).
-   - allocation (stocks/bonds/cash) consistent with economic_exposure.
-   - glide_path if applicable.
-   - contribution_strategy with explicit mode (lump_sum / recurring / hybrid) and the relevant amounts:
-       * recurring: monthly_amount (numeric).
-       * lump_sum: lump_sum_amount (numeric).
-       * hybrid: both monthly_amount and lump_sum_amount.
-     Also specify income_linked (true/false) and escalation_rate_pct if recurring/hybrid.
-     Include reserve_for_other_goals_pct if provided in context.
-   - implementation_notes and consistency_check (note if exposure vs surplus/liquidity seems feasible).
-- Explain WHY in 'rationale', referencing surplus, liquidity reserve for other goals, and horizon-fit.
+   - economic_exposure (growth/defensive/liquidity) - aligned with user's risk_attitude from goal_details
+   - allocation (stocks/bonds/cash) consistent with economic_exposure
+   - glide_path if applicable (for long-term goals)
+   - contribution_strategy with CALCULATED amounts:
+       * mode: lump_sum / recurring / hybrid (based on available surplus and lump sum capital)
+       * monthly_amount: MUST be calculated based on gap, expected_return_pct, and horizon. If calculation shows required amount > monthly_surplus, set to max affordable and note the shortfall.
+       * lump_sum_amount: Use liquid_assets if mode includes lump_sum
+       * income_linked: true if recurring/hybrid
+       * escalation_rate_pct: Use inflation_pct from goal_details as baseline
+       * reserve_for_other_goals_pct: if provided in simulation_data
+   - implementation_notes and consistency_check (note if required contribution > available surplus, or if goal may be underfunded)
+- Explain WHY in 'rationale', referencing:
+   - Specific numbers from goal_details (e.g., "Your target of $800k over 35 years...")
+   - Calculation logic (e.g., "With 6% expected return and 2.5% inflation...")
+   - Feasibility (e.g., "This requires $X/month, you have $Y surplus available")
+   - Risk alignment (e.g., "Your 'balanced' risk preference suggests...")
 `.trim();
 
     case GOAL_ENGINE_STAGES.PRODUCT:
@@ -212,53 +349,112 @@ const formSchemaDefinition = {
     required: ['fields'],
 };
 
-function getStageResponseSchema(stage) {
-  // STAGE 1: DEFINITION - Only goal definition fields
-  if (stage === GOAL_ENGINE_STAGES.DEFINITION) {
-    return {
-      type: 'object',
-      properties: {
-        ai_decision: {
-          type: 'object',
-          description: 'AI decision for goal definition. DO NOT include strategy or product fields.',
-          properties: {
-            ...commonAiDecisionFields,
-            // Risk Profile (initial assessment)
-            risk_profile: {
-                type: 'object',
-                properties: {
-                    attitude: { type: 'string', description: "conservative | balanced | growth" },
-                    volatility_tolerance_pct: { type: 'number' },
-                    max_drawdown_allowed_pct: { type: 'number' },
-                    notes: { type: 'string' }
-                }
-            },
-            // Core Goal Fields - ONLY THESE for Stage 1
-            goal_name: { type: 'string', description: 'Extracted goal name from user input' },
-            category: { type: 'string', description: 'MUST be one of: retirement, home, education, wealth, travel, vehicle, emergency, custom' },
-            priority: { type: 'string', enum: ['need', 'want', 'wish'] },
-            target_amount: { type: 'number', description: 'Target amount in NZD' },
-            current_amount: { type: 'number', description: 'Current savings towards this goal' },
-            due_date: { type: 'string', description: 'ISO Date String YYYY-MM-DD' },
-            riskTolerance: { type: 'string', enum: ['low-risk', 'middle-risk', 'high-risk'] },
-            inflationAdjust: { type: 'boolean' },
-            // Retirement-specific fields
-            retirement_age: { type: 'number' },
-            life_expectancy: { type: 'number' },
-            living_expense_pa: { type: 'number', description: 'Annual living expense in NZD' },
-            // Home-specific fields
-            property_price_estimate: { type: 'number' },
-            deposit_percentage: { type: 'number' },
-            location: { type: 'string' }
-          },
-          required: ['thought_process', 'rationale', 'goal_name', 'category']
-        },
-        form_schema: formSchemaDefinition
-      },
-      required: ['ai_decision', 'form_schema'],
-    };
-  }
+// ==========================================
+// SUBSTAGE-SPECIFIC SCHEMAS (Definition Stage)
+// ==========================================
 
+function getGoalDiscoverySchema() {
+  return {
+    type: 'object',
+    properties: {
+      ai_decision: {
+        type: 'object',
+        description: 'Goal Discovery: Extract core goal details only. DO NOT include form_schema - forms are predefined in frontend.',
+        properties: {
+          ...commonAiDecisionFields,
+          substage: { type: 'string', const: 'goal_discovery' },
+          next_substage: { type: 'string', const: 'assumptions' },
+          user_guidance: { type: 'string' },
+          // Core fields
+          goal_name: { type: 'string', description: 'REQUIRED: Extracted goal name' },
+          category: { type: 'string', enum: ['retirement', 'home', 'education', 'wealth', 'travel', 'vehicle', 'emergency', 'custom'], description: 'REQUIRED' },
+          priority: { type: 'string', enum: ['need', 'want', 'wish'] },
+          // Category-specific discovery
+          living_expense_pa: { type: 'number', description: '[retirement] Annual living expense' },
+          location: { type: 'string', description: '[retirement/home] Location' },
+          property_price_estimate: { type: 'number', description: '[home] Property price' },
+          deposit_percentage: { type: 'number', description: '[home] Deposit %' },
+          is_first_home: { type: 'boolean', description: '[home] First home buyer' },
+          target_amount: { type: 'number', description: '[other] Target amount' },
+          due_date: { type: 'string', description: '[other] Target date' }
+        },
+        required: ['thought_process', 'rationale', 'substage', 'next_substage', 'goal_name', 'category']
+      }
+    },
+    required: ['ai_decision']
+  };
+}
+
+function getAssumptionsSchema() {
+  return {
+    type: 'object',
+    properties: {
+      ai_decision: {
+        type: 'object',
+        description: 'Assumptions: Define planning assumptions only. DO NOT include form_schema - forms are predefined in frontend.',
+        properties: {
+          ...commonAiDecisionFields,
+          substage: { type: 'string', const: 'assumptions' },
+          next_substage: { type: 'string', const: 'gap_analysis' },
+          user_guidance: { type: 'string' },
+          // Common assumptions
+          expected_return_pct: { type: 'number', description: 'Expected annual return %' },
+          inflation_pct: { type: 'number', description: 'Expected inflation %' },
+          risk_attitude: { type: 'string', enum: ['conservative', 'balanced', 'growth'], description: 'Risk attitude' },
+          cashflow_flexibility: { type: 'string', enum: ['low', 'medium', 'high'] },
+          // Retirement assumptions
+          retirement_age: { type: 'number', description: '[retirement] Target retirement age' },
+          life_expectancy: { type: 'number', description: '[retirement] Planning until age' },
+          include_superannuation: { type: 'boolean', description: '[retirement] Include NZ Super' },
+          // Home assumptions
+          mortgage_rate_pct: { type: 'number', description: '[home] Mortgage rate %' },
+          loan_term_years: { type: 'number', description: '[home] Loan term years' }
+        },
+        required: ['thought_process', 'rationale', 'substage', 'next_substage', 'expected_return_pct', 'inflation_pct', 'risk_attitude']
+      }
+    },
+    required: ['ai_decision']
+  };
+}
+
+function getGapAnalysisSchema() {
+  return {
+    type: 'object',
+    properties: {
+      ai_decision: {
+        type: 'object',
+        description: 'Gap Analysis: Quantify current position and gap. DO NOT include form_schema - forms are predefined in frontend.',
+        properties: {
+          ...commonAiDecisionFields,
+          substage: { type: 'string', const: 'gap_analysis' },
+          next_substage: { type: 'string', const: 'done' },
+          user_guidance: { type: 'string' },
+          // Common gap fields
+          liquid_assets: { type: 'number', description: 'Liquid savings/cash' },
+          investments: { type: 'number', description: 'Other investments' },
+          debts: { type: 'number', description: 'Total debts/loans' },
+          monthly_income: { type: 'number', description: 'Monthly income' },
+          current_amount: { type: 'number', description: 'Current savings toward goal' },
+          // Retirement gap
+          current_super_balance: { type: 'number', description: '[retirement] KiwiSaver balance' },
+          annual_contribution: { type: 'number', description: '[retirement] Annual KiwiSaver contribution' }
+        },
+        required: ['thought_process', 'rationale', 'substage', 'next_substage', 'liquid_assets']
+      }
+    },
+    required: ['ai_decision']
+  };
+}
+
+function getStageResponseSchema(stage, substage = null) {
+  // STAGE 1: DEFINITION - Substage-specific schemas
+  if (stage === GOAL_ENGINE_STAGES.DEFINITION) {
+    if (substage === 'assumptions') return getAssumptionsSchema();
+    if (substage === 'gap_analysis') return getGapAnalysisSchema();
+    // Default: goal_discovery
+    return getGoalDiscoverySchema();
+  }
+  
   // STAGE 2: STRATEGY - Only strategy fields
   if (stage === GOAL_ENGINE_STAGES.STRATEGY) {
     return {
@@ -446,11 +642,14 @@ function getStageResponseSchema(stage) {
  * @param {Object} params.goalContext - Flattened goal state (Goal + related data)
  * @param {Object} [params.userInput] - Latest user input for this stage (if any)
  * @param {Object[]} [params.previousDecisions] - Optional previous AI decisions/logs
+ * @param {string} [params.substage] - Current substage id (frontend state machine)
+ * @param {Object} [params.substageData] - Confirmed substage data (background context)
  * @returns {{ prompt: string, context: object }}
  */
-export function buildGoalEnginePrompt({ stage, goalContext, userInput, previousDecisions }) {
-  const stagePrompt = getStagePrompt(stage);
-  const responseSchema = getStageResponseSchema(stage);
+export function buildGoalEnginePrompt({ stage, goalContext, userInput, previousDecisions, substage, substageData }) {
+  // Pass substage and substageData to get substage-specific prompt and schema
+  const stagePrompt = getStagePrompt(stage, substage, substageData);
+  const responseSchema = getStageResponseSchema(stage, substage);
 
   const prompt = `
 ${goalEngineSystemPrompt}
@@ -461,6 +660,7 @@ Output requirements:
 - Return JSON only.
 - The JSON MUST follow the "responseSchema" described in the context under context.responseSchema.
 - Do not include any natural-language text outside the JSON.
+- Focus ONLY on the fields specified in the current substage schema.
 `.trim();
 
   const context = {
@@ -468,6 +668,8 @@ Output requirements:
     goalContext: goalContext || {},
     userInput: userInput || {},
     previousDecisions: previousDecisions || [],
+    substage: substage || 'goal_discovery',  // Default to goal_discovery if not specified
+    substageData: substageData || {},
     responseSchema,
   };
 

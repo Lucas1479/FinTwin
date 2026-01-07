@@ -125,7 +125,7 @@ const StageProduct = ({ goalContext, onSelect, isLoadingAI }) => {
     return () => {
       active = false;
     };
-  }, [productIdsKey, aiOptions, legacySelection, allProductIds]);
+  }, [productIdsKey]); // Only depend on productIdsKey to prevent infinite loops
 
   const handleSelectOption = (option) => {
     setSelectedOption(option.option_id);

@@ -92,7 +92,7 @@ const persistDecisionLog = async (params) => {
 // @route   POST /api/goals/engine/generate
 // @access  Private
 export const generateGoalDecision = asyncHandler(async (req, res) => {
-  const { stage, goalContext, userInput, previousDecisions } = req.body || {};
+  const { stage, goalContext, userInput, previousDecisions, substage, substageData } = req.body || {};
   const useRagReq = req.body?.useRag;
   const useRagEnv = process.env.ENABLE_VECTARA_RAG === 'true';
   // request flag overrides env; otherwise env enables by default
@@ -117,10 +117,142 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
     injectedSchema = getFormSchemaForCategory(goalContext.category);
   }
 
-  // --- REAL DATA ENRICHMENT (Strategy Stage) ---
-  // Replace mock profile with real wealth & cashflow data; fall back gracefully if missing.
+  // --- REAL DATA ENRICHMENT (Definition Gap Analysis + Strategy Stage) ---
   let enrichedContext = { ...goalContext };
+  const currentSubstage = substage || goalContext?.substage || goalContext?.currentSubstage || null;
+  const confirmedSubstageData = substageData || goalContext?.substageData || goalContext?.substage_data || null;
 
+  if (currentSubstage) {
+      enrichedContext.substage = currentSubstage;
+  }
+  if (confirmedSubstageData) {
+      enrichedContext.substage_data = confirmedSubstageData;
+  }
+
+  // === DEFINITION STAGE: Gap Analysis substage - Fetch real assets for display ===
+  if (stage === GOAL_ENGINE_STAGES.DEFINITION && currentSubstage === 'gap_analysis') {
+      const userId = req.user._id;
+      
+      try {
+          const [assets, cashFlows] = await Promise.all([
+              FinancialAsset.find({ user_id: userId }).lean(),
+              CashFlow.find({ user_id: userId }).lean()
+          ]);
+          
+          // Filter AVAILABLE assets using allocated_to_goal_id field
+          // Assets are available if: (1) unallocated OR (2) allocated to current goal (re-editing case)
+          const currentGoalId = goalContext?._id || goalContext?.goal_id;
+          const availableAssets = assets.filter(a => {
+              // Unallocated assets are available
+              if (!a.allocated_to_goal_id) return true;
+              
+              // Assets allocated to current goal (when re-editing) are available
+              if (currentGoalId && a.allocated_to_goal_id.toString() === currentGoalId.toString()) {
+                  return true;
+              }
+              
+              // Assets allocated to other goals are NOT available
+              return false;
+          });
+          
+          const allocatedCount = assets.length - availableAssets.length;
+          console.log(`[Gap Analysis] Total assets: ${assets.length}, Available: ${availableAssets.length}, Allocated to other goals: ${allocatedCount}`);
+          
+          // Calculate AVAILABLE (unallocated) financial position
+          const liquidAssets = availableAssets
+              .filter(a => a.record_type === 'Asset' && a.is_liquid)
+              .reduce((sum, a) => sum + (a.value || 0), 0);
+          
+          const investments = availableAssets
+              .filter(a => a.record_type === 'Asset' && !a.is_liquid && 
+                          !a.category?.toLowerCase().includes('property') &&
+                          !a.category?.toLowerCase().includes('kiwisaver'))
+              .reduce((sum, a) => sum + (a.value || 0), 0);
+          
+          // Debts are not goal-specific, so use all liabilities
+          const debts = assets
+              .filter(a => a.record_type === 'Liability')
+              .reduce((sum, a) => sum + (a.value || 0), 0);
+          
+          const kiwiSaverAssets = availableAssets.filter(a => 
+              a.record_type === 'Asset' && 
+              (a.category?.toLowerCase().includes('kiwisaver') || 
+               a.name?.toLowerCase().includes('kiwisaver'))
+          );
+          
+          const currentSuperBalance = kiwiSaverAssets.reduce((sum, a) => sum + (a.value || 0), 0);
+          
+          // Calculate monthly income
+          const incomes = cashFlows.filter(f => f.type === 'Income');
+          const toAnnual = (amount, frequency) => {
+              const multipliers = { 
+                  weekly: 52, fortnightly: 26, monthly: 12, 
+                  yearly: 1, annually: 1, annual: 1 
+              };
+              const freq = String(frequency || 'monthly').toLowerCase().replace(/\s+/g, '_');
+              return (amount || 0) * (multipliers[freq] || 12);
+          };
+          const annualIncome = incomes.reduce((sum, f) => sum + toAnnual(f.amount, f.frequency), 0);
+          const monthlyIncome = Math.round(annualIncome / 12);
+          
+          // Inject AVAILABLE (unallocated) assets for AI to reference
+          // These are assets NOT already bound to other goals
+          enrichedContext.real_financial_snapshot = {
+              liquid_assets: Math.round(liquidAssets),
+              investments: Math.round(investments),
+              debts: Math.round(debts),
+              current_super_balance: Math.round(currentSuperBalance),
+              monthly_income: monthlyIncome,
+              net_position: Math.round(liquidAssets + investments + currentSuperBalance - debts),
+              data_source: 'wealth_centre',
+              has_data: availableAssets.length > 0,
+              asset_count: availableAssets.filter(a => a.record_type === 'Asset').length,
+              note: 'These amounts exclude assets already allocated to other goals'
+          };
+          
+          console.log(`[Gap Analysis] Real financial snapshot (available only):`, enrichedContext.real_financial_snapshot);
+          console.log(`[Gap Analysis] Available asset breakdown:`, {
+              available: availableAssets.length,
+              byType: availableAssets.reduce((acc, a) => {
+                  acc[a.record_type] = (acc[a.record_type] || 0) + 1;
+                  return acc;
+              }, {}),
+              kiwisaver_detail: kiwiSaverAssets.map(a => ({
+                  name: a.name,
+                  value: a.value,
+                  allocated_to: a.allocated_to_goal_id ? a.allocated_to_goal_id.toString() : 'unallocated'
+              })),
+              liquid_detail: availableAssets.filter(a => 
+                  a.record_type === 'Asset' && a.is_liquid
+              ).map(a => ({
+                  name: a.name,
+                  value: a.value,
+                  category: a.category,
+                  allocated_to: a.allocated_to_goal_id ? a.allocated_to_goal_id.toString() : 'unallocated'
+              })),
+              investments_detail: availableAssets.filter(a => 
+                  a.record_type === 'Asset' && 
+                  !a.is_liquid && 
+                  !a.category?.toLowerCase().includes('property') &&
+                  !a.category?.toLowerCase().includes('kiwisaver')
+              ).map(a => ({
+                  name: a.name,
+                  value: a.value,
+                  category: a.category,
+                  allocated_to: a.allocated_to_goal_id ? a.allocated_to_goal_id.toString() : 'unallocated'
+              }))
+          });
+      } catch (err) {
+          console.warn('[Gap Analysis] Failed to fetch real assets, AI will provide guidance without pre-fill:', err.message);
+          enrichedContext.real_financial_snapshot = {
+              data_source: 'unavailable',
+              has_data: false,
+              error: err.message
+          };
+      }
+  }
+
+  // === STRATEGY STAGE: Full enrichment ===
   if (stage === GOAL_ENGINE_STAGES.STRATEGY) {
       const userId = req.user._id;
 
@@ -354,6 +486,8 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
     goalContext: enrichedContext,
     userInput,
     previousDecisions,
+    substage: currentSubstage,
+    substageData: confirmedSubstageData,
   });
 
   // If we have an injected schema, we could theoretically skip the LLM if we only wanted the form.
@@ -538,7 +672,22 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
           try {
               // Try to find JSON in the full text if it's wrapped in markdown or just raw
               const jsonStr = fullText.match(/\{[\s\S]*\}/)?.[0] || fullText;
-              finalJson = JSON.parse(jsonStr);
+              
+              // CRITICAL: Clean up known common LLM JSON syntax errors
+              let cleanedJsonStr = jsonStr
+                  .replace(/,\s*([\}\]])/g, '$1') // Remove trailing commas
+                  .replace(/(\w+)\s*:\s*"/g, '"$1": "') // Ensure keys are quoted if missed (basic)
+                  .replace(/\n/g, ' ') // Remove newlines within string for basic parsing
+                  .trim();
+              
+              // If the regex above was too aggressive, we might have broken it. 
+              // Let's try to parse the original first, then the cleaned one.
+              try {
+                  finalJson = JSON.parse(jsonStr);
+              } catch (e1) {
+                  console.warn("[Goal Engine] Direct JSON parse failed, trying cleaned version...");
+                  finalJson = JSON.parse(cleanedJsonStr);
+              }
               
               if (injectedSchema && finalJson) {
                   finalJson.form_schema = injectedSchema;
