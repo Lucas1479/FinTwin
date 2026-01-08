@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, Calendar, DollarSign, Repeat, Clock } from 'lucide-react';
+import { X, Check, Calendar, DollarSign, Repeat, Clock, Loader2 } from 'lucide-react';
 import { createCashFlow, updateCashFlow, deleteCashFlow } from '../../services/cashFlowService';
 
 const FREQUENCIES = ['Weekly', 'Fortnightly', 'Monthly', 'Yearly'];

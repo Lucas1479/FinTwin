@@ -884,11 +884,11 @@ const GoalEnginePage = () => {
 
           Object.assign(nextState, normalized);
           
-          if (nextState.category === 'retirement' || nextState.category === 'home') {
-              if (prev.target_amount && !updates.target_amount_manual_override) {
-                  nextState.target_amount = prev.target_amount; 
-              }
-          }
+          // if (nextState.category === 'retirement' || nextState.category === 'home') {
+          //     if (prev.target_amount && !updates.target_amount_manual_override) {
+          //         nextState.target_amount = prev.target_amount; 
+          //     }
+          // }
 
           if (detailsFound) {
               nextState.goal_details = {

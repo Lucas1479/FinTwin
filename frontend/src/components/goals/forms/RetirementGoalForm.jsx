@@ -368,6 +368,7 @@ const PlanningParametersForm = ({ initialValues, onChange, onSubstageSubmit, nee
         retirement_age: initialValues.goal_details?.retirement_age || 65,
         life_expectancy: initialValues.goal_details?.life_expectancy || 95,
         transition_phase: initialValues.goal_details?.transition_phase || false,
+        include_superannuation: initialValues.goal_details?.include_superannuation ?? true,
         // Assumptions
         risk_attitude: initialValues.goal_details?.risk_attitude || 'balanced',
         expected_return_pct: initialValues.goal_details?.expected_return_pct || 6,
@@ -375,11 +376,19 @@ const PlanningParametersForm = ({ initialValues, onChange, onSubstageSubmit, nee
     });
 
     useEffect(() => {
+        // Calculate dynamic due_date based on retirement age
+        // Set to January 1st of the retirement year
+        const currentYear = new Date().getFullYear();
+        const yearsUntilRetirement = Math.max(0, formData.retirement_age - (formData.current_age || 30));
+        const retirementYear = currentYear + yearsUntilRetirement;
+        const computedDueDate = new Date(retirementYear, 0, 1);
+
         onChange?.({
             goal_details: {
                 ...initialValues.goal_details,
                 ...formData
-            }
+            },
+            due_date: computedDueDate // Push top-level due_date for API
         });
     }, [formData]);
 
@@ -448,6 +457,20 @@ const PlanningParametersForm = ({ initialValues, onChange, onSubstageSubmit, nee
                             <div className="text-[10px] text-slate-500">Work part-time for transition years?</div>
                         </div>
                         <div className={`w-4 h-4 rounded border ${formData.transition_phase ? 'bg-amber-500 border-amber-500' : 'border-slate-300'}`} />
+                    </div>
+
+                    <div 
+                        onClick={() => setFormData(prev => ({ ...prev, include_superannuation: !prev.include_superannuation }))}
+                        className={`cursor-pointer border rounded-xl p-3 flex items-center gap-3 ${
+                            formData.include_superannuation ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 hover:bg-slate-50'
+                        }`}
+                    >
+                        <Shield size={18} className={formData.include_superannuation ? 'text-emerald-600' : 'text-slate-400'} />
+                        <div className="flex-1">
+                            <div className="font-bold text-sm text-slate-900">Include NZ Super</div>
+                            <div className="text-[10px] text-slate-500">Offset costs with gov pension (~$24k/yr)?</div>
+                        </div>
+                        <div className={`w-4 h-4 rounded border ${formData.include_superannuation ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`} />
                     </div>
                 </div>
 
@@ -542,12 +565,29 @@ const GapFeasibilityForm = ({ initialValues, onChange, onSubstageSubmit, needsRe
 
     // Calculate Required Nest Egg (25x rule)
     const livingExpensePA = initialValues.goal_details?.living_expense_pa || 60000;
-    const baseRequired = livingExpensePA * 25;
+    const includeSuper = initialValues.goal_details?.include_superannuation ?? true;
+    const NZ_SUPER_PA = 24000; // Approx annual NZ Super (net)
+    
+    // If including super, we only need to fund the gap
+    const annualFundingGoal = includeSuper 
+        ? Math.max(0, livingExpensePA - NZ_SUPER_PA) 
+        : livingExpensePA;
+        
+    const baseRequired = annualFundingGoal * 25;
     
     // User can adjust Required Money via slider
     const [requiredNestEgg, setRequiredNestEgg] = useState(
         initialValues.goal_details?.target_amount || baseRequired
     );
+
+    // Force refresh nest egg when inputs change (and not yet confirmed)
+    useEffect(() => {
+        const newAnnualGoal = includeSuper 
+            ? Math.max(0, livingExpensePA - NZ_SUPER_PA) 
+            : livingExpensePA;
+        const newBaseRequired = newAnnualGoal * 25;
+        setRequiredNestEgg(newBaseRequired);
+    }, [livingExpensePA, includeSuper]);
 
     // Calculate projected assets (simple projection)
     const totalCurrentAssets = realAssets.current_super_balance + 
@@ -606,7 +646,11 @@ const GapFeasibilityForm = ({ initialValues, onChange, onSubstageSubmit, needsRe
                         <div className="text-3xl font-black text-indigo-600">
                             ${(requiredNestEgg / 1000).toFixed(0)}k
                         </div>
-                        <div className="text-xs text-slate-400">= ${livingExpensePA.toLocaleString()}/yr × 25</div>
+                        <div className="text-xs text-slate-400">
+                            = ${livingExpensePA.toLocaleString()}/yr 
+                            {includeSuper && <span className="text-emerald-600 font-bold"> - $24k Super</span>}
+                            {" "}× 25
+                        </div>
                     </div>
                 </div>
                 <input 

@@ -33,23 +33,26 @@ function getGoalDiscoverySubstagePrompt() {
   return `
 Stage: 1.1 · Goal Discovery
 
-Goal: Extract the user's core goal intention and categorize it.
+Goal: Understand the user's lifestyle vision, categorize it, and draft initial parameters for their review.
 
 What you must do:
-- Determine the goal category (retirement/home/education/wealth/travel/vehicle/emergency/custom)
-- Extract goal_name from user input
-- Extract priority (need/want/wish)
-- Category-specific extraction:
-  * Retirement: living_expense_pa, location
-  * Home: property_price_estimate, deposit_percentage, location, is_first_home
-  * Other: target_amount, due_date
-- Provide user_guidance asking for any missing critical discovery fields
-- Set next_substage to 'assumptions'
+1.  **Analyze & Categorize**: Determine goal category (retirement/home/education/wealth/travel/vehicle/emergency/custom), 'goal_name', and priority.
+2.  **Draft Parameters (Auto-Fill)**:
+    *   Extract explicit values (e.g., "$50k/year").
+    *   **Intelligent Estimation**: If exact numbers aren't given but context exists (e.g., "comfortable lifestyle"), PROPOSE realistic starting values in the JSON fields rather than leaving them empty.
+    *   *Retirement*: living_expense_pa, location
+    *   *Home*: property_price_estimate, deposit_percentage, location, is_first_home
+    *   *Other*: target_amount, due_date
+3.  **Engage (User Guidance)**:
+    *   **Persona**: Warm, visionary financial co-pilot.
+    *   **Approach**: Instead of listing "Missing Fields", acknowledge the user's vision and explain *why* specific details (like location or budget) help make the plan real.
+    *   **Call to Action**: Invite the user to review/adjust the drafted numbers in the form or provide more details in chat.
 
 Rules:
-- Return JSON only. Focus on discovery fields ONLY.
-- Your rationale should confirm what you understood and ask clarifying questions.
-- Don't mention assumptions or gap analysis yet.
+- Return JSON only.
+- If critical info is totally absent and you cannot estimate, ask conversationally (e.g., "To get us started, are you thinking of a local retirement or somewhere overseas?").
+- **Do not** output a robotic checklist of missing fields.
+- Set next_substage to 'assumptions'.
 `.trim();
 }
 
@@ -77,6 +80,12 @@ What you must do:
 - Provide user_guidance explaining the recommended assumptions
 - Set next_substage to 'gap_analysis'
 
+CRITICAL: NZ Super Eligibility Logic
+- Analyze user context (age, residency cues if any) to determine NZ Super eligibility.
+- Default 'include_superannuation' to true for NZ residents/citizens.
+- If 'include_superannuation' is true, your 'rationale' MUST explain: "I've included NZ Super in your plan, which reduces your self-funding requirement by ~$24k/year."
+- If false, explain why (e.g., "Assuming you may not meet the 10-year residency rule...").
+
 Rules:
 - Return JSON only. Focus on assumptions fields ONLY.
 - Your rationale should explain why these assumptions make sense for this goal.
@@ -102,6 +111,7 @@ ${discovery.target_amount ? `- Target: $${discovery.target_amount}` : ''}
 ${assumptions.expected_return_pct ? `- Expected return: ${assumptions.expected_return_pct}%` : ''}
 ${assumptions.retirement_age ? `- Retirement age: ${assumptions.retirement_age}` : ''}
 ${assumptions.life_expectancy ? `- Life expectancy: ${assumptions.life_expectancy}` : ''}
+${assumptions.include_superannuation !== undefined ? `- Include NZ Super: ${assumptions.include_superannuation}` : ''}
 
 CRITICAL: Real Financial Data (AVAILABLE Assets Only)
 - Check context.real_financial_snapshot for AVAILABLE (unallocated) assets
@@ -123,13 +133,15 @@ What you must do:
    - monthly_income: Monthly income from cash flow
 
 2. Calculate required amount (if not already in context):
-   - Retirement: living_expense_pa × 25 (simple 25x rule)
+   - Retirement: (living_expense_pa - (include_superannuation ? 24000 : 0)) × 25
+     * NZ Super (~$24k) reduces the self-funding requirement significantly.
    - Home: property_price_estimate
    - Other: target_amount
 
 3. Calculate gap (required - current_total)
 
 4. Provide GENTLE user_guidance:
+   - Explicitly mention if you adjusted for NZ Super in your calculation explanation.
    - If gap is large: "Consider adjusting your timeline or target. Gap is common for long-term goals."
    - If gap is manageable: "Your goal looks achievable with consistent contributions."
    - NEVER say the goal is impossible
@@ -193,6 +205,8 @@ Analysis Logic:
 6. **Implementation_notes**: Only hint wrappers (e.g., kiwisaver / managed_fund / cash) and product_count_hint; DO NOT list specific funds.
 
 What you must do:
+- Populate 'ai_decision':
+   - target_amount: For retirement, output the CALCULATED total funding need. For others, carry forward user's target.
 - Populate 'ai_decision.strategy_recommendation':
    - economic_exposure (growth/defensive/liquidity) - aligned with user's risk_attitude from goal_details
    - allocation (stocks/bonds/cash) consistent with economic_exposure
@@ -435,6 +449,7 @@ function getGapAnalysisSchema() {
           debts: { type: 'number', description: 'Total debts/loans' },
           monthly_income: { type: 'number', description: 'Monthly income' },
           current_amount: { type: 'number', description: 'Current savings toward goal' },
+          target_amount: { type: 'number', description: 'Calculated required amount (Gap + Current)' },
           // Retirement gap
           current_super_balance: { type: 'number', description: '[retirement] KiwiSaver balance' },
           annual_contribution: { type: 'number', description: '[retirement] Annual KiwiSaver contribution' }
