@@ -592,13 +592,18 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
             });
         }
           
-          // If using SSE, send the final result and return
+          // If using SSE, stream rationale in chunks for smoother Stage 3 UX
           if (useSSE) {
-              // Send final rationale as streaming content
               if (result.json?.ai_decision?.rationale) {
-                  res.write(`data: ${JSON.stringify({ 
-                      chunk: `{"rationale": "${result.json.ai_decision.rationale.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"}`
-                  })}\n\n`);
+                  const normalized = result.json.ai_decision.rationale.replace(/\r\n/g, '\n');
+                  const chunkSize = 200; // ~200 chars per SSE event
+                  for (let i = 0; i < normalized.length; i += chunkSize) {
+                      const slice = normalized.slice(i, i + chunkSize)
+                          .replace(/\\/g, '\\\\')
+                          .replace(/"/g, '\\"')
+                          .replace(/\n/g, '\\n');
+                      res.write(`data: ${JSON.stringify({ chunk: `{"rationale": "${slice}"}` })}\n\n`);
+                  }
               }
               
               // Log to memory
