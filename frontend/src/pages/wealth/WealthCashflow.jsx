@@ -211,6 +211,12 @@ const WealthCashflow = () => {
 
   const handleEdit = (flow) => { setEditingFlow(flow); setIsModalOpen(true); };
 
+  const handleAdd = (type) => {
+    setEditingFlow(null);
+    setModalType(type);
+    setIsModalOpen(true);
+  };
+
   const handleDelete = async (id) => {
     try {
       setLoading(true);

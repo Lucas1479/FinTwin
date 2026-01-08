@@ -31,7 +31,7 @@ export const createGoalWithPlan = async (goalContext) => {
     icon: goalContext.icon || goalContext.category,
     category: goalContext.category,
     priority: goalContext.priority || 'want',
-    riskTolerance: goalContext.riskTolerance || 'middle-risk',
+    riskTolerance: goalContext.risk_attitude || goalContext.riskTolerance || 'middle-risk',
     target_amount: goalContext.target_amount,
     current_amount: goalContext.current_amount || 0,
     due_date: goalContext.due_date,
