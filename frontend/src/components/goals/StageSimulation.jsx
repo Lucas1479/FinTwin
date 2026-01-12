@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import {
   Area,
   AreaChart,
@@ -24,9 +24,29 @@ import {
 import StageLoading from './common/StageLoading';
 import { LegendRow, MetricBadge } from './common/GoalUIPrimitives';
 
-export const runMonteCarlo = (params, exposure, years, glidePathConfig = null) => {
+const mulberry32 = (seed) => {
+  let a = seed || 1;
+  return () => {
+    a |= 0;
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
+const hashStringToSeed = (str = 'simulation_default') => {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h) ^ str.charCodeAt(i);
+  }
+  return (h >>> 0) || 1;
+};
+
+export const runMonteCarlo = (params, exposure, years, glidePathConfig = null, seed = null) => {
   const iterations = 100;
   const allProjections = [];
+  const rng = seed ? mulberry32(seed) : Math.random;
 
   const RETURNS = { growth: 0.08, defensive: 0.04, liquidity: 0.02 };
   const VOLATILITY = { growth: 0.18, defensive: 0.06, liquidity: 0.01 };
@@ -62,7 +82,7 @@ export const runMonteCarlo = (params, exposure, years, glidePathConfig = null) =
         (currentExposure.defensive / 100) * VOLATILITY.defensive +
         (currentExposure.liquidity / 100) * VOLATILITY.liquidity;
 
-      const randomFactor = (Math.random() + Math.random() + Math.random() - 1.5) * 2;
+      const randomFactor = (rng() + rng() + rng() - 1.5) * 2;
       const yearReturn = expReturn + randomFactor * volatility;
 
       const annualContribution = (params.monthlyContribution || 0) * 12;
@@ -104,7 +124,26 @@ export const runMonteCarlo = (params, exposure, years, glidePathConfig = null) =
 };
 
 const StageSimulation = ({ goalContext, isLoadingAI }) => {
+  const seedRef = useRef(null);
+  if (seedRef.current === null) {
+    const key = goalContext?.session_id || goalContext?.goal_id || goalContext?._id || 'simulation_default';
+    seedRef.current = hashStringToSeed(key);
+  }
+  const simulationSeed = seedRef.current;
   const [activeTab, setActiveTab] = useState('projection');
+  const [isCompactScreen, setIsCompactScreen] = useState(false);
+
+  // 14" 高分屏（200% 缩放）常见可用高度在 850-950px，触发紧凑布局
+  useEffect(() => {
+    const check = () => {
+      if (typeof window === 'undefined') return;
+      // 同时考虑高度与较窄的宽度，尽早触发紧凑样式
+      setIsCompactScreen(window.innerHeight < 960 || window.innerWidth < 1500);
+    };
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   const strategy = goalContext.ai_decision?.strategy_recommendation || {};
   const exposure = strategy.economic_exposure || { growth: 60, defensive: 30, liquidity: 10 };
@@ -143,18 +182,24 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
   }
 
   const { summaryData, expectedReturn, volatility } = useMemo(
-    () => runMonteCarlo(simParams, exposure, horizonYears, glidePath),
-    [simParams, exposure, horizonYears, glidePath],
+    () => runMonteCarlo(simParams, exposure, horizonYears, glidePath, simulationSeed),
+    [simParams, exposure, horizonYears, glidePath, simulationSeed],
   );
 
   const targetAmount = goalContext.target_amount || 100000;
+  const projectionSummary = goalContext?.simulation_data?.projection_summary;
+
   const successProbability = useMemo(() => {
+    // Hard preference: use the single-run summary from projection_summary
+    if (projectionSummary?.success_probability_pct !== undefined) {
+      return projectionSummary.success_probability_pct;
+    }
+    // Fallback (should rarely be used): derive deterministic value, no randomness
     if (!summaryData.length) return 0;
     const finalYear = summaryData[summaryData.length - 1];
-    if (finalYear.median >= targetAmount) return 85 + Math.random() * 10;
-    const ratio = finalYear.median / targetAmount;
-    return Math.min(95, Math.max(15, ratio * 100));
-  }, [summaryData, targetAmount]);
+    const ratio = targetAmount > 0 ? finalYear.median / targetAmount : 0;
+    return Math.min(97, Math.max(5, ratio * 90));
+  }, [summaryData, targetAmount, projectionSummary]);
 
   const portfolioExposure = selectedPortfolio?.calculated_exposure || exposure;
 
@@ -448,10 +493,12 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
         )}
       </div>
 
-      <div className="bg-slate-50/50 border border-slate-200 rounded-3xl p-6 lg:p-10 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-200">
+      <div className={`bg-slate-50/50 border border-slate-200 rounded-3xl ${isCompactScreen ? 'p-4 lg:p-6' : 'p-6 lg:p-10'} shadow-sm`}>
+        <div
+          className={`grid grid-cols-1 ${isCompactScreen ? 'md:grid-cols-2 xl:grid-cols-3' : 'md:grid-cols-3'} divide-y md:divide-y-0 md:divide-x divide-slate-200 ${isCompactScreen ? 'gap-4' : 'gap-6'}`}
+        >
           {/* Success Probability */}
-          <div className="pb-8 md:pb-0 md:pr-10">
+          <div className={`${isCompactScreen ? 'pb-6 md:pb-0 md:pr-6' : 'pb-8 md:pb-0 md:pr-10'}`}>
             <div className="flex items-center gap-2 mb-5">
               <div className={`w-2 h-2 rounded-full shadow-sm ${
                 successProbability > 70 ? 'bg-emerald-500 shadow-emerald-200' : 
@@ -461,7 +508,7 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Confidence Level</span>
             </div>
             <div className="flex items-baseline gap-3 mb-4">
-              <span className="text-5xl font-black text-slate-900 tracking-tighter">{successProbability.toFixed(0)}%</span>
+              <span className={`${isCompactScreen ? 'text-4xl lg:text-5xl' : 'text-5xl'} font-black text-slate-900 tracking-tighter`}>{successProbability.toFixed(0)}%</span>
               <span className={`text-[10px] font-black px-2 py-0.5 rounded-md tracking-wider ${
                 successProbability > 70 ? 'bg-emerald-100 text-emerald-700' : 
                 successProbability > 40 ? 'bg-amber-100 text-amber-700' : 
@@ -486,29 +533,29 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
           </div>
 
           {/* Monthly Plan */}
-          <div className="py-8 md:py-0 md:px-10">
+          <div className={`${isCompactScreen ? 'py-6 md:py-0 md:px-6' : 'py-8 md:py-0 md:px-10'}`}>
             <div className="flex items-center gap-2 mb-5">
               <div className="w-2 h-2 rounded-full bg-indigo-500 shadow-sm shadow-indigo-200" />
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Funding Strategy</span>
             </div>
             <div className="flex items-baseline gap-1 mb-2">
               <span className="text-xl font-bold text-slate-400">$</span>
-              <span className="text-5xl font-black text-slate-900 tracking-tighter">
+              <span className={`${isCompactScreen ? 'text-4xl lg:text-5xl' : 'text-5xl'} font-black text-slate-900 tracking-tighter`}>
                 {(simParams.monthlyContribution || 0).toLocaleString()}
               </span>
               <span className="text-[10px] font-black text-slate-400 ml-1 uppercase tracking-widest">/ Month</span>
             </div>
-            <div className="inline-flex items-center gap-2 px-2 py-1 bg-white border border-slate-200 rounded-lg shadow-sm">
+            <div className={`inline-flex items-center gap-2 px-2 ${isCompactScreen ? 'py-0.5' : 'py-1'} bg-white border border-slate-200 rounded-lg shadow-sm`}>
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Yearly Total</span>
-              <span className="text-xs font-black text-indigo-600">${((simParams.monthlyContribution || 0) * 12).toLocaleString()}</span>
+              <span className={`${isCompactScreen ? 'text-[11px]' : 'text-xs'} font-black text-indigo-600`}>${((simParams.monthlyContribution || 0) * 12).toLocaleString()}</span>
             </div>
-            <p className="mt-4 text-[10px] text-slate-500 font-medium">
+            <p className="mt-4 text-[10px] text-slate-500 font-medium leading-snug">
               Fixed recurring contribution for the next <span className="font-bold text-slate-700">{horizonYears} years</span>.
             </p>
           </div>
 
           {/* Risk Controls */}
-          <div className="pt-8 md:pt-0 md:pl-10">
+          <div className={`${isCompactScreen ? 'pt-6 md:pt-0 md:pl-6' : 'pt-8 md:pt-0 md:pl-10'}`}>
             <div className="flex items-center gap-2 mb-5">
               <div className="w-2 h-2 rounded-full bg-slate-400 shadow-sm" />
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Risk Management</span>
@@ -532,7 +579,7 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
         </div>
       </div>
 
-      <div className="bg-slate-950 p-6 lg:p-10 rounded-[2.5rem] text-white relative overflow-hidden shadow-2xl shadow-indigo-500/10">
+      <div className={`bg-slate-950 ${isCompactScreen ? 'p-5 lg:p-8' : 'p-6 lg:p-10'} rounded-[2.5rem] text-white relative overflow-hidden shadow-2xl shadow-indigo-500/10`}>
         <div className="absolute top-0 right-0 p-10 opacity-10 rotate-12">
           <Zap size={120} />
         </div>
@@ -547,7 +594,7 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
             </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-12">
+          <div className={`grid grid-cols-1 ${isCompactScreen ? 'md:grid-cols-2 xl:grid-cols-3 gap-6 lg:gap-8' : 'md:grid-cols-3 gap-8 lg:gap-12'}`}>
             <div className="space-y-2">
               <p className="text-[10px] font-bold text-rose-400/80 uppercase tracking-widest">Downside Case (10th)</p>
               <p className="text-3xl font-black text-white tracking-tight">
@@ -575,8 +622,8 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
             </div>
           </div>
 
-          <div className="mt-10 pt-8 border-t border-white/5 flex flex-wrap gap-8 items-center justify-between">
-            <div className="flex gap-8">
+          <div className={`mt-10 ${isCompactScreen ? 'pt-6' : 'pt-8'} border-t border-white/5 flex flex-wrap gap-6 lg:gap-8 items-center justify-between`}>
+            <div className={`flex ${isCompactScreen ? 'gap-6' : 'gap-8'}`}>
               <div>
                 <span className="text-[9px] font-bold text-slate-500 uppercase block mb-1">Total Contributions</span>
                 <span className="text-sm font-bold text-slate-300">${(summaryData[summaryData.length - 1]?.contributions || 0).toLocaleString()}</span>

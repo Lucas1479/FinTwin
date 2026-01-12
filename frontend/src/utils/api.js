@@ -46,6 +46,11 @@ api.interceptors.response.use(
 
       // 401: Unauthorized / Token Expired
       if (status === 401) {
+        // Allow certain requests to handle 401 themselves (e.g., password change modal)
+        if (error.config?.skipAuthRedirect) {
+          return Promise.reject(error);
+        }
+
         localStorage.removeItem('userInfo');
         localStorage.removeItem('token');
 

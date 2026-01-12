@@ -106,8 +106,11 @@ const RiskStrategySection = ({ data, onChange }) => {
           <input 
             type="number" 
             className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-slate-900 font-bold focus:ring-2 focus:ring-brand-500 transition-all"
-            value={data.retirementAge || 65}
-            onChange={(e) => updateRisk('retirementAge', Number(e.target.value))}
+            value={data.retirementAge ?? 65}
+            onChange={(e) => {
+              const val = e.target.value;
+              updateRisk('retirementAge', val === '' ? '' : Number(val));
+            }}
           />
         </div>
         <div className="space-y-2">
@@ -115,8 +118,11 @@ const RiskStrategySection = ({ data, onChange }) => {
           <input 
             type="number" 
             className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-slate-900 font-bold focus:ring-2 focus:ring-brand-500 transition-all"
-            value={data.planningAge || 90}
-            onChange={(e) => updateRisk('planningAge', Number(e.target.value))}
+            value={data.planningAge ?? 90}
+            onChange={(e) => {
+              const val = e.target.value;
+              updateRisk('planningAge', val === '' ? '' : Number(val));
+            }}
           />
         </div>
       </div>

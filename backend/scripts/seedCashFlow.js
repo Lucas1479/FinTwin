@@ -1,16 +1,20 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import connectDB from '../config/db.js';
 import User from '../models/userModel.js';
 import CashFlow from '../models/cashFlowModel.js';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, '../.env') });
 
 connectDB();
 
 const seedData = async () => {
   try {
-    const email = 'testuser@demo.com';
+    const email = 'lullaby1479@example.com';
     const user = await User.findOne({ email });
 
     if (!user) {

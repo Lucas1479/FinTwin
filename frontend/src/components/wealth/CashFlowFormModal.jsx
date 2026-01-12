@@ -7,7 +7,8 @@ const FREQUENCIES = ['Weekly', 'Fortnightly', 'Monthly', 'Yearly'];
 const CATEGORIES = {
   Income: ['Salary', 'Side Hustle', 'Investment', 'Other'],
   Expense: ['Housing', 'Living', 'Transport', 'Utilities', 'Insurance', 'Entertainment', 'Health', 'Tech', 'Other'],
-  Subscription: ['Entertainment', 'Productivity', 'Tech', 'Health', 'Other']
+  Subscription: ['Entertainment', 'Productivity', 'Tech', 'Health', 'Other'],
+  Investment: ['Stocks', 'Bonds', 'Funds', 'Crypto', 'Other']
 };
 
 const CashFlowFormModal = ({ isOpen, onClose, onRefresh, itemToEdit = null, defaultType = 'Income' }) => {
@@ -42,11 +43,12 @@ const CashFlowFormModal = ({ isOpen, onClose, onRefresh, itemToEdit = null, defa
           is_variable: itemToEdit.is_variable
         });
       } else {
+        const resolvedType = CATEGORIES[defaultType] ? defaultType : 'Income';
         setFormData({
           name: '',
           amount: '',
-          type: defaultType,
-          category: CATEGORIES[defaultType][0],
+          type: resolvedType,
+          category: CATEGORIES[resolvedType][0],
           frequency: 'Monthly',
           timing_mode: 'Specific_Date',
           anchor_date: 1,
