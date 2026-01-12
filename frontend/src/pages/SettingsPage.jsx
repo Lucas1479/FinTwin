@@ -7,6 +7,7 @@ import {
   Calculator, 
   ArrowRightLeft, 
   Eye, 
+  Lock,
   Save, 
   Download,
   CheckCircle2,

@@ -79,7 +79,7 @@ const DigitalTwinCore = ({ size = 80, color = "#6366f1" }) => {
         </g>
       </svg>
 
-      <style jsx>{`
+      <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }

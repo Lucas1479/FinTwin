@@ -6,9 +6,10 @@ import MainLayout from '../components/layout/MainLayout';
 import GoalDefinitionForm from '../components/goals/GoalDefinitionForm';
 import HomeGoalForm from '../components/goals/forms/HomeGoalForm';
 import RetirementGoalForm from '../components/goals/forms/RetirementGoalForm';
+import { renderGoalForm, hasCustomForm } from '../components/goals/forms/GoalFormRegistry.jsx';
 import StageStrategy from '../components/goals/StageStrategy';
 import StageProduct from '../components/goals/StageProduct';
-import StageSimulation from '../components/goals/StageSimulation';
+import StageSimulation, { runMonteCarlo } from '../components/goals/StageSimulation';
 import goalEngineService from '../services/goalEngineService';
 import { createGoalWithPlan, getGoals } from '../services/goalService';
 import { getCashFlows } from '../services/cashFlowService';
@@ -1310,11 +1311,85 @@ const GoalEnginePage = () => {
             })
             .filter(g => g.monthly_allocation > 0);
 
+          // --- Optional: build a simulation summary using the same Monte Carlo helper as the UI ---
+          let simulationSummary = {};
+          if (stageId === 'simulation') {
+            const hashStringToSeed = (str = 'simulation_default') => {
+              let h = 5381;
+              for (let i = 0; i < str.length; i++) {
+                h = ((h << 5) + h) ^ str.charCodeAt(i);
+              }
+              return (h >>> 0) || 1;
+            };
+            const simSeed = hashStringToSeed(
+              context?.session_id || context?.goal_id || context?._id || 'simulation_default',
+            );
+
+            const targetDate = context?.due_date
+              ? new Date(context.due_date)
+              : new Date(Date.now() + 10 * 365.25 * 24 * 60 * 60 * 1000);
+            const horizonYears = Math.max(
+              1,
+              Math.round((targetDate - new Date()) / (365.25 * 24 * 60 * 60 * 1000)),
+            );
+
+            const exposure =
+              context?.ai_decision?.strategy_recommendation?.economic_exposure || {
+                growth: 60,
+                defensive: 30,
+                liquidity: 10,
+              };
+            const glidePath =
+              context?.ai_decision?.strategy_recommendation?.glide_path ||
+              context?.glide_path ||
+              null;
+            const contribution =
+              context?.ai_decision?.strategy_recommendation?.contribution_strategy ||
+              context?.contribution ||
+              {};
+            const monthlyContribution = contribution.monthly_amount || contribution.amount || 0;
+            const lumpSum = contribution.lump_sum_amount || 0;
+            const targetAmount = context?.target_amount || context?.goal_details?.target_amount || 0;
+            const currentAmount = context?.current_amount || 0;
+
+            // Run the same Monte Carlo helper to align with UI numbers
+            try {
+              const simParams = {
+                initialCapital: currentAmount,
+                lumpSum,
+                monthlyContribution,
+              };
+              const mc = runMonteCarlo(simParams, exposure, horizonYears, glidePath, simSeed);
+              const finalYear = mc.summaryData[mc.summaryData.length - 1] || {};
+              const ratio = targetAmount > 0 && finalYear.median ? finalYear.median / targetAmount : 0;
+              const successProb = Math.min(97, Math.max(5, ratio * 90));
+
+              simulationSummary = {
+                horizon_years: horizonYears,
+                expected_return_pct: Number((mc.expectedReturn).toFixed(1)),
+                volatility_pct: Number((mc.volatility).toFixed(1)),
+                monthly_contribution: monthlyContribution,
+                lump_sum: lumpSum,
+                target_amount: targetAmount,
+                current_amount: currentAmount,
+                p90_final: finalYear.high,
+                p50_final: finalYear.median,
+                p10_final: finalYear.low,
+                contributions_final: finalYear.contributions,
+                success_probability_pct: Math.round(successProb),
+                glide_path_enabled: !!glidePath?.enabled,
+              };
+            } catch (err) {
+              console.warn('Simulation summary build failed, falling back to previous logic', err);
+            }
+          }
+
           const contextWithOthers = {
             ...context,
             simulation_data: {
               ...(context?.simulation_data || {}),
-              other_goals: processedOtherGoals.length > 0 ? processedOtherGoals : context?.simulation_data?.other_goals
+              other_goals: processedOtherGoals.length > 0 ? processedOtherGoals : context?.simulation_data?.other_goals,
+              projection_summary: Object.keys(simulationSummary).length > 0 ? simulationSummary : context?.simulation_data?.projection_summary
             }
           };
 
@@ -1574,6 +1649,9 @@ const GoalEnginePage = () => {
               runStageAnalysis(nextStageId, goalContext, nextStageIndex);
           } else if (nextStageId === 'product') {
               runProductAnalysis(goalContext, nextStageIndex);
+          } else if (nextStageId === 'simulation') {
+              // Trigger LLM explanation/analysis for the simulation stage (SSE streaming)
+              runStageAnalysis(nextStageId, goalContext, nextStageIndex);
           } else {
               setMessages([getGreeting(nextStageIndex)]);
           }
@@ -1704,47 +1782,46 @@ const GoalEnginePage = () => {
   // Removed: No longer need awaiting_confirm state - forms auto-confirm on submit
 
   const renderDefinitionSubstageBody = (subId, needsRecompute = false) => {
-      if (currentStageId !== 'definition' || !subId) return null;
-      const status = getSubstageStatus('definition', subId);
-      const subData = substageData?.definition?.[subId]?.data || {};
-
-      // If confirmed, don't render form (card is rendered in the main render loop)
-      if (status === 'confirmed') return null;
-
-      // Common submit handler that merges data appropriately
-      const createSubmitHandler = (mergeLogic) => (payload) => {
-          const finalPayload = mergeLogic ? mergeLogic(payload) : payload;
+      const subData = substageData.definition?.[subId]?.data || {};
+      
+      const createSubmitHandler = (transformPayload) => (payload) => {
+          const finalPayload = transformPayload ? transformPayload(payload) : payload;
           handleSubstageSubmit('definition', subId, finalPayload);
       };
 
+      // 1. Unified Registry Lookup for Custom Forms
+      if (hasCustomForm(goalContext.category)) {
+          // Special handling for Gap Analysis merge logic
+          const submitHandler = subId === 'gap_analysis' 
+              ? createSubmitHandler((payload) => {
+                  handleContextUpdate({ 
+                      simulation_data: { 
+                          financials: { 
+                              ...goalContext.simulation_data?.financials, 
+                              gap_inputs: payload 
+                          } 
+                      } 
+                  });
+                  return payload;
+              })
+              : createSubmitHandler();
+
+          const customForm = renderGoalForm(goalContext.category, {
+              activeSubstage: subId,
+              substageData: subData,
+              initialValues: goalContext,
+              onChange: handleContextUpdate,
+              onSubstageSubmit: submitHandler,
+              needsRecompute
+          });
+
+          if (customForm) return customForm;
+      }
+
+      // 2. Fallbacks for Generic/Legacy Flows
+      
       // === GOAL DISCOVERY ===
       if (subId === 'goal_discovery') {
-          // Retirement: Use custom form
-          if (goalContext.category === 'retirement') {
-              return (
-                  <RetirementGoalForm
-                      activeSubstage="goal_discovery"
-                      initialValues={goalContext}
-                      onChange={handleContextUpdate}
-                      onSubstageSubmit={createSubmitHandler()}
-                      needsRecompute={needsRecompute}
-                  />
-              );
-          }
-          
-          // Home: Use custom form
-          if (goalContext.category === 'home') {
-              return (
-                  <HomeGoalForm
-                      activeSubstage="goal_discovery"
-                      initialValues={goalContext}
-                      onChange={handleContextUpdate}
-                      onSubstageSubmit={createSubmitHandler()}
-                  />
-              );
-          }
-          
-          // Generic: Use standard form
           return (
               <GoalDefinitionForm
                   onSubmit={createSubmitHandler()}
@@ -1757,30 +1834,6 @@ const GoalEnginePage = () => {
 
       // === ASSUMPTIONS ===
       if (subId === 'assumptions') {
-          if (goalContext.category === 'retirement') {
-              return (
-                  <RetirementGoalForm
-                      activeSubstage="assumptions"
-                      substageData={subData}
-                      initialValues={goalContext}
-                      onChange={handleContextUpdate}
-                      onSubstageSubmit={createSubmitHandler()}
-                      needsRecompute={needsRecompute}
-                  />
-              );
-          }
-          
-          if (goalContext.category === 'home') {
-              return (
-                  <HomeGoalForm
-                      activeSubstage="assumptions"
-                      substageData={subData}
-                      initialValues={goalContext}
-                      onSubstageSubmit={createSubmitHandler()}
-                  />
-              );
-          }
-          
           return (
               <AssumptionForm
                   initialValues={subData}
@@ -1792,7 +1845,6 @@ const GoalEnginePage = () => {
       // === GAP ANALYSIS ===
       if (subId === 'gap_analysis') {
           const gapMergeLogic = (payload) => {
-              // Also update simulation_data.financials.gap_inputs for consistency
               handleContextUpdate({ 
                   simulation_data: { 
                       financials: { 
@@ -1804,30 +1856,6 @@ const GoalEnginePage = () => {
               return payload;
           };
           
-          if (goalContext.category === 'retirement') {
-              return (
-                  <RetirementGoalForm
-                      activeSubstage="gap_analysis"
-                      substageData={subData}
-                      initialValues={goalContext}
-                      onChange={handleContextUpdate}
-                      onSubstageSubmit={createSubmitHandler(gapMergeLogic)}
-                      needsRecompute={needsRecompute}
-                  />
-              );
-          }
-          
-          if (goalContext.category === 'home') {
-              return (
-                  <HomeGoalForm
-                      activeSubstage="gap_analysis"
-                      substageData={subData}
-                      initialValues={goalContext}
-                      onSubstageSubmit={createSubmitHandler(gapMergeLogic)}
-                  />
-              );
-          }
-          
         return (
             <GapAnalysisForm
                 initialValues={subData}
@@ -1837,7 +1865,7 @@ const GoalEnginePage = () => {
     }
 
     return null;
-};
+  };
 
   const allDefinitionConfirmed = isStageSubstagesConfirmed('definition');
 

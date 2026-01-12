@@ -25,10 +25,11 @@ const seedWealthData = async () => {
   await connectDB();
 
   try {
-    // 1. Find a target user (First user found)
-    const user = await User.findOne();
+    // 1. Find a target user by email
+    const targetEmail = 'lullaby1479@example.com';
+    const user = await User.findOne({ email: targetEmail });
     if (!user) {
-      console.log('❌ No users found. Please register a user first.');
+      console.log(`❌ User not found for email: ${targetEmail}. Please create the user first.`);
       process.exit(1);
     }
     console.log(`👤 Seeding data for user: ${user.name} (${user.email})`);

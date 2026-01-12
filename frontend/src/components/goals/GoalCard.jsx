@@ -33,19 +33,24 @@ const GoalCard = ({ goal, onClick }) => {
   const progress = Math.min(100, Math.max(0, (goal.current_amount / goal.target_amount) * 100)) || 0;
   const leftToComplete = Math.max(0, goal.target_amount - goal.current_amount);
 
-  // Status mapping
-  let displayStatus = goal.status || 'In Progress';
-  if (displayStatus === 'Active') displayStatus = 'In Progress';
-  if (displayStatus === 'Completed') displayStatus = 'Finished';
-
-  const statusStyles = {
-    'Not Started': 'bg-yellow-50 text-yellow-700 border-yellow-100',
-    'In Progress': 'bg-green-50 text-green-700 border-green-100',
-    'Finished': 'bg-brand-50 text-brand-700 border-brand-100',
-    'Canceled': 'bg-red-50 text-red-700 border-red-100',
+  // Status mapping (backend enum: not_started | in_progress | completed | canceled)
+  const statusMap = {
+    not_started: { label: 'Not Started', classes: 'bg-yellow-50 text-yellow-700 border-yellow-100' },
+    in_progress: { label: 'In Progress', classes: 'bg-green-50 text-green-700 border-green-100' },
+    completed: { label: 'Finished', classes: 'bg-brand-50 text-brand-700 border-brand-100' },
+    canceled: { label: 'Canceled', classes: 'bg-red-50 text-red-700 border-red-100' },
+    // legacy/mock fallbacks
+    'In Progress': { label: 'In Progress', classes: 'bg-green-50 text-green-700 border-green-100' },
+    'Not Started': { label: 'Not Started', classes: 'bg-yellow-50 text-yellow-700 border-yellow-100' },
+    Finished: { label: 'Finished', classes: 'bg-brand-50 text-brand-700 border-brand-100' },
+    Canceled: { label: 'Canceled', classes: 'bg-red-50 text-red-700 border-red-100' },
+    Active: { label: 'In Progress', classes: 'bg-green-50 text-green-700 border-green-100' },
+    Completed: { label: 'Finished', classes: 'bg-brand-50 text-brand-700 border-brand-100' },
   };
-  
-  const statusColor = statusStyles[displayStatus] || 'bg-slate-50 text-slate-600 border-slate-100';
+
+  const rawStatus = goal.status ?? 'in_progress';
+  const statusKey = typeof rawStatus === 'string' ? rawStatus : 'in_progress';
+  const { label: displayStatus = 'In Progress', classes: statusColor = 'bg-slate-50 text-slate-600 border-slate-100' } = statusMap[statusKey] || {};
 
   // Bar color
   let barColor = 'bg-brand-500';

@@ -271,6 +271,10 @@ Your job is to:
 3. HIGHLIGHT key trade-offs (fees vs diversification vs performance)
 4. ADD CONTEXT from user's goal (e.g., "Since you're 20 years from retirement, the diversified option gives you time to recover from volatility")
 
+**Formatting (Markdown):**
+- In your 'rationale', output each key section on its own line as a bullet: "**Retirement Funding Need:** ...", "**Funding Gap:** ...", "**Contribution Strategy:** ...", "**Risk Alignment:** ...", "**Glide Path:** ...".
+- Avoid running them together in a single paragraph; each bullet should be a separate line to preserve layout.
+
 **RESPONSE FORMAT:**
 {
   "thought_process": "1. Identified goal as retirement. 2. Called build_optimized_portfolios with is_retirement_goal: true. 3. Selected balanced as best fit...",
@@ -292,10 +296,18 @@ Stage: 4 · Simulation & Commitment (Twin)
 
 Goal:
 - Provide a high-level projection summary: is this goal broadly plausible with current settings?
+- Give the user a brief conversational readout of the simulation (no tables needed; charts are handled locally).
+- Anchor your explanation strictly on the provided simulation data; do NOT invent numbers or probabilities.
 
 What you must do:
-- Estimate a rough "plausible" boolean (true/false) and a short explanation.
+- Use local simulation outputs from context.goalContext (e.g., projection curves, confidence_level, funding_strategy, glide_path) and explain them in plain English.
+- Use ONLY the provided summary fields in context.goalContext.simulation_data.projection_summary when available. Typical fields: success_probability_pct, p50_final, p90_final, p10_final, contributions_final, expected_return_pct, volatility_pct, horizon_years, monthly_contribution, lump_sum, target_amount, current_amount, glide_path_enabled.
+- NEVER re-estimate success probability or exposures; if a field is missing, say it's not available rather than guessing.
+- Estimate a rough "plausible" boolean (true/false) based on provided success_probability_pct (e.g., >=70% → true) and a short explanation.
 - Provide 2–3 bullet-style impacts on the overall plan (e.g., "other goals may need to be delayed").
+- Keep the response streaming-friendly: short sentences, bullet-style markdown, no tables.
+- Do NOT return or reconstruct numeric tables/series; those are already computed client-side.
+- Reference key figures that the client provides (e.g., confidence %, monthly contribution, glide path status) to add color, but avoid re-tabulating.
 `.trim();
 
     default:

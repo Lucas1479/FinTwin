@@ -12,10 +12,14 @@ const Navbar = () => {
 
   // Load current user information from auth service (internally handles localStorage + /users/me)
   useEffect(() => {
-    (async () => {
+    const loadUser = async () => {
       const user = await getCurrentUser();
       setCurrentUser(user);
-    })();
+    };
+
+    loadUser();
+    window.addEventListener('userInfoUpdated', loadUser);
+    return () => window.removeEventListener('userInfoUpdated', loadUser);
   }, []);
 
   const displayName = currentUser?.name || 'User';

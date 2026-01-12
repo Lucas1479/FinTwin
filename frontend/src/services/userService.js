@@ -22,6 +22,16 @@ export const getUserProfile = async () => {
 export const updateProfile = async (profileData) => {
   try {
     const { data } = await api.put('/users/profile', profileData);
+
+    // Keep navbar/sidebar cached user info in sync with latest display name/email
+    const normalized = {
+      id: data.id || data._id,
+      name: data.name,
+      email: data.email,
+    };
+    localStorage.setItem('userInfo', JSON.stringify(normalized));
+    window.dispatchEvent(new Event('userInfoUpdated'));
+
     return data;
   } catch (error) {
     console.error('[userService] updateProfile failed:', error);
@@ -39,7 +49,8 @@ export const uploadAvatar = async (file) => {
 // Update user password
 export const updatePassword = async (passwords) => {
   try {
-    const { data } = await api.put('/users/password', passwords);
+    // skipAuthRedirect: let caller surface 401 in UI (e.g., wrong current password)
+    const { data } = await api.put('/users/password', passwords, { skipAuthRedirect: true });
     return data;
   } catch (error) {
     console.error('[userService] updatePassword failed:', error);

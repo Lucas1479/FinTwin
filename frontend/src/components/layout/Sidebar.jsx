@@ -17,10 +17,14 @@ const Sidebar = () => {
 
   // Load user data
   useEffect(() => {
-    (async () => {
+    const loadUser = async () => {
       const user = await getCurrentUser();
       setCurrentUser(user);
-    })();
+    };
+
+    loadUser();
+    window.addEventListener('userInfoUpdated', loadUser);
+    return () => window.removeEventListener('userInfoUpdated', loadUser);
   }, []);
 
   const initials = currentUser?.name
