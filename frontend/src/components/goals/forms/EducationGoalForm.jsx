@@ -298,7 +298,6 @@ const GoalVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
                 </div>
             </div>
 
-            {/* 
             <div className="flex justify-end pt-4">
                 <button 
                     type="button" 
@@ -308,7 +307,6 @@ const GoalVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
                     Next: Timeline & Parameters
                 </button>
             </div>
-            */}
         </div>
     );
 };
@@ -487,7 +485,6 @@ const PlanningParametersForm = ({ initialValues, onChange, onSubstageSubmit }) =
                 </div>
             </div>
 
-            {/* 
             <div className="flex justify-end pt-4">
                 <button 
                     type="button" 
@@ -497,7 +494,6 @@ const PlanningParametersForm = ({ initialValues, onChange, onSubstageSubmit }) =
                     Next: Funding Strategy
                 </button>
             </div>
-            */}
         </div>
     );
 };
@@ -538,8 +534,7 @@ const GapFeasibilityForm = ({ initialValues, onSubstageSubmit }) => {
     const coverage = Math.min(100, (totalResources / grossNeed) * 100);
     const isFeasible = coverage >= 90;
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
+    const handleConfirm = () => {
         onSubstageSubmit({
             target_amount: grossNeed,
             ...funding,
@@ -672,17 +667,15 @@ const GapFeasibilityForm = ({ initialValues, onSubstageSubmit }) => {
                 </div>
             </div>
 
-            {/* 
             <div className="flex justify-end pt-4">
                 <button 
                     type="button" 
-                    onClick={handleSubmit}
+                    onClick={handleConfirm}
                     className="btn-primary-rounded px-8 py-3 shadow-lg shadow-brand-200"
                 >
                     Generate Strategy
                 </button>
             </div>
-            */}
         </div>
     );
 };

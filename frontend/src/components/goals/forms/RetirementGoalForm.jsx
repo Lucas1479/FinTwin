@@ -150,7 +150,7 @@ const GoalVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
     };
 
     return (
-        <form onSubmit={(e) => { e.preventDefault(); onSubstageSubmit(formData); }} className="space-y-8 animate-fade-in">
+        <div className="space-y-8 animate-fade-in">
             {/* Header */}
             <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 rounded-3xl p-6 border border-indigo-100 relative overflow-hidden">
                 <div className="flex items-start gap-4 relative z-10">
@@ -352,11 +352,15 @@ const GoalVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
             </div>
 
             <div className="flex justify-end pt-4">
-                <button type="submit" className="btn-primary-rounded px-8 py-3 shadow-lg shadow-brand-200">
+                <button 
+                    type="button" 
+                    onClick={() => onSubstageSubmit(formData)}
+                    className="btn-primary-rounded px-8 py-3 shadow-lg shadow-brand-200"
+                >
                     Save & Continue
                 </button>
             </div>
-        </form>
+        </div>
     );
 };
 
@@ -396,7 +400,7 @@ const PlanningParametersForm = ({ initialValues, onChange, onSubstageSubmit, nee
     const yearsInRetirement = Math.max(0, formData.life_expectancy - formData.retirement_age);
 
     return (
-        <form onSubmit={(e) => { e.preventDefault(); onSubstageSubmit(formData); }} className="space-y-8 animate-fade-in">
+        <div className="space-y-8 animate-fade-in">
              {/* Header */}
              <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 rounded-3xl p-6 border border-indigo-100 relative overflow-hidden">
                 <div className="flex items-start gap-4 relative z-10">
@@ -535,11 +539,15 @@ const PlanningParametersForm = ({ initialValues, onChange, onSubstageSubmit, nee
             </div>
 
             <div className="flex justify-end pt-4">
-                <button type="submit" className="btn-primary-rounded px-8 py-3 shadow-lg shadow-brand-200">
+                <button 
+                    type="button" 
+                    onClick={() => onSubstageSubmit(formData)}
+                    className="btn-primary-rounded px-8 py-3 shadow-lg shadow-brand-200"
+                >
                     Confirm Parameters
                 </button>
             </div>
-        </form>
+        </div>
     );
 };
 
@@ -604,8 +612,7 @@ const GapFeasibilityForm = ({ initialValues, onChange, onSubstageSubmit, needsRe
     
     const isFeasible = feasibilityScore > 60; // Generous threshold
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
+    const handleConfirm = () => {
         onSubstageSubmit({
             // Pass confirmed required amount
             target_amount: requiredNestEgg,
@@ -619,7 +626,7 @@ const GapFeasibilityForm = ({ initialValues, onChange, onSubstageSubmit, needsRe
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-8 animate-fade-in">
+        <div className="space-y-8 animate-fade-in">
              {/* Header */}
              <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 rounded-3xl p-6 border border-indigo-100 relative overflow-hidden">
                 <div className="flex items-start gap-4 relative z-10">
@@ -856,11 +863,15 @@ const GapFeasibilityForm = ({ initialValues, onChange, onSubstageSubmit, needsRe
             )}
 
             <div className="flex justify-end pt-4">
-                <button type="submit" className="btn-primary-rounded px-8 py-3 shadow-lg shadow-brand-200">
+                <button 
+                    type="button" 
+                    onClick={handleConfirm}
+                    className="btn-primary-rounded px-8 py-3 shadow-lg shadow-brand-200"
+                >
                     Confirm & Generate Strategy
                 </button>
             </div>
-        </form>
+        </div>
     );
 };
 

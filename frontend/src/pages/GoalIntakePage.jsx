@@ -6,7 +6,7 @@ import MainLayout from '../components/layout/MainLayout';
 import GoalDefinitionForm from '../components/goals/GoalDefinitionForm';
 import HomeGoalForm from '../components/goals/forms/HomeGoalForm';
 import RetirementGoalForm from '../components/goals/forms/RetirementGoalForm';
-import EducationGoalForm from '../components/goals/forms/EducationGoalForm';
+import { renderGoalForm, hasCustomForm } from '../components/goals/forms/GoalFormRegistry.jsx';
 import StageStrategy from '../components/goals/StageStrategy';
 import StageProduct from '../components/goals/StageProduct';
 import StageSimulation, { runMonteCarlo } from '../components/goals/StageSimulation';
@@ -1782,47 +1782,46 @@ const GoalEnginePage = () => {
   // Removed: No longer need awaiting_confirm state - forms auto-confirm on submit
 
   const renderDefinitionSubstageBody = (subId, needsRecompute = false) => {
-      if (currentStageId !== 'definition' || !subId) return null;
-      const status = getSubstageStatus('definition', subId);
-      const subData = substageData?.definition?.[subId]?.data || {};
-
-      // If confirmed, don't render form (card is rendered in the main render loop)
-      if (status === 'confirmed') return null;
-
-      // Common submit handler that merges data appropriately
-      const createSubmitHandler = (mergeLogic) => (payload) => {
-          const finalPayload = mergeLogic ? mergeLogic(payload) : payload;
+      const subData = substageData.definition?.[subId]?.data || {};
+      
+      const createSubmitHandler = (transformPayload) => (payload) => {
+          const finalPayload = transformPayload ? transformPayload(payload) : payload;
           handleSubstageSubmit('definition', subId, finalPayload);
       };
 
+      // 1. Unified Registry Lookup for Custom Forms
+      if (hasCustomForm(goalContext.category)) {
+          // Special handling for Gap Analysis merge logic
+          const submitHandler = subId === 'gap_analysis' 
+              ? createSubmitHandler((payload) => {
+                  handleContextUpdate({ 
+                      simulation_data: { 
+                          financials: { 
+                              ...goalContext.simulation_data?.financials, 
+                              gap_inputs: payload 
+                          } 
+                      } 
+                  });
+                  return payload;
+              })
+              : createSubmitHandler();
+
+          const customForm = renderGoalForm(goalContext.category, {
+              activeSubstage: subId,
+              substageData: subData,
+              initialValues: goalContext,
+              onChange: handleContextUpdate,
+              onSubstageSubmit: submitHandler,
+              needsRecompute
+          });
+
+          if (customForm) return customForm;
+      }
+
+      // 2. Fallbacks for Generic/Legacy Flows
+      
       // === GOAL DISCOVERY ===
       if (subId === 'goal_discovery') {
-          // Retirement: Use custom form
-          if (goalContext.category === 'retirement') {
-              return (
-                  <RetirementGoalForm
-                      activeSubstage="goal_discovery"
-                      initialValues={goalContext}
-                      onChange={handleContextUpdate}
-                      onSubstageSubmit={createSubmitHandler()}
-                      needsRecompute={needsRecompute}
-                  />
-              );
-          }
-          
-          // Home: Use custom form
-          if (goalContext.category === 'home') {
-              return (
-                  <HomeGoalForm
-                      activeSubstage="goal_discovery"
-                      initialValues={goalContext}
-                      onChange={handleContextUpdate}
-                      onSubstageSubmit={createSubmitHandler()}
-                  />
-              );
-          }
-          
-          // Generic: Use standard form
           return (
               <GoalDefinitionForm
                   onSubmit={createSubmitHandler()}
@@ -1835,43 +1834,6 @@ const GoalEnginePage = () => {
 
       // === ASSUMPTIONS ===
       if (subId === 'assumptions') {
-          if (goalContext.category === 'retirement') {
-              return (
-                  <RetirementGoalForm
-                      activeSubstage="assumptions"
-                      substageData={subData}
-                      initialValues={goalContext}
-                      onChange={handleContextUpdate}
-                      onSubstageSubmit={createSubmitHandler()}
-                      needsRecompute={needsRecompute}
-                  />
-              );
-          }
-          
-          if (goalContext.category === 'home') {
-              return (
-                  <HomeGoalForm
-                      activeSubstage="assumptions"
-                      substageData={subData}
-                      initialValues={goalContext}
-                      onSubstageSubmit={createSubmitHandler()}
-                  />
-              );
-          }
-
-          if (goalContext.category === 'education') {
-              return (
-                  <EducationGoalForm
-                      activeSubstage="assumptions"
-                      substageData={subData}
-                      initialValues={goalContext}
-                      onChange={handleContextUpdate}
-                      onSubstageSubmit={createSubmitHandler()}
-                      needsRecompute={needsRecompute}
-                  />
-              );
-          }
-          
           return (
               <AssumptionForm
                   initialValues={subData}
@@ -1883,7 +1845,6 @@ const GoalEnginePage = () => {
       // === GAP ANALYSIS ===
       if (subId === 'gap_analysis') {
           const gapMergeLogic = (payload) => {
-              // Also update simulation_data.financials.gap_inputs for consistency
               handleContextUpdate({ 
                   simulation_data: { 
                       financials: { 
@@ -1895,44 +1856,7 @@ const GoalEnginePage = () => {
               return payload;
           };
           
-          if (goalContext.category === 'retirement') {
-              return (
-                  <RetirementGoalForm
-                      activeSubstage="gap_analysis"
-                      substageData={subData}
-                      initialValues={goalContext}
-                      onChange={handleContextUpdate}
-                      onSubstageSubmit={createSubmitHandler(gapMergeLogic)}
-                      needsRecompute={needsRecompute}
-                  />
-              );
-          }
-          
-          if (goalContext.category === 'home') {
-              return (
-                  <HomeGoalForm
-                      activeSubstage="gap_analysis"
-                      substageData={subData}
-                      initialValues={goalContext}
-                      onSubstageSubmit={createSubmitHandler(gapMergeLogic)}
-                  />
-              );
-          }
-
-          if (goalContext.category === 'education') {
-              return (
-                  <EducationGoalForm
-                      activeSubstage="gap_analysis"
-                      substageData={subData}
-                      initialValues={goalContext}
-                      onChange={handleContextUpdate}
-                      onSubstageSubmit={createSubmitHandler(gapMergeLogic)}
-                      needsRecompute={needsRecompute}
-                  />
-              );
-          }
-          
-          return (
+        return (
             <GapAnalysisForm
                 initialValues={subData}
                 onSubmit={createSubmitHandler(gapMergeLogic)}
@@ -1941,7 +1865,7 @@ const GoalEnginePage = () => {
     }
 
     return null;
-};
+  };
 
   const allDefinitionConfirmed = isStageSubstagesConfirmed('definition');
 
