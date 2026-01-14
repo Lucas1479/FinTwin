@@ -88,6 +88,18 @@ const HomeVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
 
     // Propagate changes
     useEffect(() => {
+        // --- FIX: Don't overwrite if we just synced from AI/InitialValues ---
+        const isInitialSync = 
+            formData.property_price_estimate === (initialValues.goal_details?.property_price_estimate || 800000) &&
+            formData.deposit_percentage === (initialValues.goal_details?.deposit_percentage || 20) &&
+            formData.location === (initialValues.goal_details?.location || 'Auckland') &&
+            formData.property_type === (initialValues.goal_details?.property_type || 'house') &&
+            formData.property_condition === (initialValues.goal_details?.property_condition || 'turn_key');
+
+        if (isInitialSync && initialValues.target_amount) {
+            return;
+        }
+
         onChange?.({
             goal_name: formData.goal_name,
             target_amount: targetDeposit,
