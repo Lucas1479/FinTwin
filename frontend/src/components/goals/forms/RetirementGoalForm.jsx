@@ -59,27 +59,56 @@ const GoalVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
         }
     };
 
+    // Helper: Find closest lifestyle tier based on amount
+    const getClosestTier = (amount, location, lumpyExpenses) => {
+        const locKey = location === 'Auckland' ? 'Auckland' : 'Regional';
+        let lumpyAddon = 0;
+        if (lumpyExpenses.includes('travel_biannual')) lumpyAddon += 5000;
+        if (lumpyExpenses.includes('new_car_5y')) lumpyAddon += 4000;
+
+        let bestTier = 'comfortable';
+        let minDiff = Infinity;
+
+        Object.entries(LIFESTYLES).forEach(([key, config]) => {
+            const base = config.baseCost[locKey] || config.baseCost['Regional'];
+            const total = base + lumpyAddon;
+            const diff = Math.abs(total - amount);
+            if (diff < minDiff) {
+                minDiff = diff;
+                bestTier = key;
+            }
+        });
+        return bestTier;
+    };
+
     // Sync with AI/Parent updates
     useEffect(() => {
         if (initialValues.goal_details || initialValues.goal_name || initialValues.priority) {
             setFormData(prev => {
                 const newVal = initialValues.goal_details || {};
+                
+                // If AI provided a value but not a tier (or just syncing), find the best matching tier
+                const amount = newVal.living_expense_pa || prev.living_expense_pa;
+                const loc = newVal.location || prev.location;
+                const lumpy = newVal.lumpy_expenses || prev.lumpy_expenses;
+                const inferredTier = getClosestTier(amount, loc, lumpy);
+
                 // Avoid unnecessary updates if data is consistent
-                if (prev.lifestyle_tier === newVal.lifestyle_tier && 
-                    prev.living_expense_pa === newVal.living_expense_pa &&
-                    prev.location === newVal.location &&
+                if (prev.lifestyle_tier === (newVal.lifestyle_tier || inferredTier) && 
+                    prev.living_expense_pa === amount &&
+                    prev.location === loc &&
                     prev.priority === initialValues.priority &&
-                    JSON.stringify(prev.lumpy_expenses) === JSON.stringify(newVal.lumpy_expenses)) {
+                    JSON.stringify(prev.lumpy_expenses) === JSON.stringify(lumpy)) {
                     return prev;
                 }
                 return {
                     ...prev,
                     goal_name: initialValues.goal_name || prev.goal_name,
                     priority: initialValues.priority || prev.priority,
-                    location: newVal.location || prev.location,
-                    lifestyle_tier: newVal.lifestyle_tier || prev.lifestyle_tier,
-                    lumpy_expenses: newVal.lumpy_expenses || prev.lumpy_expenses,
-                    living_expense_pa: newVal.living_expense_pa || prev.living_expense_pa,
+                    location: loc,
+                    lifestyle_tier: newVal.lifestyle_tier || inferredTier,
+                    lumpy_expenses: lumpy,
+                    living_expense_pa: amount,
                     notes: newVal.notes || prev.notes
                 };
             });
@@ -96,6 +125,19 @@ const GoalVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
         
         const newTotal = base + lumpyAddon;
         
+        // --- FIX: Don't overwrite if we just synced from AI/InitialValues ---
+        // We only want to auto-calculate if the user actually changed one of the triggers
+        // away from the initial values provided.
+        const isInitialSync = 
+            formData.lifestyle_tier === (initialValues.goal_details?.lifestyle_tier || 'comfortable') &&
+            formData.location === (initialValues.goal_details?.location || 'Auckland') &&
+            JSON.stringify(formData.lumpy_expenses) === JSON.stringify(initialValues.goal_details?.lumpy_expenses || []);
+
+        if (isInitialSync && initialValues.goal_details?.living_expense_pa) {
+            // Respect the AI/initial value
+            return;
+        }
+
         // Update local state (Visual Update)
         setFormData(prev => {
             if (prev.living_expense_pa === newTotal) return prev;
@@ -139,12 +181,21 @@ const GoalVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
         if (expenseFreq === 'week') annual = num * 52;
         if (expenseFreq === 'month') annual = num * 12;
         
-        setFormData(prev => ({ ...prev, living_expense_pa: annual }));
+        // --- FIX: Also map value back to closest tag ---
+        const newTier = getClosestTier(annual, formData.location, formData.lumpy_expenses);
+
+        setFormData(prev => ({ 
+            ...prev, 
+            living_expense_pa: annual,
+            lifestyle_tier: newTier 
+        }));
+
         // Also notify parent
         onChange?.({
             goal_details: {
                 ...initialValues.goal_details,
-                living_expense_pa: annual
+                living_expense_pa: annual,
+                lifestyle_tier: newTier
             }
         });
     };
