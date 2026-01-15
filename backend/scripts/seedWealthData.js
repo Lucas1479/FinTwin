@@ -26,7 +26,7 @@ const seedWealthData = async () => {
 
   try {
     // 1. Find a target user by email
-    const targetEmail = 'lullaby1479@example.com';
+    const targetEmail = 'Lullaby147@demo.com';
     const user = await User.findOne({ email: targetEmail });
     if (!user) {
       console.log(`❌ User not found for email: ${targetEmail}. Please create the user first.`);
@@ -34,9 +34,9 @@ const seedWealthData = async () => {
     }
     console.log(`👤 Seeding data for user: ${user.name} (${user.email})`);
 
-    // 2. Clear existing assets for this user
-    await FinancialAsset.deleteMany({ user_id: user._id });
-    console.log('🗑️  Cleared existing financial assets/liabilities.');
+    // 2. Add data (No longer clearing existing assets to support "Create" mode)
+    // await FinancialAsset.deleteMany({ user_id: user._id });
+    console.log('➕ Adding new financial assets/liabilities (existing ones preserved).');
 
     // 3. Find some Products to link (KiwiSaver & Fund)
     const kiwiSaverProduct = await Product.findOne({ category: 'KiwiSaver', strategy: 'Growth' });

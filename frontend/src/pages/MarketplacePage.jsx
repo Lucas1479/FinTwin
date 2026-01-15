@@ -6,6 +6,7 @@ import HorizontalFilterBar from "../components/marketplace/HorizontalFilterBar";
 import SorterBar from "../components/marketplace/SorterBar";
 import ProductGrid from "../components/marketplace/ProductGrid";
 import ComparisonDock from "../components/marketplace/ComparisonDock";
+import ComparisonModal from "../components/marketplace/ComparisonModal";
 import ProductDetailsModal from "../components/marketplace/ProductDetailsModal";
 import productService from "../services/productService";
 import { fetchCurrentUserProfile } from "../utils/api";
@@ -176,6 +177,7 @@ const MarketplacePage = () => {
     hideIneligible: false,
   });
   const [compareList, setCompareList] = useState([]);
+  const [compareOpen, setCompareOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
@@ -223,6 +225,12 @@ const MarketplacePage = () => {
   }, [loadPage]);
 
   useEffect(() => { setDisplayPage(1); }, [filters]);
+
+  useEffect(() => {
+    if (compareList.length < 2) {
+      setCompareOpen(false);
+    }
+  }, [compareList.length]);
 
   // ... (Computed values unchanged) ...
   const providerOptions = useMemo(() => {
@@ -381,7 +389,17 @@ const MarketplacePage = () => {
           </div>
         </div>
 
-        <ComparisonDock compareList={compareList} products={products} onClear={() => setCompareList([])} />
+        <ComparisonDock
+          compareList={compareList}
+          products={products}
+          onClear={() => { setCompareList([]); setCompareOpen(false); }}
+          onCompare={() => setCompareOpen(true)}
+        />
+        <ComparisonModal
+          open={compareOpen}
+          onClose={() => setCompareOpen(false)}
+          products={compareList.map(id => products.find(p => p.id === id)).filter(Boolean)}
+        />
         <ProductDetailsModal 
           product={selectedProduct} 
           loading={detailsLoading}

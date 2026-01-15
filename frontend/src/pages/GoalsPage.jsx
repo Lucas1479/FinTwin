@@ -81,15 +81,30 @@ const GoalsPage = () => {
     setIsLoading(true);
     try {
       const realGoals = await getGoals();
-      const combinedGoals = [...(realGoals || []), ...MOCK_GOALS];
-      const uniqueGoals = Array.from(new Map(combinedGoals.map(g => [g._id, g])).values());
-      setGoals(uniqueGoals);
+      const hasRealGoals = Array.isArray(realGoals) && realGoals.length > 0;
+      setGoals(hasRealGoals ? realGoals : MOCK_GOALS);
     } catch (error) {
       console.error('Failed to fetch goals:', error);
       setGoals(MOCK_GOALS);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const normalizeStatus = (status) => {
+    if (!status) return 'in_progress';
+    const raw = String(status).toLowerCase().replace(/\s+/g, '_');
+    if (raw === 'active') return 'in_progress';
+    if (raw === 'finished') return 'completed';
+    return raw;
+  };
+
+  const getGoalTimestamp = (goal) => {
+    const rawDate = goal.target_date || goal.due_date;
+    if (!rawDate) return null;
+    const parsed = new Date(rawDate);
+    const time = parsed.getTime();
+    return Number.isNaN(time) ? null : time;
   };
 
   // Derived state: Filtered and Sorted Goals
@@ -119,30 +134,28 @@ const GoalsPage = () => {
 
     // 2. Filter by Status
     if (filters.status !== 'all') {
-      if (filters.status === 'in_progress') {
-        result = result.filter(g => {
-          const s = g.status || 'In Progress';
-          return s === 'In Progress' || s === 'Active';
-        });
-      } else if (filters.status === 'not_started') {
-        result = result.filter(g => g.status === 'Not Started');
-      }
+      result = result.filter(g => normalizeStatus(g.status) === filters.status);
     }
 
     // 3. Sort
     result.sort((a, b) => {
       const nameA = (a.title || a.goal_name || '').toLowerCase();
       const nameB = (b.title || b.goal_name || '').toLowerCase();
-      const dateA = new Date(a.target_date || a.due_date || 0).getTime();
-      const dateB = new Date(b.target_date || b.due_date || 0).getTime();
+      const dateA = getGoalTimestamp(a);
+      const dateB = getGoalTimestamp(b);
       const amtA = a.target_amount || 0;
       const amtB = b.target_amount || 0;
+
+      const statusPriority = normalizeStatus(a.status) === 'in_progress' ? 0 : 1;
+      const statusPriorityB = normalizeStatus(b.status) === 'in_progress' ? 0 : 1;
 
       switch (filters.sortBy) {
         case 'name_asc': return nameA.localeCompare(nameB);
         case 'name_desc': return nameB.localeCompare(nameA);
         case 'amount_desc': return amtB - amtA;
-        case 'date_asc': return dateA - dateB;
+        case 'date_asc':
+          if (statusPriority !== statusPriorityB) return statusPriority - statusPriorityB;
+          return (dateA ?? Number.POSITIVE_INFINITY) - (dateB ?? Number.POSITIVE_INFINITY);
         default: return 0;
       }
     });
@@ -227,7 +240,7 @@ const GoalsPage = () => {
           </div>
           
           <Link 
-            to="/goals/new" 
+            to="/goals/new/ai" 
             className="btn-primary-rounded flex items-center gap-2 shadow-lg shadow-brand-500/20 hover:shadow-brand-500/30 transition-all px-5 py-2.5 text-sm"
           >
             <Plus size={18} strokeWidth={2.5} />

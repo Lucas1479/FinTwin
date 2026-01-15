@@ -14,7 +14,7 @@ connectDB();
 
 const seedData = async () => {
   try {
-    const email = 'lullaby1479@example.com';
+    const email = 'Lullaby147@demo.com';
     const user = await User.findOne({ email });
 
     if (!user) {
@@ -24,9 +24,9 @@ const seedData = async () => {
 
     console.log(`Found user: ${user.name} (${user._id})`);
 
-    // Clear existing data
-    await CashFlow.deleteMany({ user_id: user._id });
-    console.log('Cleared existing Cash Flow data');
+    // Clear existing data (Commented out to support "Create" mode)
+    // await CashFlow.deleteMany({ user_id: user._id });
+    console.log('Adding new Cash Flow data (existing ones preserved)');
 
     // Seed Data
     const cashFlows = [

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Upload, Check, ScanLine, DollarSign, Calendar, Building, Tag, Percent, ArrowRight, Trash2, TrendingUp, Sparkles } from 'lucide-react';
+import { X, Upload, Check, ScanLine, DollarSign, Calendar, Building, Tag, Percent, ArrowRight, Trash2, TrendingUp, Sparkles, ArrowRightLeft } from 'lucide-react';
 import { createAsset, updateAsset, deleteAsset } from '../../services/wealthService';
 import { createPassiveIncome, deletePassiveIncomesByAsset } from '../../services/cashFlowService';
 
@@ -33,7 +33,9 @@ const CATEGORY_LABELS = {
   Other_Liability: 'Other Debt'
 };
 
-const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null }) => {
+const CASH_CATEGORIES = ['Cash_Bank', 'Cash_Physical', 'Cash_TermDeposit'];
+
+const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null, onOpenConversion }) => {
   const [recordType, setRecordType] = useState('Asset');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [step, setStep] = useState(1);
@@ -198,6 +200,13 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleOpenConversion = () => {
+    if (!assetToEdit || assetToEdit.record_type !== 'Asset') return;
+    const isCash = CASH_CATEGORIES.includes(assetToEdit.category);
+    onClose();
+    onOpenConversion?.(assetToEdit, isCash ? 'cash-to-asset' : 'asset-to-cash');
   };
 
   const updateDetail = (field, value) => {
@@ -488,15 +497,26 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null }) => {
           <div className="px-8 py-5 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
             
             {/* Left: Back (Create) or Delete (Edit) */}
-            <div>
+            <div className="flex items-center gap-3">
               {assetToEdit ? (
-                <button 
-                  type="button"
-                  onClick={handleDelete}
-                  className="text-sm font-bold text-rose-500 hover:text-rose-700 flex items-center gap-1.5 px-2 py-1 rounded hover:bg-rose-50 transition-colors"
-                >
-                  <Trash2 size={16} /> Delete
-                </button>
+                <>
+                  {assetToEdit.record_type === 'Asset' && (
+                    <button
+                      type="button"
+                      onClick={handleOpenConversion}
+                      className="text-sm font-bold text-slate-500 hover:text-indigo-600 flex items-center gap-1.5 px-2 py-1 rounded hover:bg-indigo-50 transition-colors"
+                    >
+                      <ArrowRightLeft size={16} /> Convert
+                    </button>
+                  )}
+                  <button 
+                    type="button"
+                    onClick={handleDelete}
+                    className="text-sm font-bold text-rose-500 hover:text-rose-700 flex items-center gap-1.5 px-2 py-1 rounded hover:bg-rose-50 transition-colors"
+                  >
+                    <Trash2 size={16} /> Delete
+                  </button>
+                </>
               ) : (
                 <button 
                   type="button"

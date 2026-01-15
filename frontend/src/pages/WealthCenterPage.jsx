@@ -1,7 +1,9 @@
 import React, { useState, useEffect, createContext, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import * as wealthService from '../services/wealthService';
 import MainLayout from '../components/layout/MainLayout';
 import AddAssetModal from '../components/wealth/AssetFormModal'; // Renamed import
+import AssetConversionModal from '../components/wealth/AssetConversionModal';
 import WealthOverview from './wealth/WealthOverview';
 import WealthPortfolio from './wealth/WealthPortfolio';
 import WealthCashflow from './wealth/WealthCashflow';
@@ -13,10 +15,14 @@ import { getGoals } from '../services/goalService';
 export const WealthContext = createContext(null);
 
 const WealthCenterPage = () => {
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'portfolio' | 'cashflow'
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState(null);
+  const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
+  const [convertAsset, setConvertAsset] = useState(null);
+  const [convertMode, setConvertMode] = useState('asset-to-cash');
   const { timeOffset, marketMode } = useSimulation();
   
   const [data, setData] = useState({
@@ -58,6 +64,16 @@ const WealthCenterPage = () => {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const stateTab = location.state?.tab;
+    const params = new URLSearchParams(location.search);
+    const queryTab = params.get('tab');
+    const nextTab = stateTab || queryTab;
+    if (nextTab && ['overview', 'portfolio', 'cashflow'].includes(nextTab)) {
+      setActiveTab(nextTab);
+    }
+  }, [location.state, location.search]);
+
   const handleEditAsset = (asset) => {
     setEditingAsset(asset);
     setIsAddModalOpen(true);
@@ -66,6 +82,17 @@ const WealthCenterPage = () => {
   const handleCloseModal = () => {
     setIsAddModalOpen(false);
     setTimeout(() => setEditingAsset(null), 300);
+  };
+
+  const handleOpenConversion = (asset, mode) => {
+    setConvertAsset(asset);
+    setConvertMode(mode);
+    setIsConvertModalOpen(true);
+  };
+
+  const handleCloseConversion = () => {
+    setIsConvertModalOpen(false);
+    setTimeout(() => setConvertAsset(null), 300);
   };
 
   // --- Simulation Interceptor ---
@@ -85,7 +112,8 @@ const WealthCenterPage = () => {
     } || data, 
     loading, 
     onAddAsset: () => { setEditingAsset(null); setIsAddModalOpen(true); },
-    onEditAsset: handleEditAsset
+    onEditAsset: handleEditAsset,
+    onOpenConversion: handleOpenConversion
   };
 
   return (
@@ -152,6 +180,17 @@ const WealthCenterPage = () => {
           onClose={handleCloseModal} 
           onRefresh={fetchData}
           assetToEdit={editingAsset}
+          onOpenConversion={handleOpenConversion}
+        />
+
+        <AssetConversionModal
+          isOpen={isConvertModalOpen}
+          onClose={handleCloseConversion}
+          onRefresh={fetchData}
+          asset={convertAsset}
+          mode={convertMode}
+          cashAssets={data.assets}
+          nonCashAssets={data.assets}
         />
         
       </div>

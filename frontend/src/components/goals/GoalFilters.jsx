@@ -1,60 +1,48 @@
-import { useState } from 'react';
 import { Calendar, ArrowUpDown, Filter, RotateCcw, XCircle } from 'lucide-react';
 
 const GoalFilters = ({ filters, onFilterChange, onReset, hasActiveFilters }) => {
-  const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
-  const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
-
   // Helper to update a filter field
   const updateFilter = (key, value) => {
-    onFilterChange({ ...filters, [key]: value });
-    if (key === 'dateRange') setIsDateDropdownOpen(false);
-    if (key === 'sortBy') setIsSortDropdownOpen(false);
+    onFilterChange(prev => ({ ...prev, [key]: value }));
+  };
+
+  const dateOptions = ['all', 'this_year', 'next_year'];
+  const sortOptions = ['date_asc', 'name_asc', 'name_desc', 'amount_desc'];
+
+  const cycleOption = (key, options, current) => {
+    const index = options.indexOf(current);
+    const nextIndex = index === -1 ? 0 : (index + 1) % options.length;
+    updateFilter(key, options[nextIndex]);
   };
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-2 rounded-3xl border border-slate-100 shadow-sm relative z-20">
       <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 no-scrollbar w-full md:w-auto">
         
-        {/* Date Range Dropdown */}
+        {/* Date Range Selector */}
         <div className="relative">
           <button 
-            onClick={() => setIsDateDropdownOpen(!isDateDropdownOpen)}
+            type="button"
+            onClick={() => cycleOption('dateRange', dateOptions, filters.dateRange)}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-colors whitespace-nowrap ${
               filters.dateRange !== 'all' ? 'bg-brand-50 text-brand-700' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
             }`}
           >
             <Calendar size={14} /> 
-            {filters.dateRange === 'all' ? 'All time' : filters.dateRange === 'this_year' ? 'This year' : filters.dateRange}
+            {filters.dateRange === 'all' ? 'All time' : filters.dateRange === 'this_year' ? 'This year' : 'Next year'}
           </button>
-          
-          {isDateDropdownOpen && (
-             <div className="absolute top-full left-0 mt-2 w-40 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-50 animate-in fade-in zoom-in-95 duration-200">
-                <button onClick={() => updateFilter('dateRange', 'this_year')} className="w-full text-left px-4 py-2 text-xs font-medium hover:bg-slate-50 text-slate-700">This year</button>
-                <button onClick={() => updateFilter('dateRange', 'next_year')} className="w-full text-left px-4 py-2 text-xs font-medium hover:bg-slate-50 text-slate-700">Next year</button>
-                <button onClick={() => updateFilter('dateRange', 'all')} className="w-full text-left px-4 py-2 text-xs font-medium hover:bg-slate-50 text-slate-700 border-t border-slate-50">All time</button>
-             </div>
-          )}
         </div>
 
-        {/* Sort By Dropdown */}
+        {/* Sort Selector */}
         <div className="relative">
           <button 
-            onClick={() => setIsSortDropdownOpen(!isSortDropdownOpen)}
+            type="button"
+            onClick={() => cycleOption('sortBy', sortOptions, filters.sortBy)}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-100 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors whitespace-nowrap"
           >
             <ArrowUpDown size={14} /> 
-            Sort by: {filters.sortBy === 'name_asc' ? 'Name A-Z' : filters.sortBy === 'name_desc' ? 'Name Z-A' : filters.sortBy === 'amount_desc' ? 'Highest Amount' : 'Date'}
+            Sort by: {filters.sortBy === 'name_asc' ? 'Name A-Z' : filters.sortBy === 'name_desc' ? 'Name Z-A' : filters.sortBy === 'amount_desc' ? 'Highest Amount' : 'Due Date'}
           </button>
-
-          {isSortDropdownOpen && (
-             <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-50 animate-in fade-in zoom-in-95 duration-200">
-                <button onClick={() => updateFilter('sortBy', 'name_asc')} className="w-full text-left px-4 py-2 text-xs font-medium hover:bg-slate-50 text-slate-700">Name (A-Z)</button>
-                <button onClick={() => updateFilter('sortBy', 'name_desc')} className="w-full text-left px-4 py-2 text-xs font-medium hover:bg-slate-50 text-slate-700">Name (Z-A)</button>
-                <button onClick={() => updateFilter('sortBy', 'amount_desc')} className="w-full text-left px-4 py-2 text-xs font-medium hover:bg-slate-50 text-slate-700">Highest Amount</button>
-                <button onClick={() => updateFilter('sortBy', 'date_asc')} className="w-full text-left px-4 py-2 text-xs font-medium hover:bg-slate-50 text-slate-700">Due Date (Soonest)</button>
-             </div>
-          )}
         </div>
 
         <button className="p-2 text-slate-400 hover:text-brand-600 transition-colors hover:bg-slate-50 rounded-xl">
@@ -77,17 +65,30 @@ const GoalFilters = ({ filters, onFilterChange, onReset, hasActiveFilters }) => 
                {filters.status === 'in_progress' && <XCircle size={12} className="opacity-60 hover:opacity-100"/>}
            </button>
 
-           {/* Status Toggle: Not Started */}
+           {/* Status Toggle: Completed */}
            <button 
-             onClick={() => updateFilter('status', filters.status === 'not_started' ? 'all' : 'not_started')}
+             onClick={() => updateFilter('status', filters.status === 'completed' ? 'all' : 'completed')}
              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border whitespace-nowrap transition-colors ${
-                filters.status === 'not_started' 
-                  ? 'bg-yellow-50 text-yellow-600 border-yellow-100' 
-                  : 'bg-white border-slate-200 text-slate-500 hover:border-yellow-500 hover:text-yellow-600'
+                filters.status === 'completed' 
+                  ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
+                  : 'bg-white border-slate-200 text-slate-500 hover:border-emerald-500 hover:text-emerald-600'
              }`}
            >
-               Not started
-               {filters.status === 'not_started' && <XCircle size={12} className="opacity-60 hover:opacity-100"/>}
+               Completed
+               {filters.status === 'completed' && <XCircle size={12} className="opacity-60 hover:opacity-100"/>}
+           </button>
+
+           {/* Status Toggle: Canceled */}
+           <button 
+             onClick={() => updateFilter('status', filters.status === 'canceled' ? 'all' : 'canceled')}
+             className={`px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border whitespace-nowrap transition-colors ${
+                filters.status === 'canceled' 
+                  ? 'bg-rose-50 text-rose-600 border-rose-100' 
+                  : 'bg-white border-slate-200 text-slate-500 hover:border-rose-500 hover:text-rose-600'
+             }`}
+           >
+               Canceled
+               {filters.status === 'canceled' && <XCircle size={12} className="opacity-60 hover:opacity-100"/>}
            </button>
         </div>
         

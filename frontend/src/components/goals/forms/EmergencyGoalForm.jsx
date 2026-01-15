@@ -195,15 +195,16 @@ const EmergencyVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
 // Goal: Turn the rough guess into a calculated scientific target
 const EmergencyPlanningParametersForm = ({ initialValues, onChange, onSubstageSubmit }) => {
     const details = initialValues.goal_details || {};
+    const injectedProfile = initialValues.user_financial_profile || {}; 
     
     const [formData, setFormData] = useState({
-        // Detailed Audit
-        fixed_expenses: details.fixed_expenses || Math.round(details.monthly_spend_est * 0.6) || 1800,
-        variable_expenses: details.variable_expenses || Math.round(details.monthly_spend_est * 0.4) || 1200,
+        // Detailed Audit: Prefer existing details > injected backend data > rough estimate > default
+        fixed_expenses: details.fixed_expenses ?? injectedProfile.monthly_fixed_expenses ?? Math.round(details.monthly_spend_est * 0.6) ?? 1800,
+        variable_expenses: details.variable_expenses ?? injectedProfile.monthly_variable_expenses ?? Math.round(details.monthly_spend_est * 0.4) ?? 1200,
         
         // Risk Adjustments
-        income_source_volatility: details.income_source_volatility || 'medium',
-        has_income_protection: details.has_income_protection || false,
+        income_source_volatility: details.income_source_volatility ?? 'medium',
+        has_income_protection: details.has_income_protection ?? injectedProfile.has_income_protection ?? false,
         ip_wait_period_weeks: details.ip_wait_period_weeks || 13,
         
         // Final Target Settings
