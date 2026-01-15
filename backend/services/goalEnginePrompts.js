@@ -72,11 +72,16 @@ ${discovery.living_expense_pa ? `- Living expense: $${discovery.living_expense_p
 ${discovery.property_price_estimate ? `- Property price: $${discovery.property_price_estimate}` : ''}
 ${discovery.target_amount ? `- Target: $${discovery.target_amount}` : ''}
 
+If context.user_financial_profile exists (emergency fund pre-fill):
+- It contains factual monthly expenses, dependents/household structure, income protection flag, and liquid assets pulled from Wealth Centre.
+- **Do not invent or overwrite these numbers.** If present, echo them into ai_decision.user_financial_profile and reference them in your rationale (e.g., burn rate, volatility, insurance buffer).
+
 What you must do:
 - Return common assumptions: expected_return_pct, inflation_pct, risk_attitude
 - Category-specific assumptions:
   * Retirement: retirement_age, life_expectancy, include_superannuation
   * Home: mortgage_rate_pct, loan_term_years
+  * Emergency: use user_financial_profile to justify conservative, highly liquid assumptions; call out burn-rate implications and insurance presence/absence.
 - Provide user_guidance explaining the recommended assumptions
 - Set next_substage to 'gap_analysis'
 
@@ -434,7 +439,22 @@ function getAssumptionsSchema() {
           include_superannuation: { type: 'boolean', description: '[retirement] Include NZ Super' },
           // Home assumptions
           mortgage_rate_pct: { type: 'number', description: '[home] Mortgage rate %' },
-          loan_term_years: { type: 'number', description: '[home] Loan term years' }
+          loan_term_years: { type: 'number', description: '[home] Loan term years' },
+          // Emergency (pre-filled profile echo)
+          user_financial_profile: {
+            type: 'object',
+            description: '[emergency] Real financial profile (do not invent). Echo from context.user_financial_profile.',
+            properties: {
+              monthly_fixed_expenses: { type: 'number' },
+              monthly_variable_expenses: { type: 'number' },
+              total_monthly_expenses: { type: 'number' },
+              dependents: { type: 'number' },
+              household_structure: { type: 'string' },
+              has_income_protection: { type: 'boolean' },
+              liquid_assets: { type: 'number' },
+              data_source: { type: 'string' }
+            }
+          }
         },
         required: ['thought_process', 'rationale', 'substage', 'next_substage', 'expected_return_pct', 'inflation_pct', 'risk_attitude']
       }

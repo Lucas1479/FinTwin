@@ -5,6 +5,8 @@ import {
   createAsset,
   updateAsset,
   deleteAsset,
+  convertAssetToCash,
+  convertCashToAsset,
   getSummary,
   getAvailableFunds,
   syncCashAssets,
@@ -23,6 +25,10 @@ router.get('/reminders', protect, getMaturityReminders);
 
 // Cash Asset Sync (Auto-projection based on Cash Flow rules)
 router.post('/sync-cash', protect, syncCashAssets);
+
+// Asset Conversion
+router.post('/assets/:id/convert-to-cash', protect, convertAssetToCash);
+router.post('/assets/:id/convert-from-cash', protect, convertCashToAsset);
 
 // Asset CRUD
 router.route('/assets')

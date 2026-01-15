@@ -1,6 +1,24 @@
 import { useState, useMemo } from 'react';
 
 const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
+  const [viewMode, setViewMode] = useState('target');
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-NZ', {
+      style: 'currency',
+      currency: 'NZD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(amount || 0);
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'No date';
+    return new Date(dateString).toLocaleDateString('en-NZ', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
   // --- Treemap Layout Engine (Squarified Treemap Logic) ---
   // Calculates coordinates (x, y, w, h) based on totalValue weight
   const calculateLayout = (data, width, height) => {
@@ -28,13 +46,37 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
       const firstGroup = items.slice(0, mid);
       const secondGroup = items.slice(mid);
       const firstValue = firstGroup.reduce((sum, d) => sum + d.totalValue, 0);
-      
-      if (w > h) {
-        const splitW = (firstValue / total) * w;
+
+      const worstAspect = (group, width, height) => {
+        if (group.length === 0) return Infinity;
+        const groupTotal = group.reduce((sum, d) => sum + d.totalValue, 0);
+        if (groupTotal <= 0) return Infinity;
+        return group.reduce((worst, item) => {
+          const area = (item.totalValue / groupTotal) * (width * height);
+          if (area <= 0) return worst;
+          const rectW = Math.max(1e-6, area / height);
+          const rectH = Math.max(1e-6, area / width);
+          const ratio = rectW > rectH ? rectW / rectH : rectH / rectW;
+          return Math.max(worst, ratio);
+        }, 1);
+      };
+
+      const splitW = (firstValue / total) * w;
+      const splitH = (firstValue / total) * h;
+
+      const horizontalWorst = Math.max(
+        worstAspect(firstGroup, splitW, h),
+        worstAspect(secondGroup, w - splitW, h)
+      );
+      const verticalWorst = Math.max(
+        worstAspect(firstGroup, w, splitH),
+        worstAspect(secondGroup, w, h - splitH)
+      );
+
+      if (horizontalWorst <= verticalWorst) {
         split(firstGroup, x, y, splitW, h);
         split(secondGroup, x + splitW, y, w - splitW, h);
       } else {
-        const splitH = (firstValue / total) * h;
         split(firstGroup, x, y, w, splitH);
         split(secondGroup, x, y + splitH, w, h - splitH);
       }
@@ -76,76 +118,124 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
       { name: 'Fixed Deposit', category: 'Term Deposit', value: 20000 },
     ];
 
+    const hasRealAssets = assets && assets.length > 0;
     const sourceGoals = goals && goals.length > 0 ? goals : mockGoals;
-    const sourceAssets = assets && assets.length > 0 ? assets : mockAssets;
+    const sourceAssets = hasRealAssets ? assets : mockAssets;
+
+    const assetTypeFromCategory = (category = '') => {
+      const normalized = String(category).toLowerCase();
+      if (normalized.includes('cash') || normalized.includes('bank') || normalized.includes('term')) return 'liquidity';
+      if (normalized.includes('bond') || normalized.includes('defensive')) return 'defensive';
+      return 'growth';
+    };
+
+    const goalLinkedAssets = sourceAssets
+      .filter(asset => !asset.record_type || asset.record_type === 'Asset')
+      .reduce((map, asset) => {
+        const linkedGoalId = asset.asset_details?.linked_goal_id;
+        if (!linkedGoalId) return map;
+        const key = String(linkedGoalId);
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push(asset);
+        return map;
+      }, new Map());
 
     const data = sourceGoals.map((goal, idx) => {
-      // 1. Try to get real assets from the Plan
       const plan = goal.plan;
       const portfolio = plan?.selected_portfolio;
-      
+      const goalId = String(goal._id || goal.id || '');
+      const linkedAssets = goalLinkedAssets.get(goalId) || [];
+
       let assignedAssets = [];
-      
-      if (portfolio?.products?.length > 0) {
-        // Use actual products from the plan
-        assignedAssets = portfolio.products.map(item => {
-          const product = item.product_id || item;
-          if (!product) return null;
+      let displayTotalValue = 0;
 
-          // Calculate estimated absolute value based on target_amount and weight
-          const estimatedValue = (goal.target_amount || 100000) * (item.weight_pct / 100);
-          
-          // Determine dominant asset type for coloring
-          let assetType = 'growth';
-          if (product.allocation) {
-            const { growth = 0, defensive = 0, cash = 0 } = product.allocation;
-            if (defensive > growth && defensive > cash) assetType = 'defensive';
-            else if (cash > growth && cash > defensive) assetType = 'liquidity';
-          }
+      if (viewMode === 'invested' && (linkedAssets.length > 0 || !hasRealAssets)) {
+        if (linkedAssets.length > 0) {
+          assignedAssets = linkedAssets.map(asset => {
+            const perfValue = Number(asset.performance ?? asset.asset_details?.performance ?? 0) || 0;
+            return {
+              name: asset.name,
+              value: asset.value || 0,
+              category: asset.category,
+              type: assetTypeFromCategory(asset.category),
+              performance: perfValue.toFixed(1),
+              weight_pct: asset.asset_details?.weight_pct
+            };
+          });
+        } else {
+          // Mock fallback when no real assets exist
+          assignedAssets = sourceAssets.slice(idx % sourceAssets.length, (idx % sourceAssets.length) + 2).map(asset => ({
+            name: asset.name,
+            value: asset.value * (0.4 + (idx * 0.1)),
+            category: asset.category,
+            type: assetTypeFromCategory(asset.category),
+            performance: (Math.random() * 12 - 3).toFixed(1)
+          }));
+        }
 
-          // Professional Name Handling: Use full name, truncate will handle UI
-          const displayName = product.name || product.product_name || product.code || `Asset ${item.weight_pct}%`;
-
-          return {
-            name: displayName,
-            value: estimatedValue,
-            category: product.category || 'Fund',
-            type: assetType,
-            // Use real performance data if available (1y return)
-            performance: (product.metrics?.returns?.y1 != null) 
-              ? product.metrics.returns.y1.toFixed(1)
-              : ((product.returns?.['1y'] != null) 
-                  ? product.returns['1y'].toFixed(1) 
-                  : (Math.random() * 8 + 2).toFixed(1)) // Realistic growth fallback
-          };
-        }).filter(Boolean);
+        displayTotalValue = assignedAssets.reduce((sum, a) => sum + a.value, 0);
       } else {
-        // Fallback: Logic to distribute sourceAssets among sourceGoals (Mock)
-        assignedAssets = sourceAssets.slice(idx % sourceAssets.length, (idx % sourceAssets.length) + 2).map(asset => ({
-          name: asset.name,
-          value: asset.value * (0.4 + (idx * 0.1)),
-          category: asset.category,
-          type: asset.category?.toLowerCase().includes('cash') ? 'liquidity' : 
-                asset.category?.toLowerCase().includes('bond') ? 'defensive' : 'growth',
-          performance: (Math.random() * 12 - 3).toFixed(1)
-        }));
+        if (portfolio?.products?.length > 0) {
+          assignedAssets = portfolio.products.map(item => {
+            const product = item.product_id || item;
+            if (!product) return null;
+
+            const estimatedValue = (goal.target_amount || 100000) * (item.weight_pct / 100);
+            
+            let assetType = 'growth';
+            if (product.allocation) {
+              const { growth = 0, defensive = 0, cash = 0 } = product.allocation;
+              if (defensive > growth && defensive > cash) assetType = 'defensive';
+              else if (cash > growth && cash > defensive) assetType = 'liquidity';
+            }
+
+            const displayName = product.name || product.product_name || product.code || `Asset ${item.weight_pct}%`;
+
+            return {
+              name: displayName,
+              value: estimatedValue,
+              category: product.category || 'Fund',
+              type: assetType,
+              performance: (product.metrics?.returns?.y1 != null) 
+                ? product.metrics.returns.y1.toFixed(1)
+                : ((product.returns?.['1y'] != null) 
+                    ? product.returns['1y'].toFixed(1) 
+                    : (Math.random() * 8 + 2).toFixed(1)),
+              weight_pct: item.weight_pct
+            };
+          }).filter(Boolean);
+        } else {
+          assignedAssets = sourceAssets.slice(idx % sourceAssets.length, (idx % sourceAssets.length) + 2).map(asset => ({
+            name: asset.name,
+            value: asset.value * (0.4 + (idx * 0.1)),
+            category: asset.category,
+            type: assetTypeFromCategory(asset.category),
+            performance: (Math.random() * 12 - 3).toFixed(1)
+          }));
+        }
+
+        displayTotalValue = goal.target_amount || assignedAssets.reduce((sum, a) => sum + a.value, 0);
       }
 
-      // Use target_amount as the weight for proportionality
-      const weightValue = goal.target_amount || assignedAssets.reduce((sum, a) => sum + a.value, 0);
+      const layoutValue = displayTotalValue > 0 ? displayTotalValue : 1;
 
       return {
         id: goal._id || `g-${idx}`,
         title: goal.goal_name || goal.title || 'Unnamed Goal',
         category: goal.category || 'General',
-        totalValue: weightValue,
+        target_amount: goal.target_amount,
+        current_amount: goal.current_amount,
+        due_date: goal.due_date,
+        status: goal.status,
+        totalValue: layoutValue,
+        displayValue: displayTotalValue,
         items: assignedAssets
       };
     });
 
     // Calculate proportionality based on totalValue (100x100 space)
     return calculateLayout(data, 100, 100);
-  }, [assets, goals]);
+  }, [assets, goals, viewMode]);
 
   return (
     <div className="bg-white rounded-[2.5rem] p-8 shadow-2xl shadow-slate-200/50 text-slate-900 overflow-hidden border border-slate-100">
@@ -159,8 +249,18 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
           </p>
         </div>
         <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100">
-           <button className="px-3 py-1.5 bg-brand-500 text-white rounded-lg text-[10px] font-black uppercase shadow-sm">By Value</button>
-           <button className="px-3 py-1.5 text-slate-400 hover:text-slate-600 rounded-lg text-[10px] font-black uppercase transition-colors">By Risk</button>
+           <button
+             className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase shadow-sm transition-colors ${viewMode === 'target' ? 'bg-brand-500 text-white' : 'text-slate-400 hover:text-slate-600'}`}
+             onClick={() => setViewMode('target')}
+           >
+             Target Value
+           </button>
+           <button
+             className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase shadow-sm transition-colors ${viewMode === 'invested' ? 'bg-brand-500 text-white' : 'text-slate-400 hover:text-slate-600'}`}
+             onClick={() => setViewMode('invested')}
+           >
+             Invested Value
+           </button>
         </div>
       </div>
 
@@ -168,7 +268,15 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
       <div className="relative bg-slate-100 p-[1px] rounded-3xl overflow-hidden border border-slate-200 h-[600px] w-full shadow-inner">
         {treemapData.map((goal, gIdx) => {
           const theme = GOAL_THEMES[gIdx % GOAL_THEMES.length];
-          const totalAssetVal = goal.items.reduce((sum, a) => sum + a.value, 0);
+          const assetLayout = calculateLayout(
+            goal.items.map((item, index) => ({
+              ...item,
+              totalValue: item.value,
+              _idx: index
+            })),
+            100,
+            100
+          );
           
           // Calculate header font sizes based on goal block area
           const area = goal.w * goal.h;
@@ -202,7 +310,7 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
               }}
             >
               {/* Goal Header - Pure White & Fixed Height for Divider Alignment */}
-              <div className="flex justify-between items-center px-3 h-14 border-b border-slate-100 bg-white relative z-10">
+              <div className="flex justify-between items-center px-3 h-14 border-b border-slate-100 bg-white relative z-10 group/goal">
                 <div className="flex flex-col min-w-0 justify-center">
                   <span className={`font-black ${theme.text} uppercase tracking-tighter leading-none mb-0.5 truncate ${categorySize}`}>
                     {goal.category}
@@ -213,14 +321,32 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
                 </div>
                 {goal.w > 12 && (
                   <span className={`font-black text-slate-400 ${valueSize}`}>
-                    ${(goal.totalValue / 1000).toFixed(0)}k
+                    ${(goal.displayValue / 1000).toFixed(0)}k
                   </span>
+                )}
+                {area > 600 && (
+                  <div className="absolute left-2 right-2 top-full mt-2 opacity-0 group-hover/goal:opacity-100 transition-opacity pointer-events-none">
+                    <div className="rounded-xl border border-slate-200 bg-white/95 shadow-lg p-2 text-[10px] text-slate-600">
+                      <div className="flex justify-between gap-2">
+                        <span className="font-bold text-slate-500 uppercase">Target</span>
+                        <span className="font-black text-slate-800">{formatCurrency(goal.target_amount)}</span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span className="font-bold text-slate-500 uppercase">Invested</span>
+                        <span className="font-black text-slate-800">{formatCurrency(goal.current_amount ?? goal.displayValue)}</span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span className="font-bold text-slate-500 uppercase">Due</span>
+                        <span className="font-black text-slate-800">{formatDate(goal.due_date)}</span>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
 
-              {/* Inner Assets Grid - Fills remaining space with a slightly cleaner backdrop */}
-              <div className="flex-1 flex flex-wrap bg-slate-50/30 p-[1px] gap-[1px]">
-                {goal.items.map((item, iIdx) => {
+              {/* Inner Assets Grid - Squarified layout for asset tiles */}
+              <div className="relative flex-1 bg-slate-50/30 p-[1px] overflow-hidden">
+                {assetLayout.map((item, iIdx) => {
                   const perf = parseFloat(item.performance);
                   const isPositive = perf >= 0;
                   
@@ -244,9 +370,6 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
                   const textColor = opacity > 0.5 ? 'text-white' : 'text-slate-900';
                   const labelColor = opacity > 0.5 ? 'text-white/70' : 'text-slate-500';
                   
-                  // Calculate flex-grow based on asset value relative to other assets in the goal
-                  const assetFlex = (item.value / totalAssetVal) * 100;
-                  
                   // Calculate dynamic font sizes based on goal block area
                   const area = goal.w * goal.h;
                   let labelSize = "text-[7px]";
@@ -265,22 +388,40 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
 
                   return (
                     <div 
-                      key={iIdx}
+                      key={item._idx ?? iIdx}
                       style={{ 
-                        flex: `${assetFlex} 1 0%`, 
-                        minWidth: '40px',
-                        backgroundColor: bgColor 
+                        left: `${item.x}%`,
+                        top: `${item.y}%`,
+                        width: `${item.w}%`,
+                        height: `${item.h}%`,
+                        backgroundColor: bgColor
                       }}
-                      className="relative flex flex-col justify-center items-center text-center transition-all duration-300 hover:brightness-110 cursor-pointer p-1"
+                      className="absolute flex flex-col justify-center items-center text-center transition-all duration-300 hover:brightness-110 cursor-pointer p-1 group/asset"
                     >
                       {goal.w > 12 && (
-                        <span className={`font-black ${labelColor} uppercase truncate w-full px-1.5 ${labelSize}`} title={item.name}>
+                        <span className={`font-black ${labelColor} uppercase truncate w-full px-1.5 ${labelSize} group-hover/asset:opacity-0 transition-opacity`} title={item.name}>
                           {item.name}
                         </span>
                       )}
-                      <span className={`font-black ${textColor} ${perfSize}`}>
+                      <span className={`font-black ${textColor} ${perfSize} group-hover/asset:opacity-0 transition-opacity`}>
                         {isPositive ? '+' : ''}{item.performance}%
                       </span>
+                      <div className="absolute inset-0 opacity-0 group-hover/asset:opacity-100 transition-opacity pointer-events-none">
+                        <div className="absolute inset-0 bg-slate-900/60"></div>
+                        <div className="relative z-10 h-full w-full flex flex-col items-center justify-center text-center px-2">
+                          <div className="text-[9px] font-black text-white uppercase truncate w-full">
+                            {item.name}
+                          </div>
+                          <div className="text-[9px] font-bold text-white/90">
+                            {formatCurrency(item.value)}
+                          </div>
+                          {item.weight_pct != null && (
+                            <div className="text-[8px] font-bold text-white/70">
+                              Weight {item.weight_pct}%
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   );
                 })}

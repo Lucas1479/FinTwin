@@ -16,6 +16,16 @@ const TO_ANNUAL = {
 
 const toAnnual = (amount, frequency) => amount * (TO_ANNUAL[frequency] || 0);
 
+const CASH_CATEGORIES = ['Cash_Bank', 'Cash_Physical', 'Cash_TermDeposit'];
+const isCashCategory = (category) => CASH_CATEGORIES.includes(category);
+
+const clearAllocationFields = (asset) => {
+  asset.allocated_to_goal_id = null;
+  asset.allocated_amount = null;
+  asset.allocation_date = null;
+  asset.allocation_notes = null;
+};
+
 // ==========================================
 // Helper: Calculate daily flow for a specific date
 // ==========================================
@@ -193,6 +203,224 @@ export const deleteAsset = asyncHandler(async (req, res) => {
   }
 
   res.status(200).json({ message: 'Asset removed successfully' });
+});
+
+// @desc    Convert an asset into cash (sell to cash)
+// @route   POST /api/wealth/assets/:id/convert-to-cash
+// @access  Private
+// @body    amount (optional, defaults to full value)
+//          target_cash_asset_id (optional)
+//          target_cash_category (optional, default: Cash_Bank)
+//          target_cash_name (optional, required if creating)
+//          target_cash_currency (optional)
+//          target_cash_details (optional)
+//          clear_allocation (optional, default: true)
+//          keep_source_asset (optional, default: false)
+export const convertAssetToCash = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const {
+    amount,
+    target_cash_asset_id,
+    target_cash_category,
+    target_cash_name,
+    target_cash_currency,
+    target_cash_details,
+    clear_allocation = true,
+    keep_source_asset = false,
+  } = req.body || {};
+
+  const sourceAsset = await FinancialAsset.findOne({
+    _id: req.params.id,
+    user_id: userId,
+  });
+
+  if (!sourceAsset) {
+    throw new NotFoundError('Asset not found');
+  }
+
+  if (sourceAsset.record_type !== 'Asset') {
+    throw new BadRequestError('Source must be an Asset');
+  }
+
+  if (isCashCategory(sourceAsset.category)) {
+    throw new BadRequestError('Source asset is already cash');
+  }
+
+  const transferAmount = amount === undefined || amount === null ? sourceAsset.value : Number(amount);
+  if (!Number.isFinite(transferAmount) || transferAmount <= 0) {
+    throw new BadRequestError('Amount must be a positive number');
+  }
+  if (transferAmount > sourceAsset.value) {
+    throw new BadRequestError('Amount exceeds asset value');
+  }
+
+  let cashAsset = null;
+
+  if (target_cash_asset_id) {
+    cashAsset = await FinancialAsset.findOne({
+      _id: target_cash_asset_id,
+      user_id: userId,
+    });
+
+    if (!cashAsset) {
+      throw new NotFoundError('Target cash asset not found');
+    }
+  } else {
+    const cashCategory = target_cash_category || 'Cash_Bank';
+    if (!isCashCategory(cashCategory)) {
+      throw new BadRequestError('target_cash_category must be a cash category');
+    }
+
+    const cashName = target_cash_name || 'Cash Account';
+    cashAsset = await FinancialAsset.create({
+      user_id: userId,
+      name: cashName,
+      record_type: 'Asset',
+      category: cashCategory,
+      value: transferAmount,
+      currency: target_cash_currency || sourceAsset.currency || 'NZD',
+      is_liquid: true,
+      asset_details: target_cash_details || {},
+    });
+  }
+
+  if (cashAsset.record_type !== 'Asset' || !isCashCategory(cashAsset.category)) {
+    throw new BadRequestError('Target asset must be a cash asset');
+  }
+
+  if (clear_allocation) {
+    clearAllocationFields(sourceAsset);
+    clearAllocationFields(cashAsset);
+  }
+
+  let sourceAssetRemoved = false;
+  const remainingValue = Math.max(0, sourceAsset.value - transferAmount);
+
+  if (remainingValue === 0 && !keep_source_asset) {
+    await FinancialAsset.deleteOne({ _id: sourceAsset._id, user_id: userId });
+    sourceAssetRemoved = true;
+  } else {
+    sourceAsset.value = remainingValue;
+    await sourceAsset.save();
+  }
+
+  if (target_cash_asset_id) {
+    cashAsset.value = Math.max(0, cashAsset.value + transferAmount);
+    await cashAsset.save();
+  }
+
+  res.json({
+    message: 'Asset converted to cash',
+    sourceAssetId: sourceAsset._id,
+    cashAssetId: cashAsset._id,
+    amount: transferAmount,
+    sourceAssetRemainingValue: remainingValue,
+    sourceAssetRemoved,
+  });
+});
+
+// @desc    Convert cash into an asset (buy/invest)
+// @route   POST /api/wealth/assets/:id/convert-from-cash
+// @access  Private
+// @body    amount (required)
+//          target_asset_id (optional)
+//          target_asset (optional, used if creating)
+//          clear_allocation (optional, default: true)
+//          keep_source_asset (optional, default: false)
+export const convertCashToAsset = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const {
+    amount,
+    target_asset_id,
+    target_asset,
+    clear_allocation = true,
+    keep_source_asset = false,
+  } = req.body || {};
+
+  const sourceCashAsset = await FinancialAsset.findOne({
+    _id: req.params.id,
+    user_id: userId,
+  });
+
+  if (!sourceCashAsset) {
+    throw new NotFoundError('Cash asset not found');
+  }
+
+  if (sourceCashAsset.record_type !== 'Asset' || !isCashCategory(sourceCashAsset.category)) {
+    throw new BadRequestError('Source must be a cash asset');
+  }
+
+  const transferAmount = Number(amount);
+  if (!Number.isFinite(transferAmount) || transferAmount <= 0) {
+    throw new BadRequestError('Amount must be a positive number');
+  }
+  if (transferAmount > sourceCashAsset.value) {
+    throw new BadRequestError('Amount exceeds cash balance');
+  }
+
+  let targetAsset = null;
+  if (target_asset_id) {
+    targetAsset = await FinancialAsset.findOne({
+      _id: target_asset_id,
+      user_id: userId,
+    });
+
+    if (!targetAsset) {
+      throw new NotFoundError('Target asset not found');
+    }
+  } else {
+    if (!target_asset || !target_asset.name || !target_asset.category) {
+      throw new BadRequestError('target_asset name and category are required when creating');
+    }
+    if (isCashCategory(target_asset.category)) {
+      throw new BadRequestError('target_asset category must be non-cash');
+    }
+
+    targetAsset = await FinancialAsset.create({
+      user_id: userId,
+      name: target_asset.name,
+      record_type: 'Asset',
+      category: target_asset.category,
+      value: transferAmount,
+      currency: target_asset.currency || sourceCashAsset.currency || 'NZD',
+      is_liquid: target_asset.is_liquid ?? false,
+      asset_details: target_asset.asset_details || {},
+      source_product_id: target_asset.source_product_id,
+    });
+  }
+
+  if (targetAsset.record_type !== 'Asset' || isCashCategory(targetAsset.category)) {
+    throw new BadRequestError('Target must be a non-cash asset');
+  }
+
+  if (clear_allocation) {
+    clearAllocationFields(sourceCashAsset);
+  }
+
+  let sourceAssetRemoved = false;
+  const remainingCash = Math.max(0, sourceCashAsset.value - transferAmount);
+
+  if (remainingCash === 0 && !keep_source_asset) {
+    await FinancialAsset.deleteOne({ _id: sourceCashAsset._id, user_id: userId });
+    sourceAssetRemoved = true;
+  } else {
+    sourceCashAsset.value = remainingCash;
+    await sourceCashAsset.save();
+  }
+
+  if (target_asset_id) {
+    targetAsset.value = Math.max(0, targetAsset.value + transferAmount);
+    await targetAsset.save();
+  }
+
+  res.json({
+    message: 'Cash converted to asset',
+    cashAssetId: sourceCashAsset._id,
+    targetAssetId: targetAsset._id,
+    amount: transferAmount,
+    cashRemainingValue: remainingCash,
+    cashAssetRemoved: sourceAssetRemoved,
+  });
 });
 
 // @desc    Get wealth summary (Net Worth, Liquid Capital)

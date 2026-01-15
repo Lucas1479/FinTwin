@@ -1,4 +1,4 @@
-export default function ComparisonDock({ compareList, products, onClear }) {
+export default function ComparisonDock({ compareList, products, onClear, onCompare }) {
     if (!compareList || compareList.length === 0) return null;
   
     const selected = compareList
@@ -25,7 +25,7 @@ export default function ComparisonDock({ compareList, products, onClear }) {
             <button className="btn btn-sm btn-ghost" onClick={onClear}>
               Clear all
             </button>
-            <button className="btn btn-sm btn-primary" disabled={selected.length < 2}>
+            <button className="btn btn-sm btn-primary" disabled={selected.length < 2} onClick={onCompare}>
               Compare ({selected.length}/3)
             </button>
           </div>

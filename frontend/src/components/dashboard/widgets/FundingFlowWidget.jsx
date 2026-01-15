@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { TrendingUp, Clock } from 'lucide-react';
 
 const FundingFlowWidget = ({ cashFlows = [], profile }) => {
+  const navigate = useNavigate();
   const [frequency, setFrequency] = useState('Monthly'); // 'Weekly' or 'Monthly'
 
   const TO_ANNUAL = { 'Weekly': 52, 'Fortnightly': 26, 'Monthly': 12, 'Yearly': 1, 'One-Off': 0 };
@@ -141,6 +143,9 @@ const FundingFlowWidget = ({ cashFlows = [], profile }) => {
               ))}
             </Pie>
             <Tooltip 
+              position={{ x: 16, y: 200 }}
+              wrapperStyle={{ pointerEvents: 'none', zIndex: 1 }}
+              allowEscapeViewBox={{ x: true, y: true }}
               content={({ active, payload }) => {
                 if (active && payload && payload.length) {
                   return (
@@ -161,7 +166,7 @@ const FundingFlowWidget = ({ cashFlows = [], profile }) => {
         </ResponsiveContainer>
         
         {/* Center Stats */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none z-10">
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block leading-none mb-1">Surplus</span>
           <span className="text-2xl font-black text-slate-900 leading-none">${displaySurplus.toLocaleString()}</span>
           <span className="text-[9px] font-bold text-slate-400 block mt-1">/ {frequency === 'Monthly' ? 'Month' : 'Week'}</span>
@@ -203,7 +208,10 @@ const FundingFlowWidget = ({ cashFlows = [], profile }) => {
            <Clock size={14} />
            <span className="text-[10px] font-black uppercase tracking-wider">Next Sync: In 2 Days</span>
         </div>
-        <button className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-colors shadow-lg shadow-slate-200">
+        <button 
+          onClick={() => navigate('/wealth', { state: { tab: 'cashflow' } })}
+          className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-colors shadow-lg shadow-slate-200"
+        >
           Optimize Flow
         </button>
       </div>

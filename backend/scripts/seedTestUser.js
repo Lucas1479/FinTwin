@@ -6,7 +6,7 @@ dotenv.config();
 
 const DEFAULT_USER = {
   name: 'Test User',
-  email: 'testuser@demo.com',
+  email: 'Lullaby147@demo.com',
   password: '123456',
 };
 

@@ -33,6 +33,20 @@ export const deleteAsset = async (id) => {
 };
 
 // ==========================================
+// Asset Conversion
+// ==========================================
+
+export const convertAssetToCash = async (assetId, payload) => {
+  const response = await api.post(`/wealth/assets/${assetId}/convert-to-cash`, payload);
+  return response.data;
+};
+
+export const convertCashToAsset = async (assetId, payload) => {
+  const response = await api.post(`/wealth/assets/${assetId}/convert-from-cash`, payload);
+  return response.data;
+};
+
+// ==========================================
 // Maturity Reminders
 // ==========================================
 

@@ -252,6 +252,78 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
       }
   }
 
+  // === EMERGENCY GOAL: Assumptions substage - Pre-fill financial profile ===
+  if (stage === GOAL_ENGINE_STAGES.DEFINITION && goalContext?.category === 'emergency' && currentSubstage === 'assumptions') {
+      const userId = req.user._id;
+      try {
+          console.log('[Emergency Goal] Fetching financial profile for assumptions pre-fill...');
+          const [user, cashFlows, assets] = await Promise.all([
+              User.findById(userId).lean(),
+              CashFlow.find({ user_id: userId }).lean(),
+              FinancialAsset.find({ user_id: userId }).lean()
+          ]);
+
+          // 1. Analyze CashFlows for Expenses (Fixed vs Variable)
+          const expenses = cashFlows.filter(f => ['Expense', 'Liability', 'Subscription'].includes(f.type));
+          
+          let fixedSum = 0;
+          let variableSum = 0;
+          // Heuristic keywords for fixed expenses
+          const fixedKeywords = ['rent', 'mortgage', 'insurance', 'loan', 'bill', 'utility', 'rates', 'council', 'power', 'internet', 'phone'];
+
+          expenses.forEach(e => {
+              // Normalize amount to monthly
+              let multiplier = 1;
+              const freq = (e.frequency || 'monthly').toLowerCase();
+              if (freq.includes('week')) multiplier = 4.33;
+              if (freq.includes('fortnight')) multiplier = 2.16;
+              if (freq.includes('year') || freq.includes('annual')) multiplier = 1/12;
+              
+              const amount = (e.amount || 0) * multiplier;
+              
+              // Simple keyword matching for fixed vs variable
+              const name = e.name?.toLowerCase() || '';
+              const cat = e.category?.toLowerCase() || '';
+              const isFixed = fixedKeywords.some(k => name.includes(k) || cat.includes(k));
+              
+              if (isFixed) fixedSum += amount;
+              else variableSum += amount;
+          });
+
+          // 2. Risk Factors from Profile
+          const dependents = user?.household?.dependents || 0;
+          // Simple logic: if partnered, assume dual income potential; if dependents & single, single_parent
+          const householdStructure = (user?.household?.partnered) ? 'dual_income' : (dependents > 0 ? 'single_parent' : 'single');
+          
+          // 3. Insurance Check (Income Protection)
+          // Check expenses or assets for "Income Protection"
+          const hasIP = expenses.some(e => e.name?.toLowerCase().includes('income protection')) || 
+                        assets.some(a => a.name?.toLowerCase().includes('income protection'));
+
+          // 4. Liquid Assets (for reference)
+          const liquidAssets = assets
+              .filter(a => a.record_type === 'Asset' && a.is_liquid)
+              .reduce((s, a) => s + (a.value || 0), 0);
+
+          // Inject into Context
+          enrichedContext.user_financial_profile = {
+              monthly_fixed_expenses: Math.round(fixedSum),
+              monthly_variable_expenses: Math.round(variableSum),
+              total_monthly_expenses: Math.round(fixedSum + variableSum),
+              dependents,
+              household_structure: householdStructure,
+              has_income_protection: hasIP,
+              liquid_assets: Math.round(liquidAssets),
+              data_source: 'wealth_centre'
+          };
+          
+          console.log(`[Emergency Goal] Injected financial profile:`, enrichedContext.user_financial_profile);
+
+      } catch (err) {
+          console.warn('[Emergency Goal] Failed to inject financial profile:', err);
+      }
+  }
+
   // === STRATEGY STAGE: Full enrichment ===
   if (stage === GOAL_ENGINE_STAGES.STRATEGY) {
       const userId = req.user._id;
@@ -697,6 +769,13 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
               if (injectedSchema && finalJson) {
                   finalJson.form_schema = injectedSchema;
               }
+              // [NEW] Inject Pre-Calculated Data if available (for Emergency Fund pre-fill)
+              if (enrichedContext.user_financial_profile && finalJson) {
+                  finalJson.ai_decision = {
+                      ...(finalJson.ai_decision || {}),
+                      user_financial_profile: enrichedContext.user_financial_profile
+                  };
+              }
 
               // --- LOGGING: Print final JSON for debugging ---
               console.log(`[Goal Engine] Final Parsed JSON:`);
@@ -764,6 +843,14 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
   // Overlay our static schema if it exists (it's better than what AI generates)
   if (injectedSchema && result?.json) {
       result.json.form_schema = injectedSchema;
+  }
+
+  // Ensure emergency profile data is returned inside ai_decision (not top-level)
+  if (enrichedContext?.user_financial_profile && result?.json) {
+      result.json.ai_decision = {
+          ...(result.json.ai_decision || {}),
+          user_financial_profile: enrichedContext.user_financial_profile
+      };
   }
 
   // --- CLEANUP: Ensure 'text' is user-friendly, not raw JSON ---

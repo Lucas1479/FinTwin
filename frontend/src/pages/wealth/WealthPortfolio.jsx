@@ -5,7 +5,7 @@ import { Download, Plus, Search, Filter, Wallet, Building2, TrendingUp, CreditCa
 import { Loader2 } from 'lucide-react';
 
 const WealthPortfolio = () => {
-  const { data, loading, onAddAsset, onEditAsset } = useContext(WealthContext);
+  const { data, loading, onAddAsset, onEditAsset, onOpenConversion } = useContext(WealthContext);
 
   if (loading) {
     return (
@@ -108,6 +108,7 @@ const WealthPortfolio = () => {
         assets={data.assets} 
         liabilities={data.liabilities} 
         onEdit={onEditAsset}
+        onOpenConversion={onOpenConversion}
       />
     </div>
   );

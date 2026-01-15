@@ -65,6 +65,11 @@ const loginUser = asyncHandler(async (req, res) => {
 // @route   GET /api/users/me
 // @access  Private
 const getMe = asyncHandler(async (req, res) => {
+  if (!req.user?.id) {
+    res.status(401);
+    throw new Error('Not authorized');
+  }
+
   const user = await User.findById(req.user.id);
 
   if (!user) {
