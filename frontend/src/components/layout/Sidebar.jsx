@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, Target, Briefcase, ShoppingBag, Gamepad2, Settings, HelpCircle, LogOut, ChevronLeft, ChevronRight, ChevronDown, Clock, Zap, TrendingUp, TrendingDown, Minus, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Target, Briefcase, ShoppingBag, Gamepad2, HelpCircle, LogOut, ChevronLeft, ChevronRight, ChevronDown, Clock, Zap, TrendingUp, TrendingDown, Minus, Sparkles } from 'lucide-react';
 import { useSidebar } from '../../context/SidebarContext';
 import { useSimulation } from '../../context/SimulationContext';
 import { getCurrentUser, logout as logoutService } from '../../services/authService';
@@ -58,7 +58,6 @@ const Sidebar = () => {
   ];
 
   const bottomItems = [
-    { name: 'Settings', path: '/settings', icon: Settings },
     { name: 'AI Support', icon: Sparkles, onClick: () => setIsHelpOpen(true) },
   ];
 
@@ -260,7 +259,7 @@ const Sidebar = () => {
           </div>
       </div>
 
-      {/* Footer Area (Fixed) - Contains Settings/Support & Profile */}
+      {/* Footer Area (Fixed) - Contains Support & Profile */}
       <div className="p-4 shrink-0 border-t border-slate-100 bg-white z-10">
         <div className="px-1 mb-6">
             <nav className="space-y-2">

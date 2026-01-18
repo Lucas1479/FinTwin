@@ -15,22 +15,241 @@ import productTools from '../services/productTools.js';
 
 // Build a stage-aware Vectara query to enrich LLM with grounded knowledge
 const buildRagQueryForStage = (stage, goalContext = {}, userInput = {}) => {
+    const userText = userInput?.text?.trim();
+    if (userText) {
+        // Prefer the user's exact question for more precise retrieval
+        return userText;
+    }
+
     const goalName = goalContext.goal_name || goalContext.goal_title || goalContext.category || 'financial goal';
     const category = goalContext.category || 'general';
-    const text = userInput?.text || '';
-    const base = `Stage: ${stage}. Goal: ${goalName}. Category: ${category}. User input: ${text}`;
+    const base = `Stage: ${stage}. Goal: ${goalName}. Category: ${category}.`;
     switch (stage) {
         case GOAL_ENGINE_STAGES.DEFINITION:
-            return `${base}. Need NZ personal finance references for goal definition, gap analysis, typical targets, KiwiSaver basics.`;
+            return `${base} Need NZ personal finance references for goal definition, gap analysis, typical targets, KiwiSaver basics.`;
         case GOAL_ENGINE_STAGES.STRATEGY:
-            return `${base}. Need NZ strategy guardrails: economic exposure patterns, KiwiSaver vs managed fund trade-offs, tax/fee considerations.`;
+            return `${base} Need NZ strategy guardrails: economic exposure patterns, KiwiSaver vs managed fund trade-offs, tax/fee considerations.`;
         case GOAL_ENGINE_STAGES.PRODUCT:
-            return `${base}. Need portfolio construction references, fee/return ranges, diversification heuristics for KiwiSaver/ETFs in NZ.`;
+            return `${base} Need portfolio construction references, fee/return ranges, diversification heuristics for KiwiSaver/ETFs in NZ.`;
         case GOAL_ENGINE_STAGES.SIMULATION:
-            return `${base}. Need feasibility checks, projection assumptions, common pitfalls for NZ retail investors.`;
+            return `${base} Need feasibility checks, projection assumptions, common pitfalls for NZ retail investors.`;
         default:
-            return `${base}. General NZ personal finance references.`;
+            return `${base} General NZ personal finance references.`;
     }
+};
+
+const attachRagMetadata = (aiDecision, ragContext) => {
+    if (!aiDecision) return aiDecision;
+
+    const buildReferencesFromPassages = (passages = []) => {
+        const seen = new Set();
+        const unique = [];
+
+        for (const p of passages) {
+            const url = p?.url && p.url.trim() ? p.url.trim() : '';
+            const title = p?.title || p?.source || 'Reference';
+            const key = `${url || 'no-url'}::${title.toLowerCase()}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            unique.push({ ...p, url, title });
+            if (unique.length >= 5) break;
+        }
+
+        return unique.map((p, idx) => {
+            const url = p.url || '';
+            const marker = `[${idx + 1}]`;
+            let source = p?.source || (url ? (() => { try { return new URL(url).hostname; } catch { return 'Vectara'; } })() : 'Vectara');
+            if (!source) source = 'Vectara';
+            const snippet = p?.text;
+            return { marker, title: p.title || 'Reference', url, source, snippet };
+        });
+    };
+
+    let nextDecision = aiDecision;
+    if (ragContext?.summary && !aiDecision.rag_summary) {
+        nextDecision = {
+            ...nextDecision,
+            rag_summary: ragContext.summary
+        };
+    }
+
+    if (ragContext?.passages?.length) {
+        nextDecision = {
+            ...nextDecision,
+            references: buildReferencesFromPassages(ragContext.passages)
+        };
+    }
+
+    return nextDecision;
+};
+
+const ASK_RESPONSE_SCHEMA = {
+    type: 'object',
+    properties: {
+        ai_decision: {
+            type: 'object',
+            properties: {
+                thought_process: { type: 'string' },
+                rationale: { type: 'string' },
+                references: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            title: { type: 'string' },
+                            url: { type: 'string' },
+                            source: { type: 'string' }
+                        },
+                        required: ['title']
+                    }
+                },
+                rag_summary: { type: 'string' }
+            },
+            required: ['thought_process', 'rationale']
+        }
+    },
+    required: ['ai_decision']
+};
+
+const SUMMARY_RESPONSE_SCHEMA = {
+    type: 'object',
+    properties: {
+        summary: { type: 'string' }
+    },
+    required: ['summary']
+};
+
+const INTENT_RESPONSE_SCHEMA = {
+    type: 'object',
+    properties: {
+        intent: { type: 'string', enum: ['ask', 'auto'] },
+        rationale: { type: 'string' }
+    },
+    required: ['intent']
+};
+
+const buildAskPrompt = () => `
+You are the "FinTwin Copilot".
+
+Task:
+- Answer the user's question in English, clearly and concisely.
+- Do NOT propose goal parameters or fill any forms.
+- Do NOT assume you have chat history. If the user asks about prior messages you cannot see, say you do not have access.
+- If external_knowledge is provided, ground factual statements in it and include references.
+
+Output requirements:
+- Return JSON only.
+- The JSON MUST follow the "responseSchema" in context.responseSchema.
+- Focus only on thought_process, rationale, references, and rag_summary.
+`.trim();
+
+const buildSummaryPrompt = () => `
+You are generating a concise background summary for a financial planning assistant.
+
+Rules:
+- Write in English.
+- Use ONLY facts stated explicitly by the user in ask_history and the current user_input.
+- Do NOT infer, assume, or add advice.
+- Do NOT write narrative sentences. Use short noun phrases only.
+- Avoid "The user..." or "The request..." phrasing.
+- Keep it short: 3-6 bullet fragments joined by " | ".
+- If there is no useful information, return an empty summary.
+
+Output requirements:
+- Return JSON only.
+- The JSON MUST follow the "responseSchema" in context.responseSchema.
+`.trim();
+
+const buildIntentPrompt = () => `
+You are a routing assistant for a financial planning copilot.
+
+Task:
+- Decide whether the user's latest message should be handled as ASK (Q&A only) or AUTO (structured goal decision/fill).
+
+Guidelines:
+- Use ASK when the user is asking a factual question, clarification, or meta-question (e.g., "What was my last question?").
+- Use AUTO when the user provides goal details, constraints, or requests planning decisions (e.g., "I want to retire at 65 with $60k/year").
+- If ambiguous, prefer ASK to avoid unintended form filling.
+
+Output requirements:
+- Return JSON only.
+- The JSON MUST follow the "responseSchema" in context.responseSchema.
+`.trim();
+
+const handleAskMode = async ({
+    req,
+    res,
+    stage,
+    goalContext,
+    userInput,
+    askHistory,
+    useRag
+}) => {
+    const askPrompt = buildAskPrompt();
+    let ragContext = null;
+    let askContext = {
+        stage,
+        goalContext: goalContext || {},
+        userInput: userInput || {},
+        ask_history: askHistory,
+        responseSchema: ASK_RESPONSE_SCHEMA
+    };
+
+    if (useRag) {
+        const ragQuery = buildRagQueryForStage(stage, goalContext, userInput);
+        try {
+            ragContext = await llmService.fetchRagContext({
+                query: ragQuery,
+                stage,
+                goalContext
+            });
+            if (ragContext) {
+                askContext = {
+                    ...askContext,
+                    external_knowledge: ragContext
+                };
+                console.log(`[Goal Engine] RAG attached for ask mode: summary=${!!ragContext.summary}, passages=${ragContext.passages?.length || 0}`);
+            }
+        } catch (err) {
+            console.warn('[Goal Engine] RAG fetch failed for ask mode:', err.message);
+        }
+    }
+
+    if (req.headers.accept === 'text/event-stream' || req.body.stream) {
+        console.log(`[Goal Engine] Ask Mode Stream (SSE)`);
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+
+        let fullText = '';
+        for await (const chunk of llmService.generateStream(askPrompt, askContext)) {
+            if (chunk.type === 'text') {
+                fullText += chunk.content;
+                res.write(`data: ${JSON.stringify({ chunk: chunk.content })}\n\n`);
+            }
+        }
+
+        let finalJson = null;
+        try {
+            const jsonStr = fullText.match(/\{[\s\S]*\}/)?.[0] || fullText;
+            finalJson = JSON.parse(jsonStr);
+            if (finalJson?.ai_decision) {
+                finalJson.ai_decision = attachRagMetadata(finalJson.ai_decision, ragContext);
+            }
+        } catch (e) {
+            console.warn('[Goal Engine] Ask mode JSON parse failed', e);
+        }
+
+        res.write(`data: ${JSON.stringify({ done: true, fullText, json: finalJson })}\n\n`);
+        res.end();
+        return;
+    }
+
+    const result = await llmService.generate(askPrompt, askContext);
+    if (result?.json?.ai_decision) {
+        result.json.ai_decision = attachRagMetadata(result.json.ai_decision, ragContext);
+    }
+    res.json(result);
 };
 
 /**
@@ -93,6 +312,8 @@ const persistDecisionLog = async (params) => {
 // @access  Private
 export const generateGoalDecision = asyncHandler(async (req, res) => {
   const { stage, goalContext, userInput, previousDecisions, substage, substageData } = req.body || {};
+  const mode = req.body?.mode || 'auto';
+  const askHistory = Array.isArray(req.body?.askHistory) ? req.body.askHistory : [];
   const useRagReq = req.body?.useRag;
   const useRagEnv = process.env.ENABLE_VECTARA_RAG === 'true';
   // request flag overrides env; otherwise env enables by default
@@ -101,10 +322,70 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
   console.log(`\n[Goal Engine] === Incoming Request ===`);
   console.log(`[Goal Engine] Stage: ${stage}`);
   console.log(`[Goal Engine] Category: ${goalContext?.category || 'Not specified'}`);
+  console.log(`[Goal Engine] Mode: ${mode}`);
   if (userInput?.text) console.log(`[Goal Engine] User Input: "${userInput.text}"`);
 
   if (!stage || !Object.values(GOAL_ENGINE_STAGES).includes(stage)) {
     throw new BadRequestError('Valid stage is required', 'STAGE_REQUIRED');
+  }
+
+  const sanitizedAskHistory = askHistory
+      .filter(item => item && (item.role === 'user' || item.role === 'assistant') && typeof item.text === 'string')
+      .slice(-12)
+      .map(item => ({ role: item.role, text: item.text }));
+
+  // --- AGENT MODE: Route to ASK or AUTO ---
+  if (mode === 'agent') {
+      try {
+          const intentPrompt = buildIntentPrompt();
+          const intentContext = {
+              userInput: userInput || {},
+              goalContext: goalContext || {},
+              ask_history: sanitizedAskHistory,
+              responseSchema: INTENT_RESPONSE_SCHEMA
+          };
+          const intentResult = await llmService.generate(intentPrompt, intentContext);
+          const intent = intentResult?.json?.intent || 'ask';
+          console.log(`[Goal Engine] Agent intent: ${intent}`);
+          if (intent === 'ask') {
+              await handleAskMode({
+                  req,
+                  res,
+                  stage,
+                  goalContext,
+                  userInput,
+                  askHistory: sanitizedAskHistory,
+                  useRag
+              });
+              return;
+          }
+      } catch (err) {
+          console.warn('[Goal Engine] Agent intent routing failed, defaulting to ask mode:', err.message);
+          await handleAskMode({
+              req,
+              res,
+              stage,
+              goalContext,
+              userInput,
+              askHistory: sanitizedAskHistory,
+              useRag
+          });
+          return;
+      }
+  }
+
+  // --- ASK MODE: No form filling, no summary generation ---
+  if (mode === 'ask') {
+      await handleAskMode({
+          req,
+          res,
+          stage,
+          goalContext,
+          userInput,
+          askHistory: sanitizedAskHistory,
+          useRag
+      });
+      return;
   }
 
   // --- Optimization: Predefined Schemas ---
@@ -533,6 +814,27 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
       };
   }
 
+  // --- Summary (Auto/Agent only, before decision prompt) ---
+  const shouldGenerateSummary = (mode === 'auto' || mode === 'agent') && userInput?.text?.trim();
+  if (shouldGenerateSummary) {
+      try {
+          const summaryPrompt = buildSummaryPrompt();
+          const summaryContext = {
+              user_input: userInput,
+              ask_history: sanitizedAskHistory,
+              goalContext: goalContext || {},
+              responseSchema: SUMMARY_RESPONSE_SCHEMA
+          };
+          const summaryResult = await llmService.generate(summaryPrompt, summaryContext);
+          const summaryText = summaryResult?.json?.summary ? String(summaryResult.json.summary).trim() : '';
+          if (summaryText) {
+              enrichedContext.ask_summary = summaryText;
+          }
+      } catch (err) {
+          console.warn('[Goal Engine] Summary generation failed:', err.message);
+      }
+  }
+
   // --- RAG enrichment (Vectara) ---
   let ragContext = null;
   if (useRag) {
@@ -707,6 +1009,10 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
                   aiDecision: result.json
               }).catch(err => console.error('[Goal Engine] Decision log persistence error:', err));
               
+              if (result.json?.ai_decision) {
+                  result.json.ai_decision = attachRagMetadata(result.json.ai_decision, ragContext);
+              }
+
               // Send final complete message
               res.write(`data: ${JSON.stringify({ 
                   done: true, 
@@ -776,6 +1082,10 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
                       user_financial_profile: enrichedContext.user_financial_profile
                   };
               }
+
+          if (finalJson?.ai_decision) {
+              finalJson.ai_decision = attachRagMetadata(finalJson.ai_decision, ragContext);
+          }
 
               // --- LOGGING: Print final JSON for debugging ---
               console.log(`[Goal Engine] Final Parsed JSON:`);
@@ -851,6 +1161,10 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
           ...(result.json.ai_decision || {}),
           user_financial_profile: enrichedContext.user_financial_profile
       };
+  }
+
+  if (result?.json?.ai_decision) {
+      result.json.ai_decision = attachRagMetadata(result.json.ai_decision, ragContext);
   }
 
   // --- CLEANUP: Ensure 'text' is user-friendly, not raw JSON ---

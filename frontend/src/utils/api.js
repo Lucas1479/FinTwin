@@ -4,8 +4,10 @@ import axios from 'axios';
 // Axios Instance Configuration
 // ==========================================
 
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+
 const api = axios.create({
-  baseURL: '/api', // Matches Vite proxy configuration
+  baseURL: apiBaseUrl, // Defaults to Vite proxy path
   withCredentials: true, // Allow cookies to be sent with requests
   timeout: 60000, // 60-second timeout for LLM calls
   // REMOVED: headers: { 'Content-Type': 'application/json' } 
@@ -78,47 +80,5 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
-// ==========================================
-// Legacy Exports (For backward compatibility)
-// ==========================================
-// These are deprecated. Use dedicated services instead:
-// - productService.js for products
-// - authService.js for auth
-// - goalService.js for goals
-
-/**
- * @deprecated Use productService.getProducts() instead
- */
-export const fetchProducts = async () => {
-  console.warn('[DEPRECATED] fetchProducts() is deprecated. Use productService.getProducts() instead.');
-  try {
-    const response = await api.get('/products');
-    // Return raw data array for backward compatibility
-    return response.data?.data || [];
-  } catch (error) {
-    console.error('[API] fetchProducts error:', error);
-    return [];
-  }
-};
-
-/**
- * @deprecated Use userService or authService instead
- */
-export const fetchCurrentUserProfile = async () => {
-  console.warn('[DEPRECATED] fetchCurrentUserProfile() is deprecated.');
-  try {
-    const response = await api.get('/users/profile');
-    return response.data || null;
-  } catch (error) {
-    console.error('[API] fetchCurrentUserProfile error:', error);
-    // Return default profile on error
-    return {
-      riskTolerance: 'Balanced',
-      income: 80000,
-      currentSavings: 20000,
-    };
-  }
-};
 
 export default api;

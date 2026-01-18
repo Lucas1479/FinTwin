@@ -393,8 +393,11 @@ const ProductDetailPanel = ({ product, onClose }) => {
   ];
 
   return (
-    <div className="fixed top-20 right-6 z-[110] w-full max-w-[620px] pointer-events-none">
-      <div className="relative w-full bg-white rounded-[2.25rem] shadow-[-16px_16px_48px_-18px_rgba(0,0,0,0.16)] overflow-hidden flex flex-col max-h-[70vh] border border-slate-100 pointer-events-auto">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/40 transition-opacity" onClick={onClose}>
+      <div 
+        className="relative w-full max-w-[620px] bg-white rounded-[2.25rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-slate-100 animate-in zoom-in-95 duration-200"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="px-8 py-6 flex items-center justify-between border-b border-slate-50">
           <div className="flex items-center gap-5">
