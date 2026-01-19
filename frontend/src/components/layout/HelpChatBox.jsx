@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 const HelpChatBox = ({ isOpen, onClose }) => {
+  const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
   const [messages, setMessages] = useState([
     { 
       role: 'assistant', 
@@ -111,7 +112,7 @@ const HelpChatBox = ({ isOpen, onClose }) => {
     setIsTyping(true);
 
     try {
-      const response = await fetch('http://localhost:5000/api/help/chat', {
+      const response = await fetch(`${apiBaseUrl}/help/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -9,7 +9,7 @@ import ComparisonDock from "../components/marketplace/ComparisonDock";
 import ComparisonModal from "../components/marketplace/ComparisonModal";
 import ProductDetailsModal from "../components/marketplace/ProductDetailsModal";
 import productService from "../services/productService";
-import { fetchCurrentUserProfile } from "../utils/api";
+import { getUserProfile } from "../services/userService";
 import { scoreProduct } from "../utils/scoring";
 import { useSidebar } from "../context/SidebarContext";
 
@@ -214,10 +214,11 @@ const MarketplacePage = () => {
     const init = async () => {
       const [, userResult] = await Promise.allSettled([
         loadPage(1),
-        fetchCurrentUserProfile(),
+        getUserProfile(),
       ]);
       if (isMounted && userResult.status === "fulfilled") {
-        setProfile(p => ({ ...p, ...userResult.value }));
+        const payload = userResult.value?.data || userResult.value || {};
+        setProfile(p => ({ ...p, ...payload }));
       }
     };
     init();

@@ -17,7 +17,7 @@ const goalEngineService = {
    * @param {boolean} [params.useRag] - Whether to use RAG enrichment
    * @returns {Promise<{ text: string, json: { ai_decision: Object, form_schema: Object } }>}
    */
-  generateDecision: async ({ stage, goalContext, userInput, previousDecisions = [], substage, substageData, useRag }) => {
+  generateDecision: async ({ stage, goalContext, userInput, previousDecisions = [], substage, substageData, useRag, mode, askHistory }) => {
     try {
       const response = await api.post('/goals/engine/generate', {
         stage,
@@ -26,7 +26,9 @@ const goalEngineService = {
         previousDecisions,
         substage,
         substageData,
-        useRag
+        useRag,
+        mode,
+        askHistory
       });
       
       // Ensure we return a consistent structure even if backend varies
@@ -45,7 +47,7 @@ const goalEngineService = {
    * @param {Function} onChunk - Callback for each text chunk (for reasoning)
    * @returns {Promise<Object>} - The final complete JSON data
    */
-  generateDecisionStream: async ({ stage, goalContext, userInput, previousDecisions = [], substage, substageData, useRag }, onChunk) => {
+  generateDecisionStream: async ({ stage, goalContext, userInput, previousDecisions = [], substage, substageData, useRag, mode, askHistory }, onChunk) => {
     try {
       const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/goals/engine/generate`, {
         method: 'POST',
@@ -64,6 +66,8 @@ const goalEngineService = {
           substage,
           substageData,
           useRag,
+          mode,
+          askHistory,
           stream: true
         })
       });

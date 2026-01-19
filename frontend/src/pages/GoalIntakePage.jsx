@@ -350,7 +350,9 @@ const Copilot = ({
     messages, 
     setMessages,
     useRag,
-    setUseRag
+    setUseRag,
+    mode,
+    setMode
 }) => {
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -396,11 +398,16 @@ const Copilot = ({
         return formattedText;
     };
 
+    const formatSnippet = (snippet) => {
+        if (!snippet) return '';
+        return snippet.replace(/\s+/g, ' ').trim();
+    };
+
     const handleSend = async (overrideText) => {
         const textToSend = typeof overrideText === 'string' ? overrideText : inputText;
         if (!textToSend.trim()) return;
         
-        const userMsg = { role: 'user', text: textToSend };
+        const userMsg = { role: 'user', text: textToSend, mode };
         setMessages(prev => [...prev, userMsg]);
         setInputText('');
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -413,7 +420,8 @@ const Copilot = ({
             role: 'assistant', 
             text: '', 
             isTyping: true,
-            isStreaming: true 
+            isStreaming: true,
+            mode
         }]);
 
         try {
@@ -452,12 +460,19 @@ const Copilot = ({
                     .replace(/\\t/g, '\t');
             };
 
+            const askHistory = messages
+                .filter(m => m.mode === 'ask' && (m.role === 'user' || m.role === 'assistant') && m.text)
+                .slice(-8)
+                .map(m => ({ role: m.role, text: m.text }));
+
             const finalData = await goalEngineService.generateDecisionStream({
                 stage: currentStageLabel,
                 goalContext,
                 userInput: { text: userMsg.text },
                 previousDecisions: [],
-                useRag
+                useRag,
+                mode,
+                askHistory
             }, (chunk) => {
                 accumulatedRaw += chunk;
                 
@@ -514,7 +529,8 @@ const Copilot = ({
                             isTyping: false,
                             isStreaming: false,
                             thought_process: aiDecision?.thought_process || extractField('thought_process', accumulatedRaw),
-                            references: aiDecision?.references
+                            references: aiDecision?.references,
+                            rag_summary: aiDecision?.rag_summary
                         };
                     }
                     return newMessages;
@@ -522,7 +538,7 @@ const Copilot = ({
 
                 const effectiveDecision = aiDecision || (Object.keys(fallbackDecision).length > 0 ? fallbackDecision : null);
                 
-                if (effectiveDecision && onUpdateContext) {
+                if (mode !== 'ask' && effectiveDecision && onUpdateContext) {
                     onUpdateContext(effectiveDecision);
                 }
             }
@@ -636,9 +652,15 @@ const Copilot = ({
                                 </div>
 
                                 {/* References */}
-                                {msg.role === 'assistant' && msg.references && msg.references.length > 0 && (
+                                {msg.role === 'assistant' && ((msg.references && msg.references.length > 0) || msg.rag_summary) && (
                                     <div className="mt-3 pt-2 border-t border-slate-100 flex flex-col gap-2">
-                                        {msg.references.map((ref, idx) => {
+                                        {msg.rag_summary && (
+                                            <div className="px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600">
+                                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">KB Summary</div>
+                                                <div className="text-left whitespace-normal">{formatSnippet(msg.rag_summary)}</div>
+                                            </div>
+                                        )}
+                                        {(msg.references || []).map((ref, idx) => {
                                             const marker = ref.marker || `[${idx + 1}]`;
                                             const title = ref.title || 'Source';
                                             const hasUrl = !!ref.url;
@@ -654,7 +676,9 @@ const Copilot = ({
                                                             {hasUrl ? <ExternalLink size={10} /> : null} {title}
                                                         </div>
                                                         {!hasUrl && ref.snippet && (
-                                                            <div className="text-[10px] text-slate-500 line-clamp-2">{ref.snippet}</div>
+                                                            <div className="text-[10px] text-slate-500 line-clamp-2 text-left">
+                                                                {formatSnippet(ref.snippet)}
+                                                            </div>
                                                         )}
                                                         <div className="text-[10px] text-slate-400">{source}</div>
                                                     </div>
@@ -683,8 +707,8 @@ const Copilot = ({
                                                 >
                                                     <div className="flex items-start gap-2">{header}</div>
                                                     {ref.snippet && isOpen && (
-                                                        <div className="mt-1 p-2 bg-white border border-slate-200 rounded text-[11px] text-slate-600 shadow-sm whitespace-pre-wrap">
-                                                            {ref.snippet}
+                                                        <div className="mt-1 p-2 bg-white border border-slate-200 rounded text-[11px] text-slate-600 shadow-sm whitespace-normal text-left">
+                                                            {formatSnippet(ref.snippet)}
                                                         </div>
                                                     )}
                                                 </div>
@@ -734,9 +758,31 @@ const Copilot = ({
                     ))}
                 </div>
             )}
-
             {/* Input Area */}
             <div className="relative shrink-0">
+                {/* Mode Switch */}
+                <div className="flex items-center justify-end gap-2 mb-2">
+                    <span className="text-[10px] lg:text-[11px] text-slate-400">
+                        {mode === 'auto' && 'Auto-fill goals'}
+                        {mode === 'ask' && 'Q&A only'}
+                        {mode === 'agent' && 'Smart route'}
+                    </span>
+                    <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-full">
+                        {['auto', 'ask', 'agent'].map((opt) => (
+                            <button
+                                key={opt}
+                                onClick={() => setMode(opt)}
+                                className={`px-2 py-0.5 rounded-full text-[9px] lg:text-[10px] font-bold transition-all ${
+                                    mode === opt ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'
+                                }`}
+                                title={`Mode: ${opt}`}
+                                type="button"
+                            >
+                                {opt.toUpperCase()}
+                            </button>
+                        ))}
+                    </div>
+                </div>
                 <textarea 
                     ref={textareaRef}
                     value={inputText}
@@ -763,6 +809,9 @@ const Copilot = ({
                     <Send size={14} />
                 </button>
             </div>
+            <div className="text-[10px] text-slate-400 mt-1">
+                For reference only. Not investment advice. AI responses may be inaccurate—please verify.
+            </div>
         </div>
     );
 };
@@ -777,6 +826,7 @@ const GoalEnginePage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [messages, setMessages] = useState([]);
   const [useRag, setUseRag] = useState(true); // Default to RAG enabled
+  const [chatMode, setChatMode] = useState('agent');
   
   // Resizable Sidebar State (Pixels instead of percentage for better precision)
   const [leftWidth, setLeftWidth] = useState(window.innerWidth > 1440 ? 450 : 340); 
@@ -1124,7 +1174,8 @@ const GoalEnginePage = () => {
                             isTyping: false,
                             isStreaming: false,
                             thought_process: data.ai_decision.thought_process,
-                            references: data.ai_decision.references
+                            references: data.ai_decision.references,
+                            rag_summary: data.ai_decision.rag_summary
                         };
                     }
                     return newMessages;
@@ -1436,7 +1487,8 @@ const GoalEnginePage = () => {
                           isTyping: false,
                           isStreaming: false,
                           thought_process: data.ai_decision.thought_process,
-                          references: data.ai_decision.references
+                          references: data.ai_decision.references,
+                          rag_summary: data.ai_decision.rag_summary
                       };
                   }
                   return newMessages;
@@ -1581,7 +1633,8 @@ const GoalEnginePage = () => {
                           isTyping: false,
                           isStreaming: false,
                           thought_process: aiDecision.thought_process,
-                          references: aiDecision.references
+                          references: aiDecision.references,
+                          rag_summary: aiDecision.rag_summary
                       };
                   }
                   return newMessages;
@@ -1998,6 +2051,8 @@ const GoalEnginePage = () => {
                     setMessages={setMessages}
                     useRag={useRag}
                     setUseRag={setUseRag}
+                    mode={chatMode}
+                    setMode={setChatMode}
                 />
             </div>
 

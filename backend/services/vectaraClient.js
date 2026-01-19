@@ -145,22 +145,121 @@ class VectaraClient {
       sentencesAfter = 1,
     } = options;
 
-    const generationPreset =
-      process.env.VECTARA_GENERATION_PRESET || 'vectara-summary-ext-24k';
+    const generationPreset = process.env.VECTARA_GENERATION_PRESET || '';
+    const generationModel = process.env.VECTARA_GENERATION_MODEL || '';
     const responseLanguage = process.env.VECTARA_RESPONSE_LANGUAGE || 'eng';
 
-    const corpora =
+    const extractUrlFromText = (text) => {
+      const match = text?.match(/https?:\/\/\S+/);
+      if (match && match[0]) return match[0].replace(/[),.;]+$/, '');
+      return '';
+    };
+
+    const cleanSnippetText = (text) => {
+      if (!text) return '';
+      return text
+        .replace(/%START_SNIPPET%/g, '')
+        .replace(/%END_SNIPPET%/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+
+    const isUnhelpfulSummary = (summary) => {
+      if (!summary) return true;
+      const normalized = summary.toLowerCase();
+      return (
+        normalized.includes('do not have enough information') ||
+        normalized.includes("don't have enough information") ||
+        normalized.includes('insufficient information') ||
+        normalized.includes('cannot answer') ||
+        normalized.includes('not enough context')
+      );
+    };
+
+    const buildFallbackSummary = (passages = []) => {
+      if (!passages.length) return null;
+      const combined = passages
+        .map((p) => cleanSnippetText(p.text))
+        .filter(Boolean)
+        .slice(0, 2)
+        .join(' ');
+      if (!combined) return null;
+      return combined.slice(0, 600);
+    };
+
+    const mapV2Passages = (items = []) =>
+      items.map((item) => {
+        const rawUrl =
+          item?.metadata?.url ||
+          item?.metadata?.link ||
+          item?.metadata?.href ||
+          item?.metadata?.source_url ||
+          item?.document_metadata?.url ||
+          item?.document_metadata?.source_url ||
+          '';
+        let url = rawUrl && typeof rawUrl === 'string' ? rawUrl.trim() : '';
+        if (!url) url = extractUrlFromText(item?.text);
+
+        let host = '';
+        try {
+          if (url) host = new URL(url).hostname;
+        } catch (_) {}
+
+        const title =
+          item?.metadata?.doc_title ||
+          item?.metadata?.title ||
+          item?.document_metadata?.title ||
+          item?.document_metadata?.Title ||
+          host ||
+          'Reference';
+
+        return {
+          text: cleanSnippetText(item?.text),
+          score: item?.score,
+          corpusId: item?.corpusKey?.corpus_id || item?.corpusKey?.corpusId,
+          documentId: item?.document_id || item?.documentId,
+          source: host || item?.metadata?.source || item?.metadata?.doc_title || 'KnowledgeBase',
+          url,
+          title,
+        };
+      });
+
+    const parseV2Response = (data) => {
+      const respObj = data?.responseSet?.[0] || {};
+      let summaryText =
+        respObj?.summary?.[0]?.text ||
+        respObj?.summary?.text ||
+        (typeof respObj?.summary === 'string' ? respObj.summary : null) ||
+        data?.summary?.[0]?.text ||
+        data?.summary?.text ||
+        (typeof data?.summary === 'string' ? data.summary : null) ||
+        data?.generation?.text ||
+        data?.generation?.summary?.text ||
+        null;
+
+      const responseItems = Array.isArray(respObj?.response)
+        ? respObj.response
+        : Array.isArray(data?.search_results)
+        ? data.search_results
+        : [];
+
+      const passages = mapV2Passages(responseItems);
+      if (isUnhelpfulSummary(summaryText)) {
+        summaryText = buildFallbackSummary(passages);
+      }
+      return { summaryText, passages };
+    };
+
+    const resolvedCorpusKeys =
       this.corpusKeys.length > 0
-        ? this.corpusKeys.map((key) => ({
-            corpus_key: key,
-            metadata_filter: '',
-            lexical_interpolation: 0.005,
-          }))
-        : this.corpusIds.map((id) => ({
-            corpus_id: Number(id),
-            metadata_filter: '',
-            lexical_interpolation: 0.005,
-          }));
+        ? this.corpusKeys
+        : this.corpusIds.map((id) => `crp_${id}`);
+
+    const corpora = resolvedCorpusKeys.map((key) => ({
+      corpus_key: key,
+      metadata_filter: '',
+      lexical_interpolation: 0.005,
+    }));
 
     const body = {
       query: queryText,
@@ -176,12 +275,24 @@ class VectaraClient {
         },
       },
       stream_response: false,
-      generation: {
-        generation_preset_name: generationPreset,
-        response_language: responseLanguage,
-      },
       save_history: false,
     };
+
+    if (generationPreset || generationModel) {
+      body.generation = {
+        response_language: responseLanguage,
+        ...(generationPreset ? { generation_preset_name: generationPreset } : {}),
+        ...(generationModel ? { model: generationModel } : {}),
+      };
+    }
+
+    console.log('[Vectara] v2 request config', {
+      corpusKeys: resolvedCorpusKeys,
+      hasGeneration: !!body.generation,
+      generationPreset: generationPreset || null,
+      generationModel: generationModel || null,
+      responseLanguage,
+    });
 
     const bearer = await this._getV2Token();
 
@@ -196,6 +307,48 @@ class VectaraClient {
 
     if (!resp.ok) {
       const errText = await resp.text();
+      const isGenerationPresetError =
+        errText?.includes('generation preset') ||
+        errText?.includes('generation preset') ||
+        errText?.includes('llm model');
+      if (resp.status === 404 && body.generation && isGenerationPresetError) {
+        console.warn('[Vectara] v2 generation preset unavailable, retrying without generation');
+        delete body.generation;
+        const retryResp = await fetch('https://api.vectara.io/v2/query', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${bearer}`,
+          },
+          body: JSON.stringify(body),
+        });
+        if (!retryResp.ok) {
+          const retryErrText = await retryResp.text();
+          console.error('[Vectara] v2 retry failed', {
+            status: retryResp.status,
+            errText: retryErrText?.slice(0, 300),
+          });
+          throw new AppError(
+            `Vectara v2 query failed: ${retryResp.status} ${retryErrText}`,
+            502,
+            'VECTARA_QUERY_FAILED'
+          );
+        }
+        const retryData = await retryResp.json();
+        const { summaryText: retrySummaryText, passages: retryPassages } = parseV2Response(retryData);
+        return {
+          summary: retrySummaryText,
+          passages: retryPassages,
+          citations: retryPassages.map((p, idx) => ({
+            id: idx + 1,
+            source: p.source,
+            title: p.title,
+            url: p.url,
+            corpusId: p.corpusId,
+          })),
+        };
+      }
+
       console.error('[Vectara] v2 query failed', {
         status: resp.status,
         errText: errText?.slice(0, 300),
@@ -208,36 +361,14 @@ class VectaraClient {
     }
 
     const data = await resp.json();
-    const respObj = data?.responseSet?.[0] || {};
-    const summaryText = respObj?.summary?.[0]?.text || respObj?.summary?.text || null;
-
-    const passages = (respObj?.response || []).map((item) => {
-      const rawUrl =
-        item.metadata?.url ||
-        item.metadata?.link ||
-        item.metadata?.href ||
-        item.metadata?.source_url ||
-        '';
-      let url = rawUrl && typeof rawUrl === 'string' ? rawUrl.trim() : '';
-      if (!url) {
-        const match = item.text?.match(/https?:\/\/\S+/);
-        if (match && match[0]) url = match[0].replace(/[),.;]+$/, '');
-      }
-      let host = '';
-      try {
-        if (url) host = new URL(url).hostname;
-      } catch (_) {}
-
-      return {
-        text: item.text,
-        score: item.score,
-        corpusId: item.corpusKey?.corpus_id || item.corpusKey?.corpusId,
-        documentId: item.documentId,
-        source: host || item.metadata?.source || item.metadata?.doc_title || '',
-        url,
-        title: item.metadata?.doc_title || host || 'Reference',
-      };
+    console.log('[Vectara] v2 response shape', {
+      keys: Object.keys(data || {}),
+      responseSetCount: Array.isArray(data?.responseSet) ? data.responseSet.length : 0,
+      searchResultsCount: Array.isArray(data?.search_results) ? data.search_results.length : 0,
+      hasSummary: !!(data?.summary || data?.responseSet?.[0]?.summary),
+      hasGeneration: !!data?.generation,
     });
+    const { summaryText, passages } = parseV2Response(data);
 
     return {
       summary: summaryText,
@@ -271,7 +402,7 @@ class VectaraClient {
       sentencesAfter = 1,
     } = options;
 
-    const useV2 = process.env.VECTARA_USE_V2 === 'true' && this.authToken;
+    const useV2 = process.env.VECTARA_USE_V2 === 'true';
     if (useV2) {
       return this._callV2(queryText, {
         numResults,
