@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PlusCircle, Play, Copy, Trash2, Edit2, UserCircle2, Briefcase, TrendingUp, X, ChevronDown, ChevronUp, Wallet, Landmark, TrendingDown, Info, ShieldCheck, Save, BarChart3, Activity, Target } from 'lucide-react';
+import InfoTooltip from '../../components/common/InfoTooltip';
+import { HELP_ANCHORS } from '../../constants/helpAnchors';
 
 const ScenarioLobby = ({
   onEditScenario,
@@ -76,9 +78,15 @@ const ScenarioLobby = ({
              <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
                 <UserCircle2 size={18} strokeWidth={2.5} />
              </div>
-             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-widest">
-               Simulation Backgrounds
-             </h2>
+             <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-slate-900 uppercase tracking-widest">
+                Simulation Backgrounds
+                </h2>
+                <InfoTooltip 
+                    content="A snapshot of your identity, financials, and risk profile. Create different 'Versions of You' to test."
+                    anchor={HELP_ANCHORS.PLAYGROUND.BACKGROUNDS} 
+                />
+             </div>
           </div>
           <button
             onClick={() => setIsProfileModalOpen(true)}
@@ -110,9 +118,15 @@ const ScenarioLobby = ({
              <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
                 <Play size={18} strokeWidth={2.5} fill="currentColor" className="ml-0.5" />
              </div>
-             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-widest">
-               Saved Life Paths
-             </h2>
+             <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-slate-900 uppercase tracking-widest">
+                Saved Life Paths
+                </h2>
+                <InfoTooltip 
+                    content="A 'What-If' simulation connecting a Background to a specific Goal to test feasibility."
+                    anchor={HELP_ANCHORS.PLAYGROUND.SCENARIOS} 
+                />
+             </div>
           </div>
           <button
             onClick={() => setIsPathModalOpen(true)}

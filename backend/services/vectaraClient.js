@@ -143,6 +143,7 @@ class VectaraClient {
       numResults = 6,
       sentencesBefore = 1,
       sentencesAfter = 1,
+      metadataFilter = '',
     } = options;
 
     const generationPreset = process.env.VECTARA_GENERATION_PRESET || '';
@@ -257,7 +258,7 @@ class VectaraClient {
 
     const corpora = resolvedCorpusKeys.map((key) => ({
       corpus_key: key,
-      metadata_filter: '',
+      metadata_filter: metadataFilter || '',
       lexical_interpolation: 0.005,
     }));
 
@@ -400,6 +401,7 @@ class VectaraClient {
       maxSummarizedResults = 5,
       sentencesBefore = 1,
       sentencesAfter = 1,
+      metadataFilter = '',
     } = options;
 
     const useV2 = process.env.VECTARA_USE_V2 === 'true';
@@ -408,6 +410,7 @@ class VectaraClient {
         numResults,
         sentencesBefore,
         sentencesAfter,
+        metadataFilter,
       });
     }
 
@@ -416,7 +419,10 @@ class VectaraClient {
         {
           query: queryText,
           numResults,
-          corpusKey: this.corpusIds.map((id) => ({ corpusId: Number(id) })),
+          corpusKey: this.corpusIds.map((id) => ({ 
+             corpusId: Number(id),
+             metadataFilter: metadataFilter || undefined
+          })),
           summary: [
             {
               responseLang: 'en',

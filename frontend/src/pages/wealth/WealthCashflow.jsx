@@ -12,6 +12,8 @@ import CashFlowProjectionChart from '../../components/wealth/CashFlowProjectionC
 import CashFlowFormModal from '../../components/wealth/CashFlowFormModal';
 import IncomeStructureCard from '../../components/wealth/IncomeStructureCard';
 import IncomeDetailModal from '../../components/wealth/IncomeDetailModal';
+import InfoTooltip from '../../components/common/InfoTooltip';
+import { HELP_ANCHORS } from '../../constants/helpAnchors'; // Import Registry
 import { 
   startOfWeek, endOfWeek, startOfMonth, endOfMonth, 
   eachDayOfInterval, getDate, getDay, format, differenceInDays
@@ -73,20 +75,26 @@ const getIconForCategory = (category) => {
 const SegmentedControl = ({ options, value, onChange }) => (
   <div className="flex bg-slate-100 p-1 rounded-xl">
     {options.map((opt) => (
-      <button
-        key={opt.value}
-        onClick={() => onChange(opt.value)}
-        className={`
-          flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all
-          ${value === opt.value 
-            ? 'bg-white text-indigo-600 shadow-sm' 
-            : 'text-slate-400 hover:text-slate-600 hover:bg-slate-200/50'
-          }
-        `}
+      <InfoTooltip 
+        key={opt.value} 
+        content={opt.tooltip}
+        aiPrompt={opt.aiPrompt} // Keep legacy prompt if needed
+        anchor={opt.anchor} // Pass new anchor
       >
-        {opt.icon && <opt.icon size={12} />}
-        {opt.label}
-      </button>
+        <button
+          onClick={() => onChange(opt.value)}
+          className={`
+            flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all
+            ${value === opt.value 
+              ? 'bg-white text-indigo-600 shadow-sm' 
+              : 'text-slate-400 hover:text-slate-600 hover:bg-slate-200/50'
+            }
+          `}
+        >
+          {opt.icon && <opt.icon size={12} />}
+          {opt.label}
+        </button>
+      </InfoTooltip>
     ))}
   </div>
 );
@@ -307,11 +315,31 @@ const WealthCashflow = () => {
           {/* Header with Toggles */}
           <div className="flex flex-wrap justify-between items-start gap-4 mb-6 relative z-10">
             <div className="flex items-center gap-4">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mt-1.5">Net Cash Flow</h3>
+              <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mt-1.5">Net Cash Flow</h3>
+                  <div className="mt-1.5">
+                    <InfoTooltip 
+                        content="Your calculated surplus after expenses and investments. A positive number means you are building wealth."
+                        anchor={HELP_ANCHORS.CASHFLOW.METRICS} 
+                    />
+                  </div>
+              </div>
               <SegmentedControl 
                 options={[
-                   { value: 'Planning', label: 'Plan', icon: Target },
-                   { value: 'Actual', label: 'Real', icon: Activity }
+                   { 
+                     value: 'Planning', 
+                     label: 'Plan', 
+                     icon: Target,
+                     tooltip: 'Projected average based on your cash flow rules',
+                     anchor: HELP_ANCHORS.CASHFLOW.FORECAST
+                   },
+                   { 
+                     value: 'Actual', 
+                     label: 'Actual', 
+                     icon: Activity,
+                     tooltip: 'Real transactions based on specific dates in this period',
+                     anchor: HELP_ANCHORS.CASHFLOW.ACTUAL
+                   }
                 ]}
                 value={calcMode}
                 onChange={setCalcMode}
@@ -321,7 +349,7 @@ const WealthCashflow = () => {
             <SegmentedControl 
                 options={[
                    { value: 'Weekly', label: 'Weekly' },
-                   { value: 'Fortnightly', label: 'F/N' },
+                   { value: 'Fortnightly', label: 'Fortnightly' },
                    { value: 'Monthly', label: 'Monthly' },
                    { value: 'Yearly', label: 'Yearly' },
                 ]}
@@ -412,10 +440,16 @@ const WealthCashflow = () => {
       <div className={`${CARD_BASE} p-6`}>
         <div className="flex items-center justify-between mb-4 px-2">
           <div>
-            <h3 className={SECTION_TITLE}>
-              <TrendingUp size={18} className="text-indigo-600" />
-              30-Day Cash Projection
-            </h3>
+            <div className="flex items-center gap-2">
+                <h3 className={SECTION_TITLE}>
+                <TrendingUp size={18} className="text-indigo-600" />
+                30-Day Cash Projection
+                </h3>
+                <InfoTooltip 
+                    content="Projected daily account balance based on your recurring income and expenses. Use this to spot potential shortfalls."
+                    anchor={HELP_ANCHORS.CASHFLOW.FORECAST} 
+                />
+            </div>
             <p className="text-xs text-slate-400 mt-1 pl-6.5">Forecasted balance based on your rules</p>
           </div>
           <button className={BTN_ICON}>
@@ -434,10 +468,16 @@ const WealthCashflow = () => {
         {/* Income Streams */}
         <div className="space-y-4">
           <div className="flex items-center justify-between px-2">
-            <h3 className={SECTION_TITLE}>
-              <Wallet size={18} className="text-emerald-500" />
-              Income Streams
-            </h3>
+            <div className="flex items-center gap-2">
+                <h3 className={SECTION_TITLE}>
+                <Wallet size={18} className="text-emerald-500" />
+                Income Streams
+                </h3>
+                <InfoTooltip 
+                    content="Track both Active (Salary) and Passive (Investments/Royalties) income sources here."
+                    anchor={HELP_ANCHORS.CASHFLOW.INCOME_TYPES} 
+                />
+            </div>
             <button 
               onClick={() => handleAdd('Income')}
               className="text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-xl transition-colors flex items-center gap-1.5"

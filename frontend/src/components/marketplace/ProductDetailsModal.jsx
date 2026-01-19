@@ -1,4 +1,6 @@
 import React from "react";
+import InfoTooltip from '../common/InfoTooltip'; // Import Tooltip
+import { HELP_ANCHORS } from '../../constants/helpAnchors'; // Import Registry
 
 const formatDate = (value) => {
   if (!value) return null;
@@ -159,7 +161,13 @@ export default function ProductDetailsModal({ product, open, onClose, loading = 
           {activeTab === "overview" && (
             <div className="space-y-6">
               <div>
-                <h3 className="text-sm font-semibold text-slate-900">Fund Strategy</h3>
+                <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-slate-900">Fund Strategy</h3>
+                    <InfoTooltip 
+                        content="How this fund allocates capital across Growth (Equities/Property) vs Defensive (Bonds/Cash) assets."
+                        anchor={HELP_ANCHORS.MARKETPLACE.ALLOCATION} 
+                    />
+                </div>
                 <p className="mt-2 text-sm text-slate-600">
                   {product.strategy ||
                     product.description ||
@@ -168,7 +176,13 @@ export default function ProductDetailsModal({ product, open, onClose, loading = 
               </div>
 
               <div>
-                <h3 className="text-sm font-semibold text-slate-900">Top Holdings</h3>
+                <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-slate-900">Top Holdings</h3>
+                    <InfoTooltip 
+                        content="The largest individual assets (companies or bonds) within this fund."
+                        anchor={HELP_ANCHORS.MARKETPLACE.OPTIMIZER} 
+                    />
+                </div>
                 {holdings.length === 0 ? (
                   <p className="mt-2 text-sm text-slate-500">
                     Top holdings data is not available for this product.
@@ -272,7 +286,13 @@ export default function ProductDetailsModal({ product, open, onClose, loading = 
                 </div>
 
                 <div className="rounded-xl border border-slate-100 p-4">
-                  <h4 className="text-sm font-semibold text-slate-900">Risk Indicator</h4>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-semibold text-slate-900">Risk Indicator</h4>
+                    <InfoTooltip 
+                        content="Standard Risk Indicator (1-7). 1=Low (Cash), 7=High (Equities)."
+                        anchor={HELP_ANCHORS.MARKETPLACE.RISK_LEVELS} 
+                    />
+                  </div>
                   <p className="text-xs text-slate-500 mt-1">FMA RI 1–7, higher = more volatility</p>
                   <div className="mt-4 space-y-3">
                     <div className="flex gap-1">

@@ -12,11 +12,12 @@ import numpy as np
 # =============================================================================
 
 # Input/Output configuration
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 INPUT_FILES = [
-    {"file": "31-December-2022-Disclose-Register-MIS-fund-update 1(in).csv", "category_hint": "Fund", "format": "csv"},
-    {"file": "Disclose-Register-KiwiSaver-fund-updates-for-31-December-2022.xlsx", "category_hint": "KiwiSaver", "format": "xlsx"},
+    {"file": os.path.join(BASE_DIR, "31-December-2022-Disclose-Register-MIS-fund-update 1(in).csv"), "category_hint": "Fund", "format": "csv"},
+    {"file": os.path.join(BASE_DIR, "Disclose-Register-KiwiSaver-fund-updates-for-31-December-2022.xlsx"), "category_hint": "KiwiSaver", "format": "xlsx"},
 ]
-OUTPUT_FILE = "products_final.json"
+OUTPUT_FILE = os.path.join(BASE_DIR, "products_final.json")
 # Global metadata for this batch (disclose register snapshot date)
 DISCLOSE_AS_OF_DATE = "2022-12-31"
 DATA_SOURCE = "Disclose Register (FMA)"

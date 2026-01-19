@@ -1,4 +1,6 @@
 import { MapPin, Briefcase, Users, Calendar, Sparkles } from 'lucide-react';
+import InfoTooltip from '../../common/InfoTooltip'; // Import Tooltip
+import { HELP_ANCHORS } from '../../../constants/helpAnchors'; // Import Registry
 
 const HouseholdSection = ({ data, onChange }) => {
   const regions = [
@@ -20,7 +22,13 @@ const HouseholdSection = ({ data, onChange }) => {
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div>
-        <h2 className="text-xl font-bold text-slate-900">Household & Context</h2>
+        <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-slate-900">Household & Context</h2>
+            <InfoTooltip 
+                content="Your household structure (Single vs Family) affects Emergency Fund requirements and tax planning."
+                anchor={HELP_ANCHORS.USER_PROFILE.HOUSEHOLD} 
+            />
+        </div>
         <p className="text-slate-500 text-sm mt-1">Socio-economic background that shapes your financial advice</p>
       </div>
 

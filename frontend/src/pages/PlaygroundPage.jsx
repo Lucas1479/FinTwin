@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout';
 import { Calculator, PlayCircle, Settings2, RotateCw } from 'lucide-react';
+import InfoTooltip from '../components/common/InfoTooltip'; // Import Tooltip
+import { HELP_ANCHORS } from '../constants/helpAnchors'; // Import Registry
 import ScenarioLobby from './Playground/ScenarioLobby';
 import ScenarioWorkspace from './Playground/ScenarioWorkspace';
 import PlaygroundTools, { CalculatorModal } from './Playground/PlaygroundTools';
@@ -284,7 +286,13 @@ const PlaygroundPage = () => {
           {/* Header Section - Refined Title */}
           <div className="mb-8 flex justify-between items-start">
             <div>
-                <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Playground</h1>
+                <div className="flex items-center gap-2">
+                    <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Playground</h1>
+                    <InfoTooltip 
+                        content="A sandbox environment to test 'What-If' scenarios without affecting your live financial plan."
+                        anchor={HELP_ANCHORS.PLAYGROUND.SCENARIOS} 
+                    />
+                </div>
                 <p className="text-slate-500 text-sm mt-1">Design backgrounds and test life scenarios in a risk-free environment.</p>
             </div>
             {/* Refresh Button */}

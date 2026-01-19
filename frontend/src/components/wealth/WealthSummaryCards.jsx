@@ -1,11 +1,16 @@
 import React from 'react';
 import { Wallet, TrendingUp, TrendingDown, Landmark, Activity, Percent } from 'lucide-react';
+import InfoTooltip from '../common/InfoTooltip'; // Import InfoTooltip
+import { HELP_ANCHORS } from '../../constants/helpAnchors'; // Import Registry
 
-const MetricCard = ({ title, amount, subtext, icon: Icon, colorClass, trend }) => (
-  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200">
+const MetricCard = ({ title, amount, subtext, icon: Icon, colorClass, trend, anchor, tooltipContent }) => (
+  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-200 relative group">
     <div className="flex items-start justify-between">
       <div>
-        <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
+        <div className="flex items-center gap-2 mb-1">
+            <p className="text-sm font-medium text-gray-500">{title}</p>
+            {anchor && <InfoTooltip anchor={anchor} content={tooltipContent} />}
+        </div>
         <h3 className="text-2xl font-bold text-gray-900">
             {amount}
         </h3>
@@ -44,6 +49,13 @@ const WealthSummaryCards = ({ summary }) => {
         icon={Landmark}
         colorClass="bg-indigo-50 text-indigo-600"
         trend={2.4}
+        anchor={{
+            ...HELP_ANCHORS.WEALTH.NET_WORTH,
+            // We can pass content directly here if InfoTooltip supported it via anchor prop, 
+            // but currently InfoTooltip takes content as a separate prop.
+            // Let's modify MetricCard to accept content or pass it explicitly.
+        }}
+        tooltipContent="Your financial bottom line. Assets minus Liabilities." // New prop
       />
       
       <MetricCard 
@@ -53,6 +65,8 @@ const WealthSummaryCards = ({ summary }) => {
         icon={TrendingUp}
         colorClass="bg-emerald-50 text-emerald-600"
         trend={1.8}
+        anchor={HELP_ANCHORS.WEALTH.ASSET_CLASSES}
+        tooltipContent="Everything you own that has monetary value, categorized by type." // New prop
       />
       
       <MetricCard 
@@ -62,13 +76,20 @@ const WealthSummaryCards = ({ summary }) => {
         icon={TrendingDown}
         colorClass="bg-red-50 text-red-600"
         trend={-0.5}
+        // Could add Debt anchor here if we had a specific one
       />
 
       {/* Financial Health Indicator */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between relative">
          <div>
              <div className="flex justify-between items-start">
-                <p className="text-sm font-medium text-gray-500 mb-1">Gearing Ratio</p>
+                <div className="flex items-center gap-2 mb-1">
+                    <p className="text-sm font-medium text-gray-500">Gearing Ratio</p>
+                    <InfoTooltip 
+                        content="Debt-to-Asset Ratio. Indicates financial leverage and risk."
+                        anchor={HELP_ANCHORS.WEALTH.LVR} 
+                    /> 
+                </div>
                 <div className={`p-2 rounded-lg ${gearingRatio < 50 ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
                     <Activity size={18} />
                 </div>

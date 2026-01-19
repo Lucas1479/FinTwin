@@ -248,7 +248,7 @@ class LLMService {
    * @param {string} params.stage - goal engine stage
    * @param {object} params.goalContext - enriched context for hints
    */
-  async fetchRagContext({ query, stage, goalContext }) {
+  async fetchRagContext({ query, stage, goalContext, filter }) {
     const useRag = process.env.ENABLE_VECTARA_RAG === 'true' || process.env.VECTARA_API_KEY;
     if (!useRag) {
       console.log('[LLMService] RAG disabled (ENABLE_VECTARA_RAG not true and no VECTARA_API_KEY).');
@@ -258,7 +258,7 @@ class LLMService {
     const defaultQuery = this._buildRagQuery(stage, goalContext);
     const queryText = query || defaultQuery;
     try {
-      const rag = await vectaraClient.searchAndSummarize(queryText);
+      const rag = await vectaraClient.searchAndSummarize(queryText, { metadataFilter: filter });
       return {
         query: queryText,
         summary: rag.summary,

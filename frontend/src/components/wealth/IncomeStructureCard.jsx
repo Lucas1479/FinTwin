@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { ArrowUpRight } from 'lucide-react';
+import InfoTooltip from '../common/InfoTooltip'; // Import Tooltip
+import { HELP_ANCHORS } from '../../constants/helpAnchors'; // Import Registry
 
 const COLORS = {
   active: '#10b981',    // Emerald 500 (Active/Salary)
@@ -71,7 +73,13 @@ const IncomeStructureCard = ({ flows, viewMode = 'Monthly', onOpenDetail }) => {
     <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between h-full transition-all hover:shadow-md">
       <div className="flex items-center justify-between mb-4">
         <div>
-           <h3 className="text-base font-bold text-slate-900">Income Mix</h3>
+           <div className="flex items-center gap-2">
+               <h3 className="text-base font-bold text-slate-900">Income Mix</h3>
+               <InfoTooltip 
+                   content="Your path to Financial Independence. Aim to increase the Passive share."
+                   anchor={HELP_ANCHORS.CASHFLOW.FI_RATIO} 
+               />
+           </div>
            <p className="text-xs text-slate-400 mt-0.5">Active vs Passive</p>
         </div>
         <button 

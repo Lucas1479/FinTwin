@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { TrendingUp, Clock } from 'lucide-react';
+import InfoTooltip from '../../common/InfoTooltip'; // Import Tooltip
+import { HELP_ANCHORS } from '../../../constants/helpAnchors'; // Import Registry
 
 const FundingFlowWidget = ({ cashFlows = [], profile }) => {
   const navigate = useNavigate();
@@ -99,6 +101,10 @@ const FundingFlowWidget = ({ cashFlows = [], profile }) => {
         <div>
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-black tracking-tight">Funding Flow</h2>
+            <InfoTooltip 
+                content="Breakdown of your monthly Surplus allocation. Green represents uninvested cash."
+                anchor={HELP_ANCHORS.DASHBOARD.FUNDING_FLOW} 
+            />
           </div>
           <p className="text-slate-400 text-[10px] mt-1 font-bold uppercase tracking-widest opacity-60">
             Surplus Cash Allocation
@@ -210,7 +216,7 @@ const FundingFlowWidget = ({ cashFlows = [], profile }) => {
         </div>
         <button 
           onClick={() => navigate('/wealth', { state: { tab: 'cashflow' } })}
-          className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-brand-600 transition-colors shadow-lg shadow-slate-200"
+          className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100"
         >
           Optimize Flow
         </button>

@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import { X, Info, TrendingUp, Lock, Wallet, ArrowRight } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts';
+import InfoTooltip from '../common/InfoTooltip'; // Import Tooltip
+import { HELP_ANCHORS } from '../../constants/helpAnchors'; // Import Registry
 
 const LiquidityDetailModal = ({ isOpen, onClose, assets }) => {
   if (!isOpen) return null;
@@ -57,9 +59,15 @@ const LiquidityDetailModal = ({ isOpen, onClose, assets }) => {
           
           {/* 1. Visualization (Tier Chart) */}
           <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100">
-            <h3 className="text-sm font-bold text-slate-900 mb-6 flex items-center gap-2">
-              <Info size={16} className="text-slate-400" /> Tier Distribution
-            </h3>
+            <div className="flex items-center gap-2 mb-6">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Info size={16} className="text-slate-400" /> Tier Distribution
+                </h3>
+                <InfoTooltip 
+                    content="Understand how easily you can convert assets to cash. Balance is key."
+                    anchor={HELP_ANCHORS.WEALTH.LIQUIDITY_TIERS} 
+                />
+            </div>
             <div className="h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} layout="vertical" barSize={24} margin={{ left: 20, right: 20 }}>

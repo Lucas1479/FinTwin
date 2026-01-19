@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, Save, CheckCircle2, TrendingUp, Shield, ShoppingBag, Activity, Target, Zap, Info, ChevronRight, BarChart3, PieChart as PieChartIcon, RefreshCw, AlertCircle, Plus, Minus, ArrowRightLeft, Landmark, Wallet, Briefcase, TrendingDown } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Cell, Pie, ReferenceLine, BarChart, Bar } from 'recharts';
 import productService from '../../services/productService';
+import InfoTooltip from '../../components/common/InfoTooltip'; // Import Tooltip
+import { HELP_ANCHORS } from '../../constants/helpAnchors'; // Import Registry
 
 // --- Helper: compute exposure using real product allocation (fallback to strategy tags) ---
 const computeExposureFromProducts = (portfolio, productsMap) => {
@@ -358,7 +360,13 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, onSave, profiles, goa
           </button>
           <div className="flex items-center gap-8">
             <div className="space-y-0.5">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Simulation Context</p>
+              <div className="flex items-center gap-2">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Simulation Context</p>
+                <InfoTooltip 
+                    content="Define the 'What-If' scenario by pairing a Goal with a Background Profile."
+                    anchor={HELP_ANCHORS.PLAYGROUND.SCENARIOS} 
+                />
+              </div>
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Goal</span>
@@ -452,7 +460,20 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, onSave, profiles, goa
         <div className="col-span-12 lg:col-span-4 space-y-8">
           
           {/* Stage 2: Strategic Guardrails */}
-          <ConfigCard title="Stage 2: Strategy" icon={Shield} isActive={true} badge="Guardrails">
+          <ConfigCard 
+            title={
+                <div className="flex items-center gap-2">
+                    <span>Stage 2: Strategy</span>
+                    <InfoTooltip 
+                        content="Set your financial guardrails (contributions & exposure). The AI engine works within these limits."
+                        anchor={HELP_ANCHORS.PLAYGROUND.STRATEGY} 
+                    />
+                </div>
+            } 
+            icon={Shield} 
+            isActive={true} 
+            badge="Guardrails"
+          >
             <div className="space-y-8 mt-4">
               
               {/* Contributions */}
@@ -580,7 +601,13 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, onSave, profiles, goa
                   <BarChart3 size={24} strokeWidth={2.5} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">Stage 4: Simulation View</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-slate-900">Stage 4: Simulation View</h3>
+                    <InfoTooltip 
+                        content="Projections based on 100 iterations of Monte Carlo simulation. Volatility applied via Box-Muller transform."
+                        anchor={HELP_ANCHORS.PLAYGROUND.MONTE_CARLO} 
+                    />
+                  </div>
                   <p className="text-xs text-slate-500 font-medium">Monte Carlo Range (10th - 90th Percentile)</p>
                 </div>
               </div>
@@ -679,7 +706,14 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, onSave, profiles, goa
                 The current exposure mix prioritizes <span className="text-indigo-400 font-bold">Growth</span>, aiming for target reach within your {horizonYears}-year window with a controlled volatility buffer.
               </p>
               <div className="p-4 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/5">
-                <p className="text-[10px] font-bold text-indigo-200 uppercase tracking-wider mb-1">Success Probability</p>
+                <div className="flex items-center gap-2 mb-1">
+                    <p className="text-[10px] font-bold text-indigo-200 uppercase tracking-wider">Success Probability</p>
+                    <InfoTooltip 
+                        content="The % of simulated futures where you achieve your goal amount. >85% is considered safe."
+                        anchor={HELP_ANCHORS.PLAYGROUND.SUCCESS_PROB} 
+                        className="text-indigo-300"
+                    />
+                </div>
                 <p className="text-xl font-bold">{Math.round(successProbability)}% <span className="text-[10px] font-medium text-emerald-400">Confidence</span></p>
               </div>
             </div>

@@ -16,6 +16,23 @@ import api from '../utils/api';
  * Backend: { _id, metrics: { riskScore, fees: { total }, returns: { y1, y5 } }, strategy, ... }
  * Frontend: { id, riskLevel, fees, returns: { '1y', '5y' }, riskScore, ... }
  */
+const normalizePercent = (value) => {
+  if (value === null || value === undefined) return null;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+
+  let normalized = num;
+  if (normalized > 0 && normalized <= 1) {
+    normalized *= 100;
+  }
+  if (normalized < 0) normalized = 0;
+  if (normalized > 100) {
+    console.warn('[ProductService] Holding percent > 100, clamping:', num);
+    normalized = 100;
+  }
+
+  return Number(normalized.toFixed(2));
+};
 const transformProduct = (backendProduct) => {
   if (!backendProduct) return null;
 
@@ -83,8 +100,11 @@ const transformProduct = (backendProduct) => {
       other: 0,
     },
 
-    // Holdings (limit to top 5)
-    topHoldings: (topHoldings || []).slice(0, 5),
+    // Holdings (limit to top 5, normalize percent)
+    topHoldings: (topHoldings || []).slice(0, 5).map((holding) => ({
+      ...holding,
+      percent: normalizePercent(holding?.percent),
+    })),
 
     // Term Deposit specific
     termDepositDetails: termDepositDetails || null,

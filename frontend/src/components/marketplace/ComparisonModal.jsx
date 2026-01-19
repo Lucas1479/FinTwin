@@ -1,4 +1,6 @@
 import React from "react";
+import InfoTooltip from '../common/InfoTooltip'; // Import Tooltip
+import { HELP_ANCHORS } from '../../constants/helpAnchors'; // Import Registry
 
 const formatPercent = (value) => {
   if (typeof value !== "number") return "—";
@@ -73,7 +75,15 @@ export default function ComparisonModal({ open, onClose, products = [] }) {
                 ))}
               </tr>
               <tr className="border-t border-slate-100">
-                <td className="py-3 pr-4 font-semibold text-slate-500">Risk Score</td>
+                <td className="py-3 pr-4 font-semibold text-slate-500">
+                    <div className="flex items-center gap-2">
+                        Risk Score
+                        <InfoTooltip 
+                            content="1 (Defensive) to 7 (Aggressive). Based on 5-year volatility."
+                            anchor={HELP_ANCHORS.MARKETPLACE.RISK_LEVELS} 
+                        />
+                    </div>
+                </td>
                 {products.map((p) => (
                   <td key={`${p.id}-riskScore`} className="py-3 pr-6">
                     {formatScore(p.riskScore)}

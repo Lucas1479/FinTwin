@@ -4,6 +4,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 import { ArrowUpRight, TrendingUp, CreditCard, Wallet, DollarSign, ChevronDown } from 'lucide-react';
+import InfoTooltip from '../common/InfoTooltip'; // Import Tooltip
+import { HELP_ANCHORS } from '../../constants/helpAnchors'; // Import Registry
 
 // ============ FINSET STYLE CONSTANTS ============
 const COLORS = {
@@ -45,7 +47,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 // ============ COMPACT KPI CARD ============
-const KpiCard = ({ title, value, change, icon: Icon, breakdown }) => {
+const KpiCard = ({ title, value, change, icon: Icon, breakdown, tooltipContent, anchor }) => {
   const valStr = new Intl.NumberFormat('en-NZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
   const [integerPart, decimalPart] = valStr.split('.');
   const isPositive = change >= 0;
@@ -54,7 +56,15 @@ const KpiCard = ({ title, value, change, icon: Icon, breakdown }) => {
     <div className={`${CARD_BASE} flex flex-col justify-between min-h-[140px] relative overflow-hidden`}>
       <div className="relative z-10">
         <div className="flex justify-between items-start">
-          <p className="text-sm font-semibold text-slate-500">{title}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-slate-500">{title}</p>
+            {anchor && (
+                <InfoTooltip 
+                    content={tooltipContent}
+                    anchor={anchor} 
+                />
+            )}
+          </div>
           <div className={`p-1.5 rounded-lg bg-slate-50 text-slate-400`}>
             <Icon size={14} />
           </div>
@@ -109,7 +119,7 @@ const KpiCard = ({ title, value, change, icon: Icon, breakdown }) => {
 };
 
 // ============ MAIN COMPONENT ============
-const WealthDashboardGrid = ({ assets, liabilities, summary, onOpenLiquidity }) => {
+const WealthDashboardGrid = ({ assets, liabilities, summary, goals = [], cashFlows = [], onOpenLiquidity, onOpenDebt, onOpenAllocation }) => {
   
   // Data Logic (Updated to Industry Standard Tiers)
   const liquidityData = useMemo(() => {
@@ -142,6 +152,81 @@ const WealthDashboardGrid = ({ assets, liabilities, summary, onOpenLiquidity }) 
       { name: 'Locked', value: t3, fill: '#cbd5e1', percent: ((t3 / total) * 100).toFixed(0) },        // Slate (Fixed)
     ].filter(item => item.value > 0);
   }, [assets, summary]);
+
+  // Investment Allocation Logic
+  const investmentMetrics = useMemo(() => {
+    // 1. Asset Ratio (Stock + Funds + KiwiSaver) / Total Assets
+    const investedAssets = assets.filter(a => 
+      ['Invest_Shares', 'Invest_ManagedFund', 'KiwiSaver'].includes(a.category)
+    ).reduce((sum, a) => sum + a.value, 0);
+    
+    const investedRatio = summary.totalAssets > 0 
+      ? (investedAssets / summary.totalAssets * 100).toFixed(0) 
+      : 0;
+
+    // 2. Flow Ratio: Monthly Investment / (Monthly Income - Monthly Living Expenses)
+    // This represents "What % of my disposable income am I investing?"
+    const incomes = cashFlows.filter(f => f.type === 'Income');
+    // Expenses excluding investments
+    const expenses = cashFlows.filter(f => ['Expense', 'Subscription'].includes(f.type));
+    const investmentFlows = cashFlows.filter(f => f.type === 'Investment');
+    
+    const toMonthly = (amount, freq) => {
+       if (freq === 'Weekly') return amount * 4.33;
+       if (freq === 'Fortnightly') return amount * 2.16;
+       if (freq === 'Yearly') return amount / 12;
+       return amount; // Monthly
+    };
+
+    const monthlyIncome = incomes.reduce((sum, f) => sum + toMonthly(f.amount, f.frequency), 0);
+    const monthlyLivingCost = expenses.reduce((sum, f) => sum + toMonthly(f.amount, f.frequency), 0);
+    const monthlyInvested = investmentFlows.reduce((sum, f) => sum + toMonthly(f.amount, f.frequency), 0);
+    
+    // Disposable Surplus = Income - Living Expenses (Money available to save or invest)
+    const monthlyDisposable = Math.max(0, monthlyIncome - monthlyLivingCost);
+    
+    // Investment Rate = Investment / Disposable
+    const flowRatio = monthlyDisposable > 0 
+      ? (monthlyInvested / monthlyDisposable * 100).toFixed(0)
+      : 0;
+
+    return {
+      investedRatio,
+      flowRatio,
+      monthlyInvested,
+      monthlyDisposable,
+      investedAmount: investedAssets
+    };
+  }, [assets, summary, cashFlows]);
+
+  const allocationGoals = useMemo(() => {
+    if (!goals || goals.length === 0) return [];
+    
+    // Theme Rotation
+    const themes = [
+      { color: 'bg-indigo-600', bg: 'bg-indigo-100' },
+      { color: 'bg-blue-600', bg: 'bg-blue-100' },
+      { color: 'bg-emerald-500', bg: 'bg-emerald-100' },
+      { color: 'bg-violet-500', bg: 'bg-violet-100' },
+      { color: 'bg-amber-500', bg: 'bg-amber-100' },
+    ];
+
+    return goals
+      .filter(g => g.target_amount > 0) // Only goals with targets
+      .sort((a, b) => (b.current_amount || 0) - (a.current_amount || 0)) // Sort by current amount (value)
+      .slice(0, 4) // Top 4
+      .map((g, idx) => {
+        const theme = themes[idx % themes.length];
+        return {
+          id: g._id || idx,
+          name: g.goal_name || g.title || 'Unnamed Goal',
+          current: g.current_amount || 0,
+          target: g.target_amount || 1,
+          category: g.category || 'General',
+          ...theme
+        };
+      });
+  }, [goals]);
 
   const trendData = useMemo(() => {
     const baseAssets = summary.totalAssets || 500000;
@@ -208,6 +293,8 @@ const WealthDashboardGrid = ({ assets, liabilities, summary, onOpenLiquidity }) 
           value={summary.liquidCapital} 
           icon={DollarSign} 
           breakdown={liquidityBreakdown}
+          tooltipContent="Spendable (Cash) vs Allocated (Invested). Your readily available funds."
+          anchor={HELP_ANCHORS.WEALTH.LIQUID_CAPITAL}
         />
       </div>
 
@@ -250,7 +337,13 @@ const WealthDashboardGrid = ({ assets, liabilities, summary, onOpenLiquidity }) 
         {/* RIGHT: Liquidity Structure (FinSet Budget Style - Optimized) */}
         <div className={CARD_BASE}>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base font-bold text-slate-900">Liquidity</h3>
+            <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900">Liquidity</h3>
+                <InfoTooltip 
+                    content="Breakdown of assets by accessibility: Liquid (Cash), Semi-Liquid (Shares), and Locked (KiwiSaver)."
+                    anchor={HELP_ANCHORS.WEALTH.LIQUIDITY_TIERS} 
+                />
+            </div>
             <button 
               onClick={onOpenLiquidity}
               className="w-8 h-8 rounded-full border border-slate-100 flex items-center justify-center hover:bg-slate-50 transition-colors group cursor-pointer"
@@ -303,75 +396,192 @@ const WealthDashboardGrid = ({ assets, liabilities, summary, onOpenLiquidity }) 
         </div>
       </div>
 
-      {/* === ROW 3: Allocations & Debt === */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      {/* === ROW 3: Allocations & Debt (Split into 3 Equal Cards) === */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         
-        {/* LEFT: Capital Allocation */}
+        {/* 1. Funding Alignment (Optimized for Long Names & Ultra-Thick Bars) */}
         <div className={CARD_BASE}>
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-base font-bold text-slate-900">Allocation Goals</h3>
-            <button className="w-8 h-8 rounded-full border border-slate-100 flex items-center justify-center hover:bg-slate-50 transition-colors">
-              <ArrowUpRight size={14} className="text-slate-400" />
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="text-base font-bold text-slate-900">Funding Alignment</h3>
+            <button 
+              onClick={onOpenAllocation}
+              className="w-8 h-8 rounded-full border border-slate-100 flex items-center justify-center hover:bg-slate-50 transition-colors group cursor-pointer"
+            >
+              <ArrowUpRight size={14} className="text-slate-400 group-hover:text-violet-600 transition-colors" />
             </button>
           </div>
-          <div className="space-y-5">
-            {[
-              { name: 'Retirement', current: 165000, target: 500000, color: 'bg-indigo-600', bg: 'bg-indigo-100' },
-              { name: 'House Deposit', current: 85000, target: 120000, color: 'bg-blue-600', bg: 'bg-blue-100' },
-              { name: 'Emergency', current: 25000, target: 30000, color: 'bg-emerald-500', bg: 'bg-emerald-100' }
-            ].map((goal, idx) => {
-              const percent = Math.min((goal.current / goal.target) * 100, 100).toFixed(0);
-              return (
-                <div key={idx}>
-                  <div className="flex justify-between items-end mb-1.5">
-                    <span className="text-sm font-semibold text-slate-700">{goal.name}</span>
-                    <span className="text-sm font-bold text-slate-900">${(goal.current / 1000).toFixed(0)}k <span className="text-slate-300 text-xs font-normal">/ ${(goal.target / 1000).toFixed(0)}k</span></span>
+          <div className="flex flex-col justify-around h-[180px]">
+            {allocationGoals.length > 0 ? (
+              allocationGoals.slice(0, 3).map((goal) => {
+                const percent = Math.min((goal.current / goal.target) * 100, 100).toFixed(0);
+                return (
+                  <div key={goal.id} className="group">
+                    {/* Extra Thick Progress Bar */}
+                    <div className="h-7 w-full bg-slate-50 rounded-xl overflow-hidden border border-slate-100/50 p-1">
+                       <div 
+                          className={`h-full ${goal.color} rounded-[7px] transition-all duration-1000 shadow-inner`} 
+                          style={{ width: `${percent}%` }} 
+                       />
+                    </div>
+
+                    {/* Legend Below the Bar */}
+                    <div className="flex justify-between items-center mt-1.5 px-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={`w-2 h-2 rounded-full ${goal.color}`} />
+                        <span className="text-[11px] font-bold text-slate-600 truncate">{goal.name}</span>
+                      </div>
+                      <span className="text-[11px] font-black text-indigo-600 ml-2">{percent}%</span>
+                    </div>
                   </div>
-                  <div className="relative h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                    <div className={`absolute top-0 left-0 h-full rounded-full ${goal.color}`} style={{ width: `${percent}%` }}></div>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })
+            ) : (
+              <div className="flex flex-col items-center justify-center h-[140px] border border-dashed border-slate-100 rounded-2xl bg-slate-50/50">
+                <p className="text-xs text-slate-400 font-medium italic">No active goals found.</p>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* RIGHT: Debt & Gearing */}
+        {/* 2. Allocation Strategy (Matching Liquidity Style) */}
         <div className={CARD_BASE}>
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-base font-bold text-slate-900">Debt Analysis</h3>
-            <button className="w-8 h-8 rounded-full border border-slate-100 flex items-center justify-center hover:bg-slate-50 transition-colors">
-               <ArrowUpRight size={14} className="text-slate-400" />
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-bold text-slate-900">Allocation Strategy</h3>
+            <button 
+              className="w-8 h-8 rounded-full border border-slate-100 flex items-center justify-center hover:bg-slate-50 transition-colors group cursor-pointer"
+            >
+              <ArrowUpRight size={14} className="text-slate-400 group-hover:text-violet-600 transition-colors" />
             </button>
           </div>
-          <div className="flex gap-6 items-center">
-             <div className="w-28 h-28 relative flex-shrink-0">
-               <svg className="w-full h-full transform -rotate-90">
-                 <circle cx="56" cy="56" r="48" fill="none" stroke="#f1f5f9" strokeWidth="8" strokeLinecap="round" />
-                 <circle 
-                    cx="56" cy="56" r="48" fill="none" stroke={gearingRatio < 50 ? COLORS.success : COLORS.accent} 
-                    strokeWidth="8" 
-                    strokeDasharray={`${2 * Math.PI * 48}`}
-                    strokeDashoffset={`${2 * Math.PI * 48 * (1 - gearingRatio / 100)}`}
-                    strokeLinecap="round"
-                 />
-               </svg>
-               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                 <span className="text-2xl font-bold text-slate-900">{gearingRatio}%</span>
-                 <span className="text-[10px] text-slate-400 uppercase font-semibold">Gearing</span>
-               </div>
+          
+          <div className="flex items-center h-[180px]">
+             {/* Compact Metrics List - Vertically Distributed */}
+             <div className="flex-1 flex flex-col justify-center space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS.chart1 }}></div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-700 leading-none mb-1.5">Asset Mix</p>
+                    <p className="text-xs text-slate-400 leading-none">{investmentMetrics.investedRatio}% Stocks/Funds</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS.success }}></div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-700 leading-none mb-1.5">Flow Rate</p>
+                    <p className="text-xs text-slate-400 leading-none">{investmentMetrics.flowRatio}% Reinvested</p>
+                  </div>
+                </div>
              </div>
-             <div className="flex-1 space-y-3">
-               {liabilityBreakdown.map((item, idx) => (
-                 <div key={idx} className="flex justify-between items-center pb-2 border-b border-slate-50 last:border-0">
-                   <p className="text-xs font-semibold text-slate-700">{item.name}</p>
-                   <p className="text-xs font-bold text-slate-900">{formatCurrency(item.value)}</p>
-                 </div>
-               ))}
-               <p className="text-xs font-medium text-slate-400 pt-1">
-                  Leverage is <span className={`font-bold ${gearingRatio < 50 ? 'text-emerald-600' : 'text-violet-500'}`}>{gearingRatio < 30 ? 'Low' : gearingRatio < 60 ? 'Moderate' : 'High'}</span>
-               </p>
+
+             {/* Donut Chart - Matching Liquidity Size */}
+             <div className="w-44 h-44 relative flex-shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { value: Number(investmentMetrics.investedRatio), fill: COLORS.chart1 },
+                        { value: 100 - Number(investmentMetrics.investedRatio), fill: '#f1f5f9' }
+                      ]}
+                      innerRadius={55}
+                      outerRadius={75}
+                      paddingAngle={0}
+                      dataKey="value"
+                      startAngle={90}
+                      endAngle={-270}
+                      strokeWidth={0}
+                    />
+                    <Pie
+                      data={[
+                        { value: Number(investmentMetrics.flowRatio), fill: COLORS.success },
+                        { value: 100 - Number(investmentMetrics.flowRatio), fill: '#f1f5f9' }
+                      ]}
+                      innerRadius={42}
+                      outerRadius={52}
+                      paddingAngle={0}
+                      dataKey="value"
+                      startAngle={90}
+                      endAngle={-270}
+                      strokeWidth={0}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">Strategy</span>
+                  <span className="text-sm font-bold text-slate-900">Active</span>
+                </div>
              </div>
+          </div>
+        </div>
+
+        {/* 3. Debt Analysis (Matching Liquidity Style) */}
+        <div className={CARD_BASE}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900">Debt Analysis</h3>
+                <InfoTooltip 
+                    content="Your Gearing Ratio (Leverage). Shows how much of your asset base is funded by debt."
+                    anchor={HELP_ANCHORS.WEALTH.LVR} 
+                />
+            </div>
+            <button 
+              onClick={onOpenDebt}
+              className="w-8 h-8 rounded-full border border-slate-100 flex items-center justify-center hover:bg-slate-50 transition-colors group cursor-pointer"
+            >
+               <ArrowUpRight size={14} className="text-slate-400 group-hover:text-violet-600 transition-colors" />
+            </button>
+          </div>
+          
+          <div className="flex items-center h-[180px]">  
+            {/* Legend List (Left) - Simplified to high-level totals */}
+            <div className="flex-1 flex flex-col justify-center space-y-6">
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 rounded-full flex-shrink-0 bg-slate-200"></div>
+                <div>
+                  <p className="text-sm font-bold text-slate-700 leading-none mb-1.5">Total Assets</p>
+                  <p className="text-xs text-slate-400 leading-none">${formatCurrency(summary.totalAssets)}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: gearingRatio < 40 ? COLORS.success : gearingRatio < 70 ? '#f59e0b' : COLORS.danger }}></div>
+                <div>
+                  <p className="text-sm font-bold text-slate-700 leading-none mb-1.5">Total Debt</p>
+                  <p className="text-xs text-slate-400 leading-none">${formatCurrency(summary.totalLiabilities)}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Gearing Donut (Right) - Matching Liquidity Size (Yellow/Risk Style) */}
+            <div className="w-44 h-44 relative flex-shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={[
+                      { value: Number(gearingRatio), fill: gearingRatio < 40 ? COLORS.success : gearingRatio < 70 ? '#f59e0b' : COLORS.danger },
+                      { value: Math.max(0, 100 - Number(gearingRatio)), fill: '#f1f5f9' }
+                    ]}
+                    innerRadius={55}
+                    outerRadius={75}
+                    paddingAngle={0}
+                    dataKey="value"
+                    startAngle={90}
+                    endAngle={-270}
+                    cornerRadius={6}
+                    strokeWidth={0}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">Gearing</span>
+                <span className="text-base font-bold text-slate-900">{gearingRatio}%</span>
+                <div className={`mt-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
+                  gearingRatio < 30 ? 'bg-emerald-50 text-emerald-600' : 
+                  gearingRatio < 60 ? 'bg-amber-50 text-amber-600' : 
+                  'bg-rose-50 text-rose-600'
+                }`}>
+                  {gearingRatio < 30 ? 'Low' : gearingRatio < 60 ? 'Med' : 'High'}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

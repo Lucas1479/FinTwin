@@ -28,7 +28,7 @@ const HELP_CHAT_SCHEMA = {
 
 // POST /api/help/chat
 const chatWithHelp = asyncHandler(async (req, res) => {
-  const { message, history } = req.body || {};
+  const { message, history, context } = req.body || {}; // Extract context (anchor)
 
   if (!message) {
     throw new AppError('Message is required', 400, 'HELP_MESSAGE_REQUIRED');
@@ -49,11 +49,22 @@ const chatWithHelp = asyncHandler(async (req, res) => {
       });
     };
 
+    // Construct Metadata Filter if anchor is present
+    // anchor_id was stored in part metadata during ingestion
+    let filter = undefined;
+    if (context && context.contextTag) {
+        // Vectara V2 Filter syntax: part.metadata.key = 'value'
+        // We use part.metadata because our script attached metadata to Sections (which become parts)
+        filter = `part.metadata.anchor_id = '${context.contextTag}'`;
+        log('rag_filter_applied', { filter });
+    }
+
     // Fetch RAG context first (non-stream), then stream LLM text using that knowledge.
     const ragContext = await llmService.fetchRagContext({
       query: message,
       stage: 'help',
-      goalContext: {}
+      goalContext: {},
+      filter: filter // Pass the filter
     });
 
     log('rag_lookup', {

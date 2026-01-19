@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { LayoutDashboard, Target, Briefcase, ShoppingBag, Gamepad2, HelpCircle, LogOut, ChevronLeft, ChevronRight, ChevronDown, Clock, Zap, TrendingUp, TrendingDown, Minus, Sparkles } from 'lucide-react';
 import { useSidebar } from '../../context/SidebarContext';
 import { useSimulation } from '../../context/SimulationContext';
+import { useHelp } from '../../context/HelpContext';
 import { getCurrentUser, logout as logoutService } from '../../services/authService';
 import HelpChatBox from './HelpChatBox';
 
@@ -11,9 +12,9 @@ const Sidebar = () => {
   const navigate = useNavigate();
   const { isCollapsed, toggleSidebar } = useSidebar();
   const { timeOffset, setTimeOffset, marketMode, setMarketMode } = useSimulation();
+  const { isHelpOpen, openHelp, closeHelp } = useHelp();
   const [currentUser, setCurrentUser] = useState(null);
   const [isTimeMachineOpen, setIsTimeMachineOpen] = useState(false);
-  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   // Load user data
   useEffect(() => {
@@ -58,7 +59,7 @@ const Sidebar = () => {
   ];
 
   const bottomItems = [
-    { name: 'AI Support', icon: Sparkles, onClick: () => setIsHelpOpen(true) },
+    { name: 'AI Support', icon: Sparkles, onClick: () => openHelp() },
   ];
 
   return (
@@ -328,7 +329,7 @@ const Sidebar = () => {
       </div>
 
       {/* Help Chat Popup */}
-      <HelpChatBox isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+      <HelpChatBox />
 
     </div>
   );

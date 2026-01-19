@@ -3,8 +3,13 @@ import { createPortal } from 'react-dom';
 import { X, Send, Bot, User, Sparkles, GripHorizontal, ExternalLink, Maximize2, Minimize2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css'; // Import KaTeX styles
+import { useHelp } from '../../context/HelpContext';
 
-const HelpChatBox = ({ isOpen, onClose }) => {
+const HelpChatBox = () => {
+  const { isHelpOpen, closeHelp, externalMessage, setExternalMessage } = useHelp();
   const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
   const [messages, setMessages] = useState([
     { 
@@ -23,19 +28,26 @@ const HelpChatBox = ({ isOpen, onClose }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Draggable State
-  const [position, setPosition] = useState({ x: 0, y: 0 }); // Relative offset
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  // Handle External Messages (e.g. from Tooltips)
+  useEffect(() => {
+    if (externalMessage && isHelpOpen) {
+      handleSendMessage(externalMessage);
+      setExternalMessage(null); // Clear after sending
+    }
+  }, [externalMessage, isHelpOpen]);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
   useEffect(() => {
-    if (isOpen && inputRef.current) {
+    if (isHelpOpen && inputRef.current) {
       inputRef.current.focus();
     }
-  }, [isOpen]);
+  }, [isHelpOpen]);
 
   // Drag Handlers
   const handleMouseDown = (e) => {
@@ -53,25 +65,8 @@ const HelpChatBox = ({ isOpen, onClose }) => {
   useEffect(() => {
     const handleMouseMove = (e) => {
       if (isDragging) {
-        // Calculate new position
-        // We use absolute positioning based on viewport, but keeping it simpler with transform might be better.
-        // However, since it's fixed, we can just update style via ref or state.
-        // Let's use fixed positioning updates.
-        
-        // We need to calculate the new left/top based on mouse minus offset
         const newX = e.clientX - dragOffset.x;
         const newY = e.clientY - dragOffset.y;
-
-        // Apply boundaries (simple)
-        const maxX = window.innerWidth - 400; // width
-        const maxY = window.innerHeight - 600; // height
-
-        // For simplicity in this iteration, let's just update the style directly to avoid re-renders if possible,
-        // but state is fine for this frequency.
-        // Actually, let's use a simpler approach: use transform translate.
-        // But initial position is bottom-right fixed.
-        // Let's stick to the current transform approach if we were using it, or just use right/bottom offsets.
-        // EASIEST: Just update `left` and `top` and switch from `bottom/right` CSS to `left/top` CSS on first drag.
         
         if (chatBoxRef.current) {
              chatBoxRef.current.style.right = 'auto';
@@ -102,13 +97,10 @@ const HelpChatBox = ({ isOpen, onClose }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || isTyping) return;
+  const handleSendMessage = async (text) => {
+    if (!text.trim() || isTyping) return;
 
-    const userMessage = input.trim();
-    setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setMessages(prev => [...prev, { role: 'user', content: text }]);
     setIsTyping(true);
 
     try {
@@ -119,7 +111,7 @@ const HelpChatBox = ({ isOpen, onClose }) => {
           'Authorization': `Bearer ${localStorage.getItem('token')}` 
         },
         body: JSON.stringify({ 
-          message: userMessage,
+          message: text,
           history: messages.slice(-10) 
         }),
       });
@@ -167,7 +159,6 @@ const HelpChatBox = ({ isOpen, onClose }) => {
         }
       }
 
-      // Attach final references and thought process
       setMessages(prev => {
         const newMsgs = [...prev];
         if (newMsgs[newMsgs.length - 1]) {
@@ -185,7 +176,13 @@ const HelpChatBox = ({ isOpen, onClose }) => {
     }
   };
 
-  if (!isOpen) return null;
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    handleSendMessage(input);
+    setInput('');
+  };
+
+  if (!isHelpOpen) return null;
 
   return createPortal(
     <div 
@@ -194,16 +191,13 @@ const HelpChatBox = ({ isOpen, onClose }) => {
       className={`fixed bottom-6 right-6 z-[9999] bg-white rounded-2xl shadow-2xl border border-slate-100 flex flex-col animate-in slide-in-from-bottom-10 fade-in duration-300 font-sans transition-all duration-300 ${
         isExpanded ? 'w-[600px] h-[800px]' : 'w-[400px] h-[600px]'
       }`}
-      style={{ 
-        // Initial static position handled by class names, dynamic updates via style ref
-      }}
     >
       
       {/* Header */}
       <div className="drag-handle p-4 bg-indigo-600 text-white rounded-t-2xl flex justify-between items-center shadow-md cursor-grab active:cursor-grabbing select-none">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
-            <Sparkles size={20} className="text-white" />
+            <Bot size={20} className="text-white" />
           </div>
           <div>
             <h3 className="font-bold text-sm">FinTwin Support</h3>
@@ -215,10 +209,8 @@ const HelpChatBox = ({ isOpen, onClose }) => {
         </div>
         
         <div className="flex items-center gap-1">
-            {/* Drag Indicator Icon */}
             <GripHorizontal size={18} className="text-white/40 mr-1" />
             
-            {/* Resize Button */}
             <button 
               onClick={() => setIsExpanded(!isExpanded)}
               onMouseDown={(e) => e.stopPropagation()} 
@@ -229,8 +221,7 @@ const HelpChatBox = ({ isOpen, onClose }) => {
             </button>
 
             <button 
-              onClick={onClose}
-              // Stop propagation so clicking close doesn't start drag
+              onClick={closeHelp}
               onMouseDown={(e) => e.stopPropagation()} 
               className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
             >
@@ -262,7 +253,10 @@ const HelpChatBox = ({ isOpen, onClose }) => {
               {msg.role === 'user' ? (
                 msg.content
               ) : (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <ReactMarkdown 
+                  remarkPlugins={[remarkGfm, remarkMath]} 
+                  rehypePlugins={[rehypeKatex]}
+                >
                   {msg.content}
                 </ReactMarkdown>
               )}

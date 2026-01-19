@@ -10,6 +10,8 @@ import GoalFilters from '../components/goals/GoalFilters';
 import GoalDetailModal from '../components/goals/GoalDetailModal';
 import { useSimulatedData, useSimulation } from '../context/SimulationContext';
 import { Zap } from 'lucide-react';
+import InfoTooltip from '../components/common/InfoTooltip';
+import { HELP_ANCHORS } from '../constants/helpAnchors';
 
 // Mock data to match the design
 const MOCK_GOALS = [
@@ -225,7 +227,13 @@ const GoalsPage = () => {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pt-2">
           <div>
              <div className="flex items-center gap-3">
-                <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Goals</h1>
+                <div className="flex items-center gap-2">
+                    <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Goals</h1>
+                    <InfoTooltip 
+                        content="Goal-Based Investing (GBI) focuses on funding your specific life aspirations rather than beating the market."
+                        anchor={HELP_ANCHORS.GOALS.INTRO} 
+                    />
+                </div>
                 {timeOffset > 0 && (
                   <div className="bg-indigo-600 text-white text-[10px] font-black uppercase px-2 py-1 rounded flex items-center gap-1 shadow-sm animate-pulse">
                     <Zap size={12} fill="currentColor" /> Simulation Mode
