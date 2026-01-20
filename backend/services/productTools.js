@@ -12,6 +12,12 @@
 
 import Product from '../models/productModel.js';
 
+const toNumber = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+};
+
 // ==========================================
 // Tool Definitions (给 LLM 的函数描述)
 // ==========================================
@@ -270,6 +276,20 @@ export async function buildOptimizedPortfolios(params = {}) {
     const productMap = new Map(allProducts.map(p => [p.id, p]));
 
     // Step 2: 定义3种组合策略
+    const alignmentScore = (p) => {
+        const growth = Number.isFinite(p.allocation?.growth) ? p.allocation.growth : 0;
+        const defensive = Number.isFinite(p.allocation?.defensive) ? p.allocation.defensive : 0;
+        const cash = Number.isFinite(p.allocation?.cash) ? p.allocation.cash : 0;
+        return -(
+            Math.abs(growth - target_growth_pct) +
+            Math.abs(defensive - target_defensive_pct) +
+            Math.abs(cash - target_liquidity_pct)
+        );
+    };
+
+    const rankByAlignment = (list) => [...list].sort((a, b) => alignmentScore(b) - alignmentScore(a));
+    const topByAlignment = (list, limit = 20) => rankByAlignment(list).slice(0, limit);
+
     const portfolioStrategies = [
         {
             id: 'lowest_cost',
@@ -277,13 +297,17 @@ export async function buildOptimizedPortfolios(params = {}) {
             description: 'Minimizes fees to maximize long-term compound returns',
             selectProducts: (growth, defensive, liquidity) => {
                 // 按费率排序，选最便宜的
-                const sorted = [...growth, ...defensive, ...liquidity].sort((a, b) => (a.fees || 0) - (b.fees || 0));
+                const growthPool = topByAlignment(growth);
+                const defensivePool = topByAlignment(defensive);
+                const liquidityPool = topByAlignment(liquidity);
+                const sorted = [...growthPool, ...defensivePool, ...liquidityPool]
+                    .sort((a, b) => (a.fees || 0) - (b.fees || 0));
                 // 确保每个类别至少有一个
                 const selected = [];
                 const usedIds = new Set();
                 
                 // 从每个类别选一个最便宜的
-                for (const cat of [growth, defensive, liquidity]) {
+                for (const cat of [growthPool, defensivePool, liquidityPool]) {
                     if (cat.length > 0) {
                         selected.push(cat[0]);
                         usedIds.add(cat[0].id);
@@ -308,17 +332,21 @@ export async function buildOptimizedPortfolios(params = {}) {
                 // 选择不同 provider 的产品
                 const selected = [];
                 const usedProviders = new Set();
+                const growthPool = rankByAlignment(growth);
+                const defensivePool = rankByAlignment(defensive);
+                const liquidityPool = rankByAlignment(liquidity);
                 
                 // For retirement, try to ensure at least one KiwiSaver for its unique benefits (Employer match/Govt credit)
                 if (is_retirement_goal) {
-                    const ksCandidate = [...growth, ...defensive, ...liquidity].find(p => p.category?.toLowerCase().includes('kiwisaver'));
+                    const ksCandidate = [...growthPool, ...defensivePool, ...liquidityPool]
+                        .find(p => p.category?.toLowerCase().includes('kiwisaver'));
                     if (ksCandidate) {
                         selected.push(ksCandidate);
                         usedProviders.add(ksCandidate.provider);
                     }
                 }
 
-                for (const cat of [growth, defensive, liquidity]) {
+                for (const cat of [growthPool, defensivePool, liquidityPool]) {
                     for (const p of cat) {
                         if (!usedProviders.has(p.provider) && selected.length < 4) {
                             selected.push(p);
@@ -327,7 +355,7 @@ export async function buildOptimizedPortfolios(params = {}) {
                     }
                 }
                 // 如果不够，补充
-                for (const p of [...growth, ...defensive, ...liquidity]) {
+                for (const p of [...growthPool, ...defensivePool, ...liquidityPool]) {
                     if (selected.length >= 4) break;
                     if (!selected.find(s => s.id === p.id)) {
                         selected.push(p);
@@ -347,9 +375,10 @@ export async function buildOptimizedPortfolios(params = {}) {
                     const returnScore = (p.return_5yr || 0) / 10;  // 回报越高分越高
                     // KiwiSaver Boost for retirement: compensates for slightly higher fees due to NZ policy benefits
                     const ksBoost = (is_retirement_goal && p.category?.toLowerCase().includes('kiwisaver')) ? 1.0 : 0;
-                    return feeScore + returnScore + ksBoost;
+                    const alignBoost = alignmentScore(p) / 100;
+                    return feeScore + returnScore + ksBoost + alignBoost;
                 };
-                
+
                 const all = [...growth, ...defensive, ...liquidity]
                     .map(p => ({ ...p, score: score(p) }))
                     .sort((a, b) => b.score - a.score);
@@ -358,7 +387,7 @@ export async function buildOptimizedPortfolios(params = {}) {
                 const selected = [];
                 const usedIds = new Set();
                 
-                for (const cat of [growth, defensive, liquidity]) {
+                for (const cat of [rankByAlignment(growth), rankByAlignment(defensive), rankByAlignment(liquidity)]) {
                     if (cat.length > 0) {
                         const best = cat.map(p => ({...p, score: score(p)})).reduce((a, b) => a.score > b.score ? a : b);
                         selected.push(best);
@@ -386,12 +415,19 @@ export async function buildOptimizedPortfolios(params = {}) {
     };
 
     const portfolioOptions = [];
+    const usedProductIds = new Set();
 
+    const maxAllowedDeviation = 10;
     for (const strategy of portfolioStrategies) {
+        const filterByUsed = (list) => list.filter(p => !usedProductIds.has(p.id));
+        const filteredGrowth = filterByUsed(candidates.candidates.growth);
+        const filteredDefensive = filterByUsed(candidates.candidates.defensive);
+        const filteredLiquidity = filterByUsed(candidates.candidates.liquidity);
+
         const selectedProducts = strategy.selectProducts(
-            candidates.candidates.growth,
-            candidates.candidates.defensive,
-            candidates.candidates.liquidity
+            filteredGrowth.length ? filteredGrowth : candidates.candidates.growth,
+            filteredDefensive.length ? filteredDefensive : candidates.candidates.defensive,
+            filteredLiquidity.length ? filteredLiquidity : candidates.candidates.liquidity
         );
 
         if (selectedProducts.length < 2) continue;
@@ -404,6 +440,15 @@ export async function buildOptimizedPortfolios(params = {}) {
 
         if (optimized.error) {
             console.warn(`[ProductTools] Optimization failed for ${strategy.id}: ${optimized.error}`);
+            continue;
+        }
+        const maxDeviation = Math.max(
+            Math.abs(optimized.deviation?.growth || 0),
+            Math.abs(optimized.deviation?.defensive || 0),
+            Math.abs(optimized.deviation?.liquidity || 0)
+        );
+        if (maxDeviation > maxAllowedDeviation) {
+            console.warn(`[ProductTools] ${strategy.id} skipped (deviation ${maxDeviation}% > ${maxAllowedDeviation}%)`);
             continue;
         }
 
@@ -424,6 +469,7 @@ export async function buildOptimizedPortfolios(params = {}) {
                 rationale: `${p.name} - ${p.allocation.growth}% growth / ${p.allocation.defensive}% defensive / ${p.allocation.cash}% cash`
             }))
         });
+        optimized.optimized_products.forEach(p => usedProductIds.add(p.product_id));
     }
 
     console.log(`[ProductTools] Built ${portfolioOptions.length} optimized portfolios`);
@@ -466,13 +512,13 @@ export async function searchPortfolioCandidates(params = {}) {
         is_retirement_goal = false
     } = params;
 
-    // Fixed counts: 15 growth, 15 defensive, 5 liquidity = 35 total
+    // Final counts: 15 growth, 15 defensive, 5 liquidity = 35 total
     const growthLimit = 15;
     const defensiveLimit = 15;
     const liquidityLimit = 5;
     
     console.log(`[ProductTools] searchPortfolioCandidates: growth=${target_growth_pct}%, defensive=${target_defensive_pct}%, liquidity=${target_liquidity_pct}%`);
-    console.log(`[ProductTools] Fetching up to ${growthLimit} growth, ${defensiveLimit} defensive, ${liquidityLimit} liquidity products`);
+    console.log('[ProductTools] Fetching full candidate pools for scoring');
 
     // 构建基础查询条件
     const baseQuery = { isActive: true };
@@ -495,9 +541,8 @@ export async function searchPortfolioCandidates(params = {}) {
             ],
             ...(excludeKiwiSaver ? { category: { $not: /kiwisaver/i } } : {})
         })
-            .select('name provider category strategy allocation metrics.fees.total metrics.returns.annualized5yr description')
+            .select('name provider category strategy allocation metrics.fees.total metrics.returns.y1 metrics.returns.y5 metrics.returns.annualized5yr description')
             .sort({ 'metrics.fees.total': 1 })
-            .limit(growthLimit)
             .lean() : Promise.resolve([]),
 
         // Defensive 类：债券/保守型产品 (15个)
@@ -510,9 +555,8 @@ export async function searchPortfolioCandidates(params = {}) {
             ],
             ...(excludeKiwiSaver ? { category: { $not: /kiwisaver/i } } : {})
         })
-            .select('name provider category strategy allocation metrics.fees.total metrics.returns.annualized5yr description')
+            .select('name provider category strategy allocation metrics.fees.total metrics.returns.y1 metrics.returns.y5 metrics.returns.annualized5yr description')
             .sort({ 'metrics.fees.total': 1 })
-            .limit(defensiveLimit)
             .lean() : Promise.resolve([]),
 
         // Liquidity 类：现金/货币市场产品 (5个)
@@ -525,9 +569,8 @@ export async function searchPortfolioCandidates(params = {}) {
             ],
             ...(excludeKiwiSaver ? { category: { $not: /kiwisaver/i } } : {})
         })
-            .select('name provider category strategy allocation metrics.fees.total metrics.returns.annualized5yr description')
+            .select('name provider category strategy allocation metrics.fees.total metrics.returns.y1 metrics.returns.y5 metrics.returns.annualized5yr description')
             .sort({ 'metrics.fees.total': 1 })
-            .limit(liquidityLimit)
             .lean() : Promise.resolve([])
     ]);
 
@@ -537,6 +580,10 @@ export async function searchPortfolioCandidates(params = {}) {
         const defensive = p.allocation?.defensive ?? 0;
         const cash = p.allocation?.cash ?? 0;
         
+        const return1y = toNumber(p.metrics?.returns?.y1);
+        const return5y = toNumber(p.metrics?.returns?.y5);
+        const return5yAnnualized = toNumber(p.metrics?.returns?.annualized5yr);
+
         return {
             id: p._id.toString(),
             name: p.name,
@@ -544,7 +591,8 @@ export async function searchPortfolioCandidates(params = {}) {
             category: p.category,
             strategy: p.strategy,
             fees: p.metrics?.fees?.total ?? 0,
-            return_5yr: p.metrics?.returns?.annualized5yr ?? null,
+            return_1y: return1y,
+            return_5yr: return5y ?? return5yAnnualized,
             // 内部资产配置 - 用于计算加权 exposure
             allocation: {
                 growth: growth,
@@ -556,6 +604,71 @@ export async function searchPortfolioCandidates(params = {}) {
         };
     };
 
+    const scoreWeights = is_retirement_goal
+        ? { return5y: 1.0, return1y: 0.4, fees: 1.2, alignment: 0.8 }
+        : { return5y: 1.2, return1y: 0.6, fees: 0.8, alignment: 1.0 };
+    const baselineConfig = is_retirement_goal
+        ? { minScore: -0.5, percentileCutoff: 0.3 }
+        : { minScore: 0.0, percentileCutoff: 0.3 };
+
+    const scoreCandidate = (p) => {
+        const return5y = Number.isFinite(p.return_5yr) ? p.return_5yr : null;
+        const return1y = Number.isFinite(p.return_1y) ? p.return_1y : null;
+        const fees = Number.isFinite(p.fees) ? p.fees : 0;
+        const growth = Number.isFinite(p.allocation?.growth) ? p.allocation.growth : 0;
+        const defensive = Number.isFinite(p.allocation?.defensive) ? p.allocation.defensive : 0;
+        const cash = Number.isFinite(p.allocation?.cash) ? p.allocation.cash : 0;
+
+        const targetGrowth = target_growth_pct ?? 0;
+        const targetDefensive = target_defensive_pct ?? 0;
+        const targetCash = target_liquidity_pct ?? 0;
+        const alignmentDiff =
+            Math.abs(growth - targetGrowth) +
+            Math.abs(defensive - targetDefensive) +
+            Math.abs(cash - targetCash);
+
+        const baseReturn = return5y ?? return1y ?? 0;
+        const returnScore =
+            (return5y ?? 0) * scoreWeights.return5y +
+            (return1y ?? 0) * scoreWeights.return1y;
+        const feePenalty = fees * scoreWeights.fees;
+        const alignmentPenalty = (alignmentDiff / 100) * scoreWeights.alignment * 10;
+        const negativePenalty = baseReturn < 0 ? Math.abs(baseReturn) * 1.5 : 0;
+
+        return returnScore - feePenalty - alignmentPenalty - negativePenalty;
+    };
+
+    const rankCandidates = (list, limit) => {
+        if (!Array.isArray(list) || list.length === 0) return [];
+        const scored = list
+            .map((p) => ({ ...p, _score: scoreCandidate(p) }))
+            .sort((a, b) => (b._score - a._score) || ((a.fees || 0) - (b.fees || 0)));
+        // Hard filter: exclude only negative 5Y return candidates.
+        // Keep products with missing/unknown 5Y returns to avoid empty pools.
+        const eligible = scored.filter((p) => {
+            // Strict baseline: must have numeric 5Y return and it must be non-negative
+            if (!Number.isFinite(p.return_5yr)) return false;
+            return p.return_5yr >= 0;
+        });
+        if (eligible.length === 0) return [];
+
+        const cutoffIndex = Math.floor(eligible.length * baselineConfig.percentileCutoff);
+        const cutoffScore = eligible[Math.min(Math.max(cutoffIndex, 0), eligible.length - 1)]?._score ?? baselineConfig.minScore;
+        const baselineScore = Math.max(cutoffScore, baselineConfig.minScore);
+
+        const baselineFiltered = eligible.filter((p) => p._score >= baselineScore);
+        const finalPool = baselineFiltered.length > 0 ? baselineFiltered : eligible;
+        return finalPool.slice(0, limit).map(({ _score, ...rest }) => rest);
+    };
+
+    const formattedGrowth = growthProducts.map(formatProduct);
+    const formattedDefensive = defensiveProducts.map(formatProduct);
+    const formattedLiquidity = liquidityProducts.map(formatProduct);
+
+    const rankedGrowth = rankCandidates(formattedGrowth, growthLimit);
+    const rankedDefensive = rankCandidates(formattedDefensive, defensiveLimit);
+    const rankedLiquidity = rankCandidates(formattedLiquidity, liquidityLimit);
+
     const result = {
         target_allocation: {
             growth: target_growth_pct,
@@ -563,15 +676,15 @@ export async function searchPortfolioCandidates(params = {}) {
             liquidity: target_liquidity_pct
         },
         candidates: {
-            growth: growthProducts.map(formatProduct),
-            defensive: defensiveProducts.map(formatProduct),
-            liquidity: liquidityProducts.map(formatProduct)
+            growth: rankedGrowth,
+            defensive: rankedDefensive,
+            liquidity: rankedLiquidity
         },
         summary: {
-            total_candidates: growthProducts.length + defensiveProducts.length + liquidityProducts.length,
-            growth_count: growthProducts.length,
-            defensive_count: defensiveProducts.length,
-            liquidity_count: liquidityProducts.length
+            total_candidates: rankedGrowth.length + rankedDefensive.length + rankedLiquidity.length,
+            growth_count: rankedGrowth.length,
+            defensive_count: rankedDefensive.length,
+            liquidity_count: rankedLiquidity.length
         },
         next_step: `Use optimize_portfolio_weights() to build portfolios:
 1. Pick 2-4 product IDs from candidates above
@@ -649,7 +762,7 @@ export async function searchProducts(params = {}) {
             sortOption = { 'metrics.fees.total': -1 };
             break;
         case 'return_desc':
-            sortOption = { 'metrics.returns.annualized5yr': -1 };
+            sortOption = { 'metrics.returns.y5': -1, 'metrics.returns.y1': -1 };
             break;
         case 'growth_exposure_desc':
             sortOption = { 'allocation.growth': -1 };
@@ -663,7 +776,7 @@ export async function searchProducts(params = {}) {
 
     try {
         const products = await Product.find(query)
-            .select('name provider category strategy allocation metrics.fees.total metrics.returns.annualized5yr description')
+            .select('name provider category strategy allocation metrics.fees.total metrics.returns.y1 metrics.returns.y5 metrics.returns.annualized5yr description')
             .sort(sortOption)
             .limit(effectiveLimit)
             .lean();
@@ -673,6 +786,9 @@ export async function searchProducts(params = {}) {
             const growth = p.allocation?.growth ?? 0;
             const defensive = p.allocation?.defensive ?? 0;
             const cash = p.allocation?.cash ?? 0;
+            const return1y = toNumber(p.metrics?.returns?.y1);
+            const return5y = toNumber(p.metrics?.returns?.y5);
+            const return5yAnnualized = toNumber(p.metrics?.returns?.annualized5yr);
             return {
                 id: p._id.toString(),
                 name: p.name,
@@ -680,7 +796,8 @@ export async function searchProducts(params = {}) {
                 category: p.category,
                 strategy: p.strategy,
                 fees: p.metrics?.fees?.total ?? 0,
-                return_5yr: p.metrics?.returns?.annualized5yr ?? null,
+                return_1y: return1y,
+                return_5yr: return5y ?? return5yAnnualized,
                 allocation: { growth, defensive, cash },
                 allocation_summary: `${growth}% growth / ${defensive}% defensive / ${cash}% cash`
             };

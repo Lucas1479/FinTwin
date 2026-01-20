@@ -74,6 +74,58 @@ def infer_risk_from_allocation(equities_pct):
         return 7  # Aggressive
 
 
+def normalize_allocation_components(components):
+    """
+    Normalize allocation components to sum to 100.
+    Handles percent (0-100) or fraction (0-1) inputs.
+    """
+    total = sum(components.values())
+    if total <= 0:
+        return components
+
+    # If values look like fractions (e.g., 0.35), scale to 100
+    if total <= 1.2:
+        scale = 100.0 / total
+    # If total is meaningfully off 100, normalize
+    elif abs(total - 100.0) > 0.5:
+        scale = 100.0 / total
+    else:
+        scale = 1.0
+
+    if scale == 1.0:
+        return components
+
+    return {k: (v * scale) for k, v in components.items()}
+
+
+def normalize_top_holdings(holdings, max_sum=101.0):
+    """
+    Lightly normalize top holdings only when their sum exceeds max_sum.
+    Preserve ratios and keep values unchanged if already within threshold.
+    """
+    if not holdings:
+        return holdings
+
+    total = 0.0
+    for h in holdings:
+        try:
+            total += float(h.get('percent', 0) or 0)
+        except Exception:
+            continue
+
+    if total <= max_sum or total <= 0:
+        return holdings
+
+    scale = max_sum / total
+    for h in holdings:
+        try:
+            h['percent'] = round(float(h.get('percent', 0) or 0) * scale, 2)
+        except Exception:
+            continue
+
+    return holdings
+
+
 def infer_strategy_from_name(fund_name):
     """
     Parse strategy keywords from Fund Name.
@@ -245,7 +297,7 @@ def process_single_file(file_path, category_hint, file_format):
     records = []
     
     if not os.path.exists(file_path):
-        print(f"File not found: {file_path}, skipping...")
+        print("File not found: {}, skipping...".format(file_path))
         return records
     
     try:
@@ -253,9 +305,9 @@ def process_single_file(file_path, category_hint, file_format):
             df = pd.read_excel(file_path, engine='openpyxl')
         else:
             df = pd.read_csv(file_path, low_memory=False)
-        print(f"Loaded {len(df)} rows from {file_path}")
+        print("Loaded {} rows from {}".format(len(df), file_path))
     except Exception as e:
-        print(f"Error loading {file_path}: {e}")
+        print("Error loading {}: {}".format(file_path, e))
         return records
     
     # Normalize column names
@@ -263,7 +315,7 @@ def process_single_file(file_path, category_hint, file_format):
     
     # Check if Risk Indicator exists
     has_risk_column = 'Risk Reward Indicator Code' in df.columns
-    print(f"   Risk Indicator column present: {has_risk_column}")
+    print("   Risk Indicator column present: {}".format(has_risk_column))
     
     # For files with Risk column, filter by it; otherwise, filter by Fees only
     if has_risk_column:
@@ -271,7 +323,7 @@ def process_single_file(file_path, category_hint, file_format):
     else:
         df_clean = df.dropna(subset=['Total Annual Fund Fees']).copy()
     
-    print(f"   Filtered to {len(df_clean)} rows with valid Fees data.")
+    print("   Filtered to {} rows with valid Fees data.".format(len(df_clean)))
     
     for _, row in df_clean.iterrows():
         try:
@@ -305,16 +357,29 @@ def process_single_file(file_path, category_hint, file_format):
                     fund_type = 'ETF'
             
             # --- C. Asset Allocation (needed for risk inference) ---
-            cash = get_alloc(row, 'Actual investment mix: Cash and cash equivalents')
-            nz_fixed = get_alloc(row, 'Actual investment mix: New Zealand fixed interest')
-            int_fixed = get_alloc(row, 'Actual investment mix: International fixed interest')
-            aus_eq = get_alloc(row, 'Actual investment mix: Australasian equities')
-            int_eq = get_alloc(row, 'Actual investment mix: International equities')
-            list_prop = get_alloc(row, 'Actual investment mix: Listed Properties')
-            unlist_prop = get_alloc(row, 'Actual investment mix: Unlisted Properties')
-            commodities = get_alloc(row, 'Actual investment mix: Commodities')
-            other = get_alloc(row, 'Actual investment mix: Other')
-            
+            raw_components = {
+                'cash': get_alloc(row, 'Actual investment mix: Cash and cash equivalents'),
+                'nz_fixed': get_alloc(row, 'Actual investment mix: New Zealand fixed interest'),
+                'int_fixed': get_alloc(row, 'Actual investment mix: International fixed interest'),
+                'aus_eq': get_alloc(row, 'Actual investment mix: Australasian equities'),
+                'int_eq': get_alloc(row, 'Actual investment mix: International equities'),
+                'list_prop': get_alloc(row, 'Actual investment mix: Listed Properties'),
+                'unlist_prop': get_alloc(row, 'Actual investment mix: Unlisted Properties'),
+                'commodities': get_alloc(row, 'Actual investment mix: Commodities'),
+                'other': get_alloc(row, 'Actual investment mix: Other')
+            }
+
+            normalized = normalize_allocation_components(raw_components)
+            cash = normalized['cash']
+            nz_fixed = normalized['nz_fixed']
+            int_fixed = normalized['int_fixed']
+            aus_eq = normalized['aus_eq']
+            int_eq = normalized['int_eq']
+            list_prop = normalized['list_prop']
+            unlist_prop = normalized['unlist_prop']
+            commodities = normalized['commodities']
+            other = normalized['other']
+
             total_equities = aus_eq + int_eq
             
             # --- D. Risk Score & Strategy ---
@@ -369,20 +434,23 @@ def process_single_file(file_path, category_hint, file_format):
             top_holdings = []
             for i in range(1, 6):
                 # Try different column name formats
-                h_name = row.get(f'Top 10 Investments {i}: Name')
-                h_pct = row.get(f'Top 10 Investments {i}: Percentage Of Fund Net Assets')
+                h_name = row.get('Top 10 Investments {}: Name'.format(i))
+                h_pct = row.get('Top 10 Investments {}: Percentage Of Fund Net Assets'.format(i))
                 
                 # Try alternate format (lowercase 'of fund net assets')
                 if pd.isna(h_pct):
-                    h_pct = row.get(f'Top 10 Investments {i}: Percentage of fund net assets')
+                    h_pct = row.get('Top 10 Investments {}: Percentage of fund net assets'.format(i))
                 
                 if pd.notna(h_name) and pd.notna(h_pct):
                     top_holdings.append({
                         'name': str(h_name).strip(),
                         'percent': round(float(h_pct), 2),
-                        'type': str(row.get(f'Top 10 Investments {i}: Type', '')),
-                        'country': str(row.get(f'Top 10 Investments {i}: Country', ''))
+                        'type': str(row.get('Top 10 Investments {}: Type'.format(i), '')),
+                        'country': str(row.get('Top 10 Investments {}: Country'.format(i), ''))
                     })
+
+            # Light normalization for holdings when sum > 101%
+            top_holdings = normalize_top_holdings(top_holdings, max_sum=101.0)
             
             # --- H. Construct Final Object ---
             product_doc = {
@@ -406,7 +474,7 @@ def process_single_file(file_path, category_hint, file_format):
             records.append(product_doc)
         
         except Exception as err:
-            print(f"   Skipping row {row.get('Fund Name', 'Unknown')}: {err}")
+            print("   Skipping row {}: {}".format(row.get('Fund Name', 'Unknown'), err))
             continue
     
     return records
@@ -466,25 +534,25 @@ def main():
         category_hint = file_config["category_hint"]
         file_format = file_config.get("format", "csv")
         
-        print(f"\nProcessing: {file_path} (hint: {category_hint}, format: {file_format})")
+        print("\nProcessing: {} (hint: {}, format: {})".format(file_path, category_hint, file_format))
         records = process_single_file(file_path, category_hint, file_format)
         file_stats[file_path] = len(records)
         all_records.extend(records)
     
     # Add mock Term Deposits
-    print(f"\nInjecting Mock Term Deposits...")
+    print("\nInjecting Mock Term Deposits...")
     mock_tds = get_mock_term_deposits()
     all_records.extend(mock_tds)
     file_stats["Mock TermDeposits"] = len(mock_tds)
     
     # --- De-duplication Logic ---
-    print(f"\nDe-duplicating records based on Provider + Name...")
+    print("\nDe-duplicating records based on Provider + Name...")
     unique_map = {}
     duplicates_count = 0
     
     for r in all_records:
         # Create a unique key
-        key = f"{str(r['provider']).strip()}::{str(r['name']).strip()}".upper()
+        key = "{}::{}".format(str(r['provider']).strip(), str(r['name']).strip()).upper()
         
         if key not in unique_map:
             unique_map[key] = r
@@ -496,18 +564,18 @@ def main():
                 unique_map[key] = r  # Upgrade to KiwiSaver
     
     all_records = list(unique_map.values())
-    print(f"   Found {duplicates_count} duplicates.")
-    print(f"   Final unique count: {len(all_records)}")
+    print("   Found {} duplicates.".format(duplicates_count))
+    print("   Final unique count: {}".format(len(all_records)))
 
     # Statistics Summary
-    print(f"\n" + "=" * 60)
-    print(f"Data Summary")
+    print("\n" + "=" * 60)
+    print("Data Summary")
     print("=" * 60)
     
     # Per-file stats
-    print(f"\nBy Source File:")
+    print("\nBy Source File:")
     for file_name, count in file_stats.items():
-        print(f"   {file_name}: {count} records")
+        print("   {}: {} records".format(file_name, count))
     
     # Category/Strategy/Type breakdown
     category_counts = {}
@@ -518,16 +586,16 @@ def main():
         strategy_counts[r['strategy']] = strategy_counts.get(r['strategy'], 0) + 1
         type_counts[r['type']] = type_counts.get(r['type'], 0) + 1
     
-    print(f"\nBy Category: {category_counts}")
-    print(f"By Strategy: {strategy_counts}")
-    print(f"By Type: {type_counts}")
+    print("\nBy Category: {}".format(category_counts))
+    print("By Strategy: {}".format(strategy_counts))
+    print("By Type: {}".format(type_counts))
     
     # Export
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
         json.dump(all_records, f, indent=2, ensure_ascii=False)
     
-    print(f"\n" + "=" * 60)
-    print(f"Success! Exported {len(all_records)} products to {OUTPUT_FILE}")
+    print("\n" + "=" * 60)
+    print("Success! Exported {} products to {}".format(len(all_records), OUTPUT_FILE))
     print("=" * 60)
 
 

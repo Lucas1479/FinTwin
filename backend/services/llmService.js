@@ -442,6 +442,32 @@ DO NOT make up product IDs. You MUST call the tool first.`;
       }
     }
 
+    const hasToolResults = (toolResults || []).some((entry) => {
+      const result = entry?.result;
+      if (!result) return false;
+      if (Array.isArray(result) && result.length > 0) return true;
+      if (Array.isArray(result?.portfolio_options) && result.portfolio_options.length > 0) return true;
+      if (Array.isArray(result?.optimized_products) && result.optimized_products.length > 0) return true;
+      if (result?.summary?.total_candidates > 0) return true;
+      return false;
+    });
+
+    if (!hasToolResults) {
+      console.warn('[LLMService] Fallback: No eligible products from tools. Skipping Phase 2 generation.');
+      return {
+        json: {
+          ai_decision: {
+            thought_process:
+              'Tool search returned 0 eligible products (e.g., negative 5Y return filter or data gaps).',
+            rationale:
+              'No eligible products were found after applying the current filters (e.g., excluding negative 5Y returns). Please adjust the filters, relax constraints, or update product data, then retry.',
+            portfolio_options: [],
+          },
+        },
+        toolCalls: allToolCalls,
+      };
+    }
+
     // PHASE 2: Build portfolio from tool results
     console.log(`[LLMService] Fallback Phase 2: Building portfolio from ${allToolCalls.length} tool results...`);
     

@@ -46,7 +46,6 @@ const computeExposureFromProducts = (portfolio, productsMap) => {
 };
 
 // --- Helper: build default portfolios (approximate AI Stage 3 intent) ---
-const pickTop = (arr, n) => arr.slice(0, n).map(p => p.id);
 const buildDefaultPortfolios = (products = []) => {
   if (!products.length) return [];
   // Buckets
@@ -178,14 +177,15 @@ const ConfigCard = ({ title, icon: Icon, children, isActive, badge }) => (
   </div>
 );
 
-const ScenarioWorkspace = ({ scenarioId, scenario, onBack, onSave, profiles, goals = [], goalsLoading }) => {
+const SimulationWorkspace = ({ simulationId, simulation, onBack, onSave, backgrounds, goals = [], goalsLoading }) => {
   const [loading, setLoading] = useState(true);
   const [productsLoading, setProductsLoading] = useState(true);
-  const [products, setProducts] = useState([]);
+  const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
-  const [activeProfile, setActiveProfile] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [activeBackground, setActiveBackground] = useState(null);
   const [activeGoal, setActiveGoal] = useState(null);
-  const [activeProfileId, setActiveProfileId] = useState(null);
+  const [activeBackgroundId, setActiveBackgroundId] = useState(null);
   const [activeGoalId, setActiveGoalId] = useState(null);
 
   // --- Stage 2 State: Strategy ---
@@ -220,7 +220,7 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, onSave, profiles, goa
           setSelectedPortfolioId(defaults[0].id);
         }
       } catch (err) {
-        console.error('[ScenarioWorkspace] Failed to load products', err);
+        console.error('[SimulationWorkspace] Failed to load products', err);
       } finally {
         if (mounted) setProductsLoading(false);
       }
@@ -259,26 +259,26 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, onSave, profiles, goa
       setLoading(true);
       await new Promise(resolve => setTimeout(resolve, 800));
 
-      const profile =
-        profiles.find(p => p.id === scenario?.profileId) ||
-        scenario?.profile ||
-        profiles[0];
-      const goal = goalOptions.find(g => g.id === scenario?.goalId) || goalOptions[0];
+      const background =
+        backgrounds.find(p => p.id === simulation?.backgroundId) ||
+        simulation?.profile ||
+        backgrounds[0];
+      const goal = goalOptions.find(g => g.id === simulation?.goalId) || goalOptions[0];
       
-      setActiveProfile(profile);
-      setActiveProfileId(profile?.id || scenario?.profileId || null);
+      setActiveBackground(background);
+      setActiveBackgroundId(background?.id || simulation?.backgroundId || null);
       setActiveGoal(goal);
       setActiveGoalId(goal?.id || null);
       setMonthlyContribution(
-        scenario?.monthlyContribution ??
-        (profile?.income?.annualGross ? Math.round(profile.income.annualGross / 60) : 0)
+        simulation?.monthlyContribution ??
+        (background?.income?.annualGross ? Math.round(background.income.annualGross / 60) : 0)
       );
-      setLumpSum(scenario?.lumpSum ?? 10000);
-      setIsInflationAdjusted(scenario?.isInflationAdjusted ?? true);
+      setLumpSum(simulation?.lumpSum ?? 10000);
+      setIsInflationAdjusted(simulation?.isInflationAdjusted ?? true);
       setLoading(false);
     };
     init();
-  }, [profiles, scenario, goalOptions]);
+  }, [backgrounds, simulation, goalOptions]);
 
   const handleGoalChange = (goalId) => {
     const nextGoal = goalOptions.find((g) => g.id === goalId);
@@ -286,12 +286,12 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, onSave, profiles, goa
     setActiveGoalId(nextGoal?.id || null);
   };
 
-  const handleProfileChange = (profileId) => {
-    const nextProfile = profiles.find((p) => p.id === profileId);
-    setActiveProfile(nextProfile || null);
-    setActiveProfileId(nextProfile?.id || null);
-    if (nextProfile) {
-      setMonthlyContribution(scenario?.monthlyContribution || Math.round(nextProfile.income.annualGross / 60));
+  const handleBackgroundChange = (backgroundId) => {
+    const nextBackground = backgrounds.find((p) => p.id === backgroundId);
+    setActiveBackground(nextBackground || null);
+    setActiveBackgroundId(nextBackground?.id || null);
+    if (nextBackground) {
+      setMonthlyContribution(simulation?.monthlyContribution || Math.round(nextBackground.income.annualGross / 60));
     }
   };
 
@@ -311,10 +311,10 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, onSave, profiles, goa
   const progressPercent = targetAmount > 0 ? (currentGoalProgress / targetAmount) * 100 : 0;
 
   const { summaryData: mcData, expectedReturn, volatility, successProbability } = useMemo(() => {
-    if (!activeProfile) return { summaryData: [], expectedReturn: 0, volatility: 0, successProbability: 0 };
-    const initialCapital = (activeProfile.financials.cash || 0) + (activeProfile.financials.investments || 0);
+    if (!activeBackground) return { summaryData: [], expectedReturn: 0, volatility: 0, successProbability: 0 };
+    const initialCapital = (activeBackground.financials.cash || 0) + (activeBackground.financials.investments || 0);
     return runMonteCarlo({ initialCapital, monthlyContribution, lumpSum }, exposure, horizonYears, targetAmount, isInflationAdjusted);
-  }, [activeProfile, exposure, monthlyContribution, lumpSum, horizonYears, targetAmount, isInflationAdjusted]);
+  }, [activeBackground, exposure, monthlyContribution, lumpSum, horizonYears, targetAmount, isInflationAdjusted]);
 
   const handleSwapProduct = (productId) => {
     if (!isSwapping) return;
@@ -364,7 +364,7 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, onSave, profiles, goa
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Simulation Context</p>
                 <InfoTooltip 
                     content="Define the 'What-If' scenario by pairing a Goal with a Background Profile."
-                    anchor={HELP_ANCHORS.PLAYGROUND.SCENARIOS} 
+                    anchor={HELP_ANCHORS.PLAYGROUND.SIMULATIONS} 
                 />
               </div>
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -388,11 +388,11 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, onSave, profiles, goa
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Background</span>
                   <select
-                    value={activeProfileId || ''}
-                    onChange={(e) => handleProfileChange(e.target.value)}
+                    value={activeBackgroundId || ''}
+                    onChange={(e) => handleBackgroundChange(e.target.value)}
                     className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-900 focus:ring-2 focus:ring-indigo-200 outline-none min-w-[180px]"
                   >
-                    {profiles.map((p) => (
+                    {backgrounds.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
                       </option>
@@ -405,27 +405,36 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, onSave, profiles, goa
         </div>
         
         <button 
-            onClick={() => {
-                onSave(scenarioId, {
-                    goalId: activeGoalId,
-                    backgroundId: activeProfileId,
-                    profile: activeProfile,
-                    monthlyContribution,
-                    lumpSum, // Ensure this is handled by backend if needed, or mapped to something existing
-                    // Assuming inflationAdjusted is also a parameter
-                    // Add result metrics to save if desired
-                    successProbability,
-                    isInflationAdjusted,
-                    status: successProbability >= 70 ? 'safe' : 'risky'
-                    // exposure?
-                });
-                setIsSaved(true);
-                setTimeout(() => setIsSaved(false), 2000);
+            onClick={async () => {
+                setIsSaving(true);
+                try {
+                    await onSave(simulationId, {
+                        goalId: activeGoalId,
+                        backgroundId: activeBackgroundId,
+                        profile: activeBackground,
+                        monthlyContribution,
+                        lumpSum,
+                        successProbability,
+                        isInflationAdjusted,
+                        status: successProbability >= 70 ? 'safe' : 'risky'
+                    });
+                    setIsSaved(true);
+                    setTimeout(() => setIsSaved(false), 2000);
+                } catch (err) {
+                    console.error('[SimulationWorkspace] Failed to save:', err);
+                } finally {
+                    setIsSaving(false);
+                }
             }} 
-            className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-bold transition-all ${isSaved ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-900 text-white hover:bg-indigo-600 shadow-xl shadow-slate-200 active:scale-95'}`}
+            disabled={isSaving}
+            className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-bold transition-all ${
+                isSaved 
+                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
+                    : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-xl shadow-indigo-100 active:scale-95'
+            } ${isSaving ? 'opacity-70 cursor-wait' : ''}`}
         >
-          {isSaved ? <CheckCircle2 size={18} /> : <Save size={18} />}
-          {isSaved ? 'Life Path Saved' : 'Commit Decision'}
+          {isSaving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : isSaved ? <CheckCircle2 size={18} /> : <Save size={18} />}
+          {isSaving ? 'Saving...' : isSaved ? 'Simulation Saved' : 'Commit Decision'}
         </button>
       </div>
 
@@ -640,7 +649,7 @@ const ScenarioWorkspace = ({ scenarioId, scenario, onBack, onSave, profiles, goa
                   />
                   <Tooltip 
                     contentStyle={{ borderRadius: '1.2rem', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '12px 20px' }}
-                    labelFormatter={(y) => `Year ${y} (Age ${(activeProfile?.identity?.age || 30) + y})`}
+                    labelFormatter={(y) => `Year ${y} (Age ${(activeBackground?.identity?.age || 30) + y})`}
                   />
                   
                   <Area type="monotone" dataKey="high" stroke="none" fill="#6366f1" fillOpacity={0.05} />
@@ -793,4 +802,4 @@ const LegendItem = ({ label, value, color }) => (
   </div>
 );
 
-export default ScenarioWorkspace;
+export default SimulationWorkspace;

@@ -83,6 +83,61 @@ const attachRagMetadata = (aiDecision, ragContext) => {
     return nextDecision;
 };
 
+const resolveTargetExposure = (goalContext = {}) => {
+    const exposure =
+        goalContext?.ai_decision?.strategy_recommendation?.economic_exposure ||
+        goalContext?.simulation_data?.target_exposure ||
+        goalContext?.strategy_summary?.target_exposure ||
+        goalContext?.strategy_summary?.economic_exposure ||
+        { growth: 60, defensive: 30, liquidity: 10 };
+
+    return {
+        growth: Number(exposure.growth) || 60,
+        defensive: Number(exposure.defensive) || 30,
+        liquidity: Number(exposure.liquidity) || 10
+    };
+};
+
+const sanitizeProductSelection = (aiDecision, toolCalls = []) => {
+    if (!aiDecision?.portfolio_options?.length) return aiDecision;
+    const allowedIds = new Set();
+
+    toolCalls.forEach((tc) => {
+        const res = tc?.result;
+        if (!res) return;
+        if (res?.candidates) {
+            const buckets = ['growth', 'defensive', 'liquidity'];
+            buckets.forEach((bucket) => {
+                (res.candidates?.[bucket] || []).forEach((p) => {
+                    if (p?.id) allowedIds.add(String(p.id));
+                });
+            });
+        }
+        if (Array.isArray(res?.portfolio_options)) {
+            res.portfolio_options.forEach((opt) => {
+                (opt?.products || []).forEach((p) => {
+                    if (p?.product_id) allowedIds.add(String(p.product_id));
+                });
+            });
+        }
+    });
+
+    if (allowedIds.size === 0) return aiDecision;
+
+    const sanitizedOptions = (aiDecision.portfolio_options || [])
+        .map((opt) => {
+            const products = (opt?.products || []).filter((p) => allowedIds.has(String(p.product_id)));
+            if (products.length < 2) return null;
+            return { ...opt, products };
+        })
+        .filter(Boolean);
+
+    return {
+        ...aiDecision,
+        portfolio_options: sanitizedOptions
+    };
+};
+
 const ASK_RESPONSE_SCHEMA = {
     type: 'object',
     properties: {
@@ -876,7 +931,8 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
       // ==========================================
       if (stage === GOAL_ENGINE_STAGES.PRODUCT) {
           console.log(`[Goal Engine] 🔧 Product Stage: Using Function Calling architecture`);
-          console.log(`[Goal Engine] → Available tools: ${productTools.definitions.map(t => t.name).join(', ')}`);
+          const productToolsForAI = productTools.definitions.filter(tool => tool.name === 'build_optimized_portfolios');
+          console.log(`[Goal Engine] → Available tools: ${productToolsForAI.map(t => t.name).join(', ')}`);
           
           // Use SSE to stream progress updates during Function Calling
           const useSSE = req.headers.accept === 'text/event-stream' || req.body.stream;
@@ -946,9 +1002,25 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
           result = await llmService.generateWithTools(
               prompt,
               context,
-              productTools.definitions,
+              productToolsForAI,
               toolExecutorWithProgress  // Tool executor with progress updates
           );
+
+          if (result?.json?.ai_decision) {
+              // Enforce local portfolio optimization: AI should not construct portfolios.
+              const exposure = resolveTargetExposure(enrichedContext);
+              const localPortfolios = await productTools.buildOptimizedPortfolios({
+                  target_growth_pct: exposure.growth,
+                  target_defensive_pct: exposure.defensive,
+                  target_liquidity_pct: exposure.liquidity,
+                  max_fees: 2,
+                  is_retirement_goal: enrichedContext?.category === 'retirement'
+              });
+              if (!localPortfolios?.error && Array.isArray(localPortfolios?.portfolio_options)) {
+                  result.json.ai_decision.portfolio_options = localPortfolios.portfolio_options;
+              }
+              result.json.ai_decision = sanitizeProductSelection(result.json.ai_decision, result.toolCalls || []);
+          }
           
         console.log(`[Goal Engine] ✅ Function Calling complete. Tool calls made: ${result.toolCalls?.length || 0}`);
         if (result.toolCalls?.length > 0) {

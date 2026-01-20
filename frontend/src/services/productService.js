@@ -84,10 +84,10 @@ const transformProduct = (backendProduct) => {
 
     // Returns (transform key format)
     // Backend: { y1, y5, benchmark_y1 }
-    // Frontend expects: { '1y', '5y' }
+    // Note: Some legacy data uses annualized5yr instead of y5
     returns: {
-      '1y': metrics?.returns?.y1 ?? null,
-      '5y': metrics?.returns?.y5 ?? null,
+      '1y': metrics?.returns?.y1 ?? metrics?.returns?.annualized1yr ?? null,
+      '5y': metrics?.returns?.y5 ?? metrics?.returns?.annualized5yr ?? null,
       benchmark: metrics?.returns?.benchmark_y1 ?? null,
     },
 

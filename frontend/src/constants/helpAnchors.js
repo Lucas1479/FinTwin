@@ -177,10 +177,10 @@ export const HELP_ANCHORS = {
       contextTag: 'PLAYGROUND_BACKGROUNDS',
       question: 'What is a Simulation Background?'
     },
-    SCENARIOS: {
-      id: 'sim_scenarios',
+    SIMULATIONS: {
+      id: 'sim_simulations',
       contextTag: 'PLAYGROUND_SCENARIOS',
-      question: 'What is a Life Path scenario?'
+      question: 'What is a Simulation scenario?'
     },
     STRATEGY: {
       id: 'sim_strategy',

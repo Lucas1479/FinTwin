@@ -113,10 +113,84 @@ async function importProducts() {
   // 7. Import products
   console.log('\n📥 Importing products...');
   
+  const normalizeAllocation = (allocation = {}) => {
+    const toNumber = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
+    const base = {
+      cash: toNumber(allocation.cash),
+      bonds: toNumber(allocation.bonds),
+      equities: toNumber(allocation.equities),
+      property: toNumber(allocation.property),
+      other: toNumber(allocation.other),
+    };
+
+    let total = Object.values(base).reduce((sum, v) => sum + v, 0);
+    if (total <= 0) return { ...allocation, ...base };
+
+    let scale = 1;
+    if (total <= 1.2) {
+      scale = 100 / total;
+    } else if (Math.abs(total - 100) > 0.5) {
+      scale = 100 / total;
+    }
+
+    const scaleValue = (value) => Number((value * scale).toFixed(2));
+    const normalized = {
+      cash: scaleValue(base.cash),
+      bonds: scaleValue(base.bonds),
+      equities: scaleValue(base.equities),
+      property: scaleValue(base.property),
+      other: scaleValue(base.other),
+    };
+
+    const details = allocation.details
+      ? {
+          nzFixedInterest: scaleValue(toNumber(allocation.details.nzFixedInterest)),
+          intlFixedInterest: scaleValue(toNumber(allocation.details.intlFixedInterest)),
+          australasianEquities: scaleValue(toNumber(allocation.details.australasianEquities)),
+          intlEquities: scaleValue(toNumber(allocation.details.intlEquities)),
+          unlistedProperty: scaleValue(toNumber(allocation.details.unlistedProperty)),
+        }
+      : undefined;
+
+    return {
+      ...allocation,
+      ...normalized,
+      details: details || allocation.details,
+    };
+  };
+
+  const normalizeReturnValue = (value) => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+      const cleaned = value.trim().replace(/%/g, '').replace(/,/g, '');
+      if (!cleaned) return null;
+      const parsed = Number(cleaned);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  };
+
+  const normalizeReturns = (metrics = {}) => {
+    const returns = metrics?.returns || {};
+    return {
+      ...metrics,
+      returns: {
+        ...returns,
+        y1: normalizeReturnValue(returns.y1),
+        y5: normalizeReturnValue(returns.y5),
+        benchmark_y1: normalizeReturnValue(returns.benchmark_y1),
+        annualized1yr: normalizeReturnValue(returns.annualized1yr),
+        annualized5yr: normalizeReturnValue(returns.annualized5yr),
+      }
+    };
+  };
+
   // Pre-process products to add aggregated allocation fields
   const processedProducts = products.map(p => {
     // Basic allocation calculation
     let allocation = p.allocation ? { ...p.allocation } : {};
+    const metrics = normalizeReturns(p.metrics);
 
     // Special handling for Term Deposits: ensure they are 100% cash if not specified
     if (p.category === 'TermDeposit') {
@@ -124,20 +198,26 @@ async function importProducts() {
       allocation.equities = allocation.equities || 0;
       allocation.property = allocation.property || 0;
       allocation.bonds = allocation.bonds || 0;
+      allocation.other = allocation.other || 0;
     }
 
     if (p.allocation || p.category === 'TermDeposit') {
+      allocation = normalizeAllocation(allocation);
       return {
         ...p,
+        metrics,
         allocation: {
           ...allocation,
-          growth: (allocation.equities || 0) + (allocation.property || 0),
+          growth: (allocation.equities || 0) + (allocation.property || 0) + (allocation.other || 0),
           defensive: allocation.bonds || 0,
           cash: allocation.cash || 0
         }
       };
     }
-    return p;
+    return {
+      ...p,
+      metrics
+    };
   });
 
   let successCount = 0;

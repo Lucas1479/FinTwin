@@ -368,5 +368,3 @@ const TabButton = ({ id, label, icon: Icon, active, onClick, disabled, badge }) 
 
 export default WealthCenterPage;
 export { WealthContext };
-
-

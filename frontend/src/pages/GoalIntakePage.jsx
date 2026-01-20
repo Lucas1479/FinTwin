@@ -359,15 +359,38 @@ const Copilot = ({
     const [copiedId, setCopiedId] = useState(null); 
     const [showReasoning, setShowReasoning] = useState(true);
     const [expandedRef, setExpandedRef] = useState(null);
+    const [showSources, setShowSources] = useState(false);
+    const [showJumpToLatest, setShowJumpToLatest] = useState(false);
     
     const scrollRef = useRef(null);
     const textareaRef = useRef(null); 
 
     useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        if (!scrollRef.current) return;
+        const el = scrollRef.current;
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        const nearBottom = distanceFromBottom < 120;
+        if (nearBottom) {
+            el.scrollTop = el.scrollHeight;
+            setShowJumpToLatest(false);
+        } else {
+            setShowJumpToLatest(true);
         }
     }, [messages]); 
+
+    const handleChatScroll = () => {
+        if (!scrollRef.current) return;
+        const el = scrollRef.current;
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        const nearBottom = distanceFromBottom < 120;
+        setShowJumpToLatest(!nearBottom);
+    };
+
+    const jumpToLatest = () => {
+        if (!scrollRef.current) return;
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        setShowJumpToLatest(false);
+    };
 
     const handleCopy = (text, id) => {
         navigator.clipboard.writeText(text);
@@ -592,10 +615,12 @@ const Copilot = ({
                 </div>
             </div>
             
-            <div 
-                ref={scrollRef}
-                className="flex-1 bg-slate-50/50 rounded-lg lg:rounded-2xl p-2 lg:p-3 mb-2 lg:mb-4 overflow-y-auto border border-slate-100/50 flex flex-col gap-2 min-h-0"
-            >
+            <div className="relative flex-1 min-h-0">
+                <div 
+                    ref={scrollRef}
+                    onScroll={handleChatScroll}
+                    className="h-full bg-slate-50/50 rounded-lg lg:rounded-2xl p-2 lg:p-3 mb-2 lg:mb-4 overflow-y-auto border border-slate-100/50 flex flex-col gap-2 scrollbar-soft"
+                >
                 {messages.map((msg, i) => (
                     <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} group w-full`}>
                         {/* Thought Process (CoT) */}
@@ -654,66 +679,146 @@ const Copilot = ({
                                 {/* References */}
                                 {msg.role === 'assistant' && ((msg.references && msg.references.length > 0) || msg.rag_summary) && (
                                     <div className="mt-3 pt-2 border-t border-slate-100 flex flex-col gap-2">
-                                        {msg.rag_summary && (
-                                            <div className="px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600">
-                                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">KB Summary</div>
-                                                <div className="text-left whitespace-normal">{formatSnippet(msg.rag_summary)}</div>
-                                            </div>
-                                        )}
-                                        {(msg.references || []).map((ref, idx) => {
-                                            const marker = ref.marker || `[${idx + 1}]`;
-                                            const title = ref.title || 'Source';
-                                            const hasUrl = !!ref.url;
-                                            const refKey = `${idx}-${title}-${marker}`;
-                                            const isOpen = expandedRef === refKey;
-                                            const source = ref.source || 'KnowledgeBase';
-
-                                            const header = (
-                                                <>
-                                                    <span className="text-slate-500 font-semibold">{marker}</span>
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center gap-1 text-[11px] font-semibold">
-                                                            {hasUrl ? <ExternalLink size={10} /> : null} {title}
-                                                        </div>
-                                                        {!hasUrl && ref.snippet && (
-                                                            <div className="text-[10px] text-slate-500 line-clamp-2 text-left">
-                                                                {formatSnippet(ref.snippet)}
-                                                            </div>
-                                                        )}
-                                                        <div className="text-[10px] text-slate-400">{source}</div>
+                                        {/* Preview (collapsed) */}
+                                        {!showSources && (
+                                            <>
+                                                {msg.rag_summary && (
+                                                    <div className="px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600">
+                                                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">KB Summary</div>
+                                                        <div className="text-left whitespace-normal line-clamp-2">{formatSnippet(msg.rag_summary)}</div>
                                                     </div>
-                                                </>
-                                            );
+                                                )}
+                                                {(msg.references || []).slice(0, 2).map((ref, idx) => {
+                                                    const marker = ref.marker || `[${idx + 1}]`;
+                                                    const title = ref.title || 'Source';
+                                                    const hasUrl = !!ref.url;
+                                                    const refKey = `${idx}-${title}-${marker}`;
+                                                    const isOpen = expandedRef === refKey;
+                                                    const source = ref.source || 'KnowledgeBase';
 
-                                            if (hasUrl) {
-                                                return (
-                                                    <a
-                                                        key={idx}
-                                                        href={ref.url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="flex items-start gap-2 px-2 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-[11px] text-slate-600 transition-colors"
-                                                    >
-                                                        {header}
-                                                    </a>
-                                                );
-                                            }
+                                                    const header = (
+                                                        <>
+                                                            <span className="text-slate-500 font-semibold">{marker}</span>
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center gap-1 text-[11px] font-semibold">
+                                                                    {hasUrl ? <ExternalLink size={10} /> : null} {title}
+                                                                </div>
+                                                                {!hasUrl && ref.snippet && (
+                                                                    <div className="text-[10px] text-slate-500 line-clamp-1 text-left">
+                                                                        {formatSnippet(ref.snippet)}
+                                                                    </div>
+                                                                )}
+                                                                <div className="text-[10px] text-slate-400">{source}</div>
+                                                            </div>
+                                                        </>
+                                                    );
 
-                                            return (
-                                                <div
-                                                    key={idx}
-                                                    className="flex flex-col gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600 cursor-pointer hover:bg-slate-100"
-                                                    onClick={() => setExpandedRef(isOpen ? null : refKey)}
-                                                >
-                                                    <div className="flex items-start gap-2">{header}</div>
-                                                    {ref.snippet && isOpen && (
-                                                        <div className="mt-1 p-2 bg-white border border-slate-200 rounded text-[11px] text-slate-600 shadow-sm whitespace-normal text-left">
-                                                            {formatSnippet(ref.snippet)}
+                                                    if (hasUrl) {
+                                                        return (
+                                                            <a
+                                                                key={idx}
+                                                                href={ref.url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="flex items-start gap-2 px-2 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-[11px] text-slate-600 transition-colors"
+                                                            >
+                                                                {header}
+                                                            </a>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        <div
+                                                            key={idx}
+                                                            className="flex flex-col gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600 cursor-pointer hover:bg-slate-100"
+                                                            onClick={() => setExpandedRef(isOpen ? null : refKey)}
+                                                        >
+                                                            <div className="flex items-start gap-2">{header}</div>
+                                                            {ref.snippet && isOpen && (
+                                                                <div className="mt-1 p-2 bg-white border border-slate-200 rounded text-[11px] text-slate-600 shadow-sm whitespace-normal text-left">
+                                                                    {formatSnippet(ref.snippet)}
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
+                                                    );
+                                                })}
+                                            </>
+                                        )}
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowSources(prev => !prev)}
+                                            className="self-start px-2 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 hover:bg-slate-200 transition"
+                                            title={showSources ? 'Hide sources' : 'Show sources'}
+                                        >
+                                            {showSources ? 'Collapse' : 'Expand more'}
+                                            {msg.references?.length ? ` (${msg.references.length})` : ''}
+                                        </button>
+
+                                        {showSources && (
+                                            <>
+                                                {msg.rag_summary && (
+                                                    <div className="px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600">
+                                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">KB Summary</div>
+                                                        <div className="text-left whitespace-normal">{formatSnippet(msg.rag_summary)}</div>
+                                                    </div>
+                                                )}
+                                                {(msg.references || []).map((ref, idx) => {
+                                                    const marker = ref.marker || `[${idx + 1}]`;
+                                                    const title = ref.title || 'Source';
+                                                    const hasUrl = !!ref.url;
+                                                    const refKey = `${idx}-${title}-${marker}`;
+                                                    const isOpen = expandedRef === refKey;
+                                                    const source = ref.source || 'KnowledgeBase';
+
+                                                    const header = (
+                                                        <>
+                                                            <span className="text-slate-500 font-semibold">{marker}</span>
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center gap-1 text-[11px] font-semibold">
+                                                                    {hasUrl ? <ExternalLink size={10} /> : null} {title}
+                                                                </div>
+                                                                {!hasUrl && ref.snippet && (
+                                                                    <div className="text-[10px] text-slate-500 line-clamp-2 text-left">
+                                                                        {formatSnippet(ref.snippet)}
+                                                                    </div>
+                                                                )}
+                                                                <div className="text-[10px] text-slate-400">{source}</div>
+                                                            </div>
+                                                        </>
+                                                    );
+
+                                                    if (hasUrl) {
+                                                        return (
+                                                            <a
+                                                                key={idx}
+                                                                href={ref.url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="flex items-start gap-2 px-2 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-[11px] text-slate-600 transition-colors"
+                                                            >
+                                                                {header}
+                                                            </a>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        <div
+                                                            key={idx}
+                                                            className="flex flex-col gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600 cursor-pointer hover:bg-slate-100"
+                                                            onClick={() => setExpandedRef(isOpen ? null : refKey)}
+                                                        >
+                                                            <div className="flex items-start gap-2">{header}</div>
+                                                            {ref.snippet && isOpen && (
+                                                                <div className="mt-1 p-2 bg-white border border-slate-200 rounded text-[11px] text-slate-600 shadow-sm whitespace-normal text-left">
+                                                                    {formatSnippet(ref.snippet)}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </>
+                                        )}
                                     </div>
                                 )}
 
@@ -733,10 +838,21 @@ const Copilot = ({
                         )}
                     </div>
                 ))}
-                {isLoading && (
-                    <div className="self-start bg-slate-100 p-3 rounded-2xl rounded-tl-none text-xs text-slate-400 italic">
-                        Thinking...
-                    </div>
+                    {isLoading && (
+                        <div className="self-start bg-slate-100 p-3 rounded-2xl rounded-tl-none text-xs text-slate-400 italic">
+                            Thinking...
+                        </div>
+                    )}
+                </div>
+                {showJumpToLatest && (
+                    <button
+                        type="button"
+                        onClick={jumpToLatest}
+                        className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-white/60 text-slate-600 border border-white/80 shadow-sm backdrop-blur hover:bg-white/80 hover:text-slate-800 transition"
+                        title="Jump to latest"
+                    >
+                        Jump to latest
+                    </button>
                 )}
             </div>
 
@@ -819,10 +935,12 @@ const Copilot = ({
 
 const GoalEnginePage = () => {
   const navigate = useNavigate();
-  const [currentStage, setCurrentStage] = useState(0);
-  const [goalContext, setGoalContext] = useState({
+  const STORAGE_KEY = 'goal_engine_session_v1';
+  const buildFreshGoalContext = () => ({
     session_id: `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   });
+  const [currentStage, setCurrentStage] = useState(0);
+  const [goalContext, setGoalContext] = useState(buildFreshGoalContext);
   const [submitting, setSubmitting] = useState(false);
   const [messages, setMessages] = useState([]);
   const [useRag, setUseRag] = useState(true); // Default to RAG enabled
@@ -842,6 +960,7 @@ const GoalEnginePage = () => {
   const [stageSummary, setStageSummary] = useState({});
   const [recalcFlags, setRecalcFlags] = useState({});
   const [cardExpanded, setCardExpanded] = useState({});
+  const [isHydrated, setIsHydrated] = useState(false);
 
   const activeSubstages = {
       definition: getSubstagesForCategory(goalContext.category)
@@ -1277,12 +1396,84 @@ const GoalEnginePage = () => {
       return { role: 'system', text: greetings[stageIdx] || "How can I help?" };
     };
 
-  // Initialize greeting on mount
+  // Restore session from localStorage
   useEffect(() => {
-      if (messages.length === 0) {
+      try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) {
+              setMessages([getGreeting(0)]);
+              setIsHydrated(true);
+              return;
+          }
+          const saved = JSON.parse(raw);
+          if (saved?.goalContext) setGoalContext(saved.goalContext);
+          if (typeof saved?.currentStage === 'number') setCurrentStage(saved.currentStage);
+          if (Array.isArray(saved?.messages)) setMessages(saved.messages);
+          if (typeof saved?.useRag === 'boolean') setUseRag(saved.useRag);
+          if (saved?.chatMode) setChatMode(saved.chatMode);
+          if (saved?.leftWidth) setLeftWidth(saved.leftWidth);
+          if (saved?.substageState) setSubstageState(saved.substageState);
+          if (saved?.substageData) setSubstageData(saved.substageData);
+          if (saved?.stageSummary) setStageSummary(saved.stageSummary);
+          if (saved?.recalcFlags) setRecalcFlags(saved.recalcFlags);
+          if (saved?.cardExpanded) setCardExpanded(saved.cardExpanded);
+      } catch (err) {
+          console.warn('Failed to restore local session:', err);
           setMessages([getGreeting(0)]);
+      } finally {
+          setIsHydrated(true);
       }
   }, []);
+
+  // Persist session to localStorage (lightweight)
+  useEffect(() => {
+      if (!isHydrated) return;
+      const payload = {
+          currentStage,
+          goalContext,
+          messages,
+          useRag,
+          chatMode,
+          leftWidth,
+          substageState,
+          substageData,
+          stageSummary,
+          recalcFlags,
+          cardExpanded
+      };
+      try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      } catch (err) {
+          console.warn('Failed to persist local session:', err);
+      }
+  }, [
+      isHydrated,
+      currentStage,
+      goalContext,
+      messages,
+      useRag,
+      chatMode,
+      leftWidth,
+      substageState,
+      substageData,
+      stageSummary,
+      recalcFlags,
+      cardExpanded
+  ]);
+
+  const handleClearLocalSession = () => {
+      localStorage.removeItem(STORAGE_KEY);
+      setCurrentStage(0);
+      setGoalContext(buildFreshGoalContext());
+      setMessages([getGreeting(0)]);
+      setUseRag(true);
+      setChatMode('agent');
+      setSubstageState(buildInitialSubstageState());
+      setSubstageData({});
+      setStageSummary({});
+      setRecalcFlags({});
+      setCardExpanded({});
+  };
 
   // Fetch real goals for enrichment
   const [realGoals, setRealGoals] = useState([]);
@@ -2023,7 +2214,17 @@ const GoalEnginePage = () => {
                 })}
             </div>
 
-            <div className="w-8 md:w-12 lg:w-24"></div> {/* Spacer */}
+            <div className="flex items-center gap-2">
+                <button
+                    type="button"
+                    onClick={handleClearLocalSession}
+                    className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 hover:bg-slate-200 transition"
+                    title="Clear local session"
+                >
+                    Clear local
+                </button>
+                <div className="w-4 md:w-6 lg:w-10"></div>
+            </div>
         </div>
 
         {/* Main Split View - RESIZABLE LAYOUT */}
@@ -2079,7 +2280,7 @@ const GoalEnginePage = () => {
                     flex flex-col overflow-hidden min-w-0
                 "
             >
-                <div className="flex-1 overflow-y-auto no-scrollbar pb-4">
+                <div className="flex-1 overflow-y-auto pb-4 scrollbar-soft">
     {currentStage === 0 && (
         <div className={`max-w-3xl mx-auto py-1 ${currentSubstageId === 'summary' ? '' : 'space-y-4'}`}>
              {currentSubstageId !== 'summary' && (

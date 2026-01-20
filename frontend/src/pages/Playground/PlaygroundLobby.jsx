@@ -1,62 +1,63 @@
 import React, { useState, useEffect } from 'react';
-import { PlusCircle, Play, Copy, Trash2, Edit2, UserCircle2, Briefcase, TrendingUp, X, ChevronDown, ChevronUp, Wallet, Landmark, TrendingDown, Info, ShieldCheck, Save, BarChart3, Activity, Target } from 'lucide-react';
+import { PlusCircle, Play, Copy, Trash2, Edit2, UserCircle2, Briefcase, TrendingUp, X, ChevronDown, ChevronUp, Wallet, Landmark, TrendingDown, Info, ShieldCheck, Save, BarChart3, Activity, Target, CheckCircle2 } from 'lucide-react';
 import InfoTooltip from '../../components/common/InfoTooltip';
 import { HELP_ANCHORS } from '../../constants/helpAnchors';
 
-const ScenarioLobby = ({
-  onEditScenario,
-  onCreateScenario,
-  onDeleteScenario,
-  onCreateProfile,
-  onUpdateProfile,
-  onDeleteProfile,
-  profiles,
-  scenarios,
+const PlaygroundLobby = ({
+  onEditSimulation,
+  onCreateSimulation,
+  onDeleteSimulation,
+  onCreateBackground,
+  onUpdateBackground,
+  onDeleteBackground,
+  backgrounds,
+  simulations,
   goals = [],
   goalsLoading,
   loading
 }) => {
-  const [expandedProfileId, setExpandedProfileId] = useState(null);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [isPathModalOpen, setIsPathModalOpen] = useState(false);
+  const [expandedBackgroundId, setExpandedBackgroundId] = useState(null);
+  const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
+  const [isSimulationModalOpen, setIsSimulationModalOpen] = useState(false);
 
-  const handleUpdateProfile = async (updatedProfile) => {
-    if (!onUpdateProfile) return;
+  const handleUpdateBackground = async (updatedBackground) => {
+    if (!onUpdateBackground) return;
     try {
-      await onUpdateProfile(updatedProfile);
+      await onUpdateBackground(updatedBackground);
     } catch (err) {
-      console.error('[ScenarioLobby] Failed to update background', err);
+      console.error('[PlaygroundLobby] Failed to update background', err);
+      throw err;
     }
   };
 
-  const handleDeleteProfile = async (e, profileId) => {
+  const handleDeleteBackground = async (e, backgroundId) => {
     e?.stopPropagation?.();
-    if (!onDeleteProfile || !profileId) return;
+    if (!onDeleteBackground || !backgroundId) return;
     if (!window.confirm('Delete this background?')) return;
     try {
-      await onDeleteProfile(profileId);
+      await onDeleteBackground(backgroundId);
     } catch (err) {
-      console.error('[ScenarioLobby] Failed to delete background', err);
+      console.error('[PlaygroundLobby] Failed to delete background', err);
     }
   };
 
-  const handleCreateProfile = async (newProfile) => {
-    if (!onCreateProfile) return;
+  const handleCreateBackground = async (newBackground) => {
+    if (!onCreateBackground) return;
     try {
-      await onCreateProfile(newProfile);
-      setIsProfileModalOpen(false);
+      await onCreateBackground(newBackground);
+      setIsBackgroundModalOpen(false);
     } catch (err) {
-      console.error('[ScenarioLobby] Failed to create background', err);
+      console.error('[PlaygroundLobby] Failed to create background', err);
     }
   };
 
-  const handleCreateScenario = async (payload) => {
-    if (!onCreateScenario) return;
+  const handleCreateSimulation = async (payload) => {
+    if (!onCreateSimulation) return;
     try {
-      await onCreateScenario(payload);
-      setIsPathModalOpen(false);
+      await onCreateSimulation(payload);
+      setIsSimulationModalOpen(false);
     } catch (err) {
-      console.error('[ScenarioLobby] Failed to create scenario', err);
+      console.error('[PlaygroundLobby] Failed to create simulation', err);
     }
   };
 
@@ -71,7 +72,7 @@ const ScenarioLobby = ({
 
   return (
     <div className="space-y-12 animate-in fade-in duration-700">
-      {/* 1. Full-Width Background Profiles */}
+      {/* 1. Full-Width Backgrounds */}
       <section>
         <div className="flex items-center justify-between mb-6 px-2">
           <div className="flex items-center gap-3">
@@ -89,7 +90,7 @@ const ScenarioLobby = ({
              </div>
           </div>
           <button
-            onClick={() => setIsProfileModalOpen(true)}
+            onClick={() => setIsBackgroundModalOpen(true)}
             className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:border-indigo-200 hover:text-indigo-600 transition-all shadow-sm active:scale-95 group"
           >
             <PlusCircle size={14} className="group-hover:text-indigo-600 transition-colors" />
@@ -98,20 +99,20 @@ const ScenarioLobby = ({
         </div>
 
         <div className="space-y-4">
-          {profiles.map(profile => (
-            <ProfileRow 
-              key={profile.id} 
-              profile={profile} 
-              isExpanded={expandedProfileId === profile.id}
-              onToggle={() => setExpandedProfileId(expandedProfileId === profile.id ? null : profile.id)}
-              onUpdate={handleUpdateProfile}
-              onDelete={handleDeleteProfile}
+          {backgrounds.map(background => (
+            <BackgroundRow 
+              key={background.id} 
+              background={background} 
+              isExpanded={expandedBackgroundId === background.id}
+              onToggle={() => setExpandedBackgroundId(expandedBackgroundId === background.id ? null : background.id)}
+              onUpdate={handleUpdateBackground}
+              onDelete={handleDeleteBackground}
             />
           ))}
         </div>
       </section>
 
-      {/* 2. Scenarios List */}
+      {/* 2. Simulations List */}
       <section>
         <div className="flex items-center justify-between mb-6 px-2 pt-8 border-t border-slate-200/50">
           <div className="flex items-center gap-3">
@@ -120,56 +121,58 @@ const ScenarioLobby = ({
              </div>
              <div className="flex items-center gap-2">
                 <h2 className="text-sm font-bold text-slate-900 uppercase tracking-widest">
-                Saved Life Paths
+                Saved Simulations
                 </h2>
                 <InfoTooltip 
                     content="A 'What-If' simulation connecting a Background to a specific Goal to test feasibility."
-                    anchor={HELP_ANCHORS.PLAYGROUND.SCENARIOS} 
+                    anchor={HELP_ANCHORS.PLAYGROUND.SIMULATIONS} 
                 />
              </div>
           </div>
           <button
-            onClick={() => setIsPathModalOpen(true)}
+            onClick={() => setIsSimulationModalOpen(true)}
             className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95"
           >
             <PlusCircle size={14} />
-            Run New Path
+            New Simulation
           </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {scenarios.map(scenario => (
-            <div key={scenario.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 hover:border-indigo-100 transition-all group relative overflow-hidden flex flex-col h-full">
+          {simulations.map(simulation => (
+            <div key={simulation.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 hover:border-indigo-100 transition-all group relative overflow-hidden flex flex-col h-full">
               
               {/* Header Status */}
               <div className="flex justify-between items-start mb-5">
                 <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${
-                  scenario.status === 'safe' 
+                  simulation.status === 'safe' 
                     ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
-                    : 'bg-rose-50 text-rose-600 border-rose-100'
+                    : simulation.status === 'risky'
+                      ? 'bg-rose-50 text-rose-600 border-rose-100'
+                      : 'bg-slate-50 text-slate-400 border-slate-200'
                 }`}>
-                  {scenario.status}
+                  {simulation.status === 'unknown' ? 'Pending' : simulation.status}
                 </div>
                 
                 {/* Linked Entities Badge */}
                 <div className="flex gap-1">
-                   {scenario.goalId && (
+                   {simulation.goalId && (
                       <div className="w-6 h-6 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center text-indigo-600" title="Has Goal">
                          <Target size={12} />
                       </div>
                    )}
-                   <div className="w-6 h-6 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400" title="Has Profile">
+                   <div className="w-6 h-6 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400" title="Has Background">
                          <UserCircle2 size={12} />
                    </div>
                 </div>
               </div>
 
               <h3 className="text-lg font-bold text-slate-900 mb-2 group-hover:text-indigo-600 transition-colors leading-tight line-clamp-2">
-                  {scenario.name}
+                  {simulation.name}
               </h3>
               
               <div className="text-xs text-slate-500 mb-6 font-medium">
-                  Based on <span className="text-slate-700 font-semibold">{profiles.find(p => p.id === scenario.profileId)?.name || 'Unknown'}</span>
+                  Based on <span className="text-slate-700 font-semibold">{backgrounds.find(p => p.id === simulation.profileId)?.name || 'Unknown'}</span>
               </div>
 
               <div className="mt-auto space-y-5">
@@ -177,19 +180,19 @@ const ScenarioLobby = ({
                 <div>
                   <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                     <span>Survival Probability</span>
-                    <span className={(scenario.successProbability || 0) >= 70 ? 'text-emerald-600' : 'text-rose-600'}>{(scenario.successProbability || 0)}%</span>
+                    <span className={(simulation.successProbability || 0) >= 70 ? 'text-emerald-600' : 'text-rose-600'}>{(simulation.successProbability || 0)}%</span>
                   </div>
                   <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
                     <div 
-                        className={`h-full rounded-full transition-all duration-1000 ${(scenario.successProbability || 0) >= 70 ? 'bg-emerald-500' : 'bg-rose-500'}`} 
-                        style={{ width: `${(scenario.successProbability || 0)}%` }} 
+                        className={`h-full rounded-full transition-all duration-1000 ${(simulation.successProbability || 0) >= 70 ? 'bg-emerald-500' : 'bg-rose-500'}`} 
+                        style={{ width: `${(simulation.successProbability || 0)}%` }} 
                     />
                   </div>
                 </div>
 
                 <div className="flex gap-2">
                     <button
-                    onClick={() => onEditScenario(scenario.id)}
+                    onClick={() => onEditSimulation(simulation.id)}
                     className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold uppercase tracking-widest text-[10px] hover:border-indigo-600 hover:text-indigo-600 hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 group/btn"
                     >
                     Enter Decision Space
@@ -199,7 +202,7 @@ const ScenarioLobby = ({
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            if(window.confirm('Delete this scenario?')) onDeleteScenario(scenario.id);
+                            if(window.confirm('Delete this simulation?')) onDeleteSimulation(simulation.id);
                         }}
                         className="p-3 rounded-xl border border-slate-200 text-slate-400 hover:text-rose-500 hover:border-rose-200 hover:bg-rose-50 transition-all"
                     >
@@ -212,31 +215,31 @@ const ScenarioLobby = ({
           
           {/* Add New Placeholder Card */}
           <button 
-             onClick={() => setIsPathModalOpen(true)}
+             onClick={() => setIsSimulationModalOpen(true)}
              className="border-2 border-dashed border-slate-200 rounded-[2rem] p-6 flex flex-col items-center justify-center text-center gap-4 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all group min-h-[280px]"
           >
              <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
                 <PlusCircle size={24} className="text-slate-300 group-hover:text-indigo-500 transition-colors" />
              </div>
-             <span className="text-xs font-bold text-slate-400 uppercase tracking-widest group-hover:text-indigo-600">Create New Path</span>
+             <span className="text-xs font-bold text-slate-400 uppercase tracking-widest group-hover:text-indigo-600">Create New Simulation</span>
           </button>
         </div>
       </section>
 
-      {isProfileModalOpen && (
-        <CreateProfileModal 
-          onClose={() => setIsProfileModalOpen(false)} 
-          onSave={handleCreateProfile}
+      {isBackgroundModalOpen && (
+        <CreateBackgroundModal 
+          onClose={() => setIsBackgroundModalOpen(false)} 
+          onSave={handleCreateBackground}
         />
       )}
 
-      {isPathModalOpen && (
-        <CreatePathModal
-          profiles={profiles}
+      {isSimulationModalOpen && (
+        <CreateSimulationModal
+          backgrounds={backgrounds}
           goals={goals}
           goalsLoading={goalsLoading}
-          onClose={() => setIsPathModalOpen(false)}
-          onSave={handleCreateScenario}
+          onClose={() => setIsSimulationModalOpen(false)}
+          onSave={handleCreateSimulation}
         />
       )}
     </div>
@@ -245,28 +248,43 @@ const ScenarioLobby = ({
 
 // --- Sub-Components ---
 
-const ProfileRow = ({ profile, isExpanded, onToggle, onUpdate, onDelete }) => {
+const BackgroundRow = ({ background, isExpanded, onToggle, onUpdate, onDelete }) => {
   const [activeTab, setActiveTab] = useState('identity'); 
-  const [localProfile, setLocalProfile] = useState(profile);
+  const [localBackground, setLocalBackground] = useState(background);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
-    setLocalProfile(profile);
-  }, [profile]);
+    setLocalBackground(background);
+  }, [background]);
 
-  const totalAssets = (localProfile.financials.cash || 0) + 
-                     (localProfile.financials.investments || 0) + 
-                     (localProfile.financials.property || 0) + 
-                     (localProfile.financials.pension || 0);
-  const totalLiabilities = (localProfile.financials.mortgage || 0) + 
-                          (localProfile.financials.otherDebt || 0);
+  const totalAssets = (localBackground.financials.cash || 0) + 
+                     (localBackground.financials.investments || 0) + 
+                     (localBackground.financials.property || 0) + 
+                     (localBackground.financials.pension || 0);
+  const totalLiabilities = (localBackground.financials.mortgage || 0) + 
+                          (localBackground.financials.otherDebt || 0);
   const netWorth = totalAssets - totalLiabilities;
   const debtRatio = (totalLiabilities / Math.max(totalAssets, 1)) * 100;
 
   const handleFieldChange = (section, field, value) => {
-    setLocalProfile(prev => ({
+    setLocalBackground(prev => ({
       ...prev,
       [section]: { ...prev[section], [field]: value }
     }));
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+        await onUpdate(localBackground);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (err) {
+        console.error('[BackgroundRow] Save failed:', err);
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   return (
@@ -277,25 +295,25 @@ const ProfileRow = ({ profile, isExpanded, onToggle, onUpdate, onDelete }) => {
             <UserCircle2 size={20} />
           </div>
           <div className={`grid flex-1 gap-x-8 gap-y-4 transition-all duration-500 ${isExpanded ? 'grid-cols-5' : 'grid-cols-4'}`}>
-            <Stat label="Background Name" value={profile.name} isPrimary />
+            <Stat label="Background Name" value={background.name} isPrimary />
             <Stat label="Net Worth Base" value={`$${netWorth.toLocaleString()}`} />
-            <Stat label="Age / Ret." value={`${profile.identity.age} / ${profile.identity.retirementAge}`} />
-            <Stat label="Annual Income" value={`$${profile.income.annualGross.toLocaleString()}`} isIndigo />
+            <Stat label="Age / Ret." value={`${background.identity.age} / ${background.identity.retirementAge}`} />
+            <Stat label="Annual Income" value={`$${background.income.annualGross.toLocaleString()}`} isIndigo />
             
             {/* Extended fields shown only when expanded */}
             {isExpanded && (
               <>
-                <Stat label="Risk Profile" value={profile.preferences.riskTolerance} />
-                <Stat label="Cash Reserves" value={`$${localProfile.financials.cash.toLocaleString()}`} />
+                <Stat label="Risk Profile" value={background.preferences.riskTolerance} />
+                <Stat label="Cash Reserves" value={`$${localBackground.financials.cash.toLocaleString()}`} />
                 <Stat label="Debt Ratio" value={`${debtRatio.toFixed(1)}%`} isRose={debtRatio > 40} />
-                <Stat label="Growth Exp." value={`${profile.income.growthRate}%`} />
-                <Stat label="Max Drawdown" value={`${profile.preferences.maxDrawdown || 20}%`} />
+                <Stat label="Growth Exp." value={`${background.income.growthRate}%`} />
+                <Stat label="Max Drawdown" value={`${background.preferences.maxDrawdown || 20}%`} />
               </>
             )}
           </div>
         </div>
         <div className="flex items-center gap-2 self-start mt-1">
-          <button onClick={(e) => onDelete(e, profile.id)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
+          <button onClick={(e) => onDelete(e, background.id)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
           <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${isExpanded ? 'bg-indigo-50 text-indigo-600' : 'bg-white text-slate-300'}`}>
             {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </div>
@@ -316,30 +334,30 @@ const ProfileRow = ({ profile, isExpanded, onToggle, onUpdate, onDelete }) => {
               <div className="col-span-12 lg:col-span-8 space-y-6">
                 {activeTab === 'identity' && (
                   <div className="grid grid-cols-2 gap-x-10 gap-y-8">
-                    <Field label="Full Name" value={localProfile.name} icon={<UserCircle2 size={16}/>} onChange={(v) => setLocalProfile({...localProfile, name: v})} />
-                    <Field label="Current Age" value={localProfile.identity.age} type="number" min={18} max={80} step={1} icon={<Info size={16}/>} onChange={(v) => handleFieldChange('identity', 'age', v)} />
-                    <Field label="Target Retirement" value={localProfile.identity.retirementAge} type="number" min={40} max={85} step={1} icon={<TrendingUp size={16}/>} onChange={(v) => handleFieldChange('identity', 'retirementAge', v)} />
-                    <Field label="Life Expectancy" value={localProfile.identity.lifeExpectancy} type="number" min={70} max={110} step={1} icon={<Play size={16}/>} onChange={(v) => handleFieldChange('identity', 'lifeExpectancy', v)} />
+                    <Field label="Full Name" value={localBackground.name} icon={<UserCircle2 size={16}/>} onChange={(v) => setLocalBackground({...localBackground, name: v})} />
+                    <Field label="Current Age" value={localBackground.identity.age} type="number" min={18} max={80} step={1} icon={<Info size={16}/>} onChange={(v) => handleFieldChange('identity', 'age', v)} />
+                    <Field label="Target Retirement" value={localBackground.identity.retirementAge} type="number" min={40} max={85} step={1} icon={<TrendingUp size={16}/>} onChange={(v) => handleFieldChange('identity', 'retirementAge', v)} />
+                    <Field label="Life Expectancy" value={localBackground.identity.lifeExpectancy} type="number" min={70} max={110} step={1} icon={<Play size={16}/>} onChange={(v) => handleFieldChange('identity', 'lifeExpectancy', v)} />
                   </div>
                 )}
                 {activeTab === 'financials' && (
                   <div className="space-y-6">
                     <div className="grid grid-cols-2 gap-x-10 gap-y-8">
-                      <Field label="Liquid Cash ($)" value={localProfile.financials.cash} type="number" max={2000000} step={1000} icon={<Wallet size={16}/>} onChange={(v) => handleFieldChange('financials', 'cash', v)} />
-                      <Field label="Brokerage Portfolio ($)" value={localProfile.financials.investments} type="number" max={5000000} step={5000} icon={<TrendingUp size={16}/>} onChange={(v) => handleFieldChange('financials', 'investments', v)} />
-                      <Field label="Real Estate Equity ($)" value={localProfile.financials.property} type="number" max={10000000} step={10000} icon={<Landmark size={16}/>} onChange={(v) => handleFieldChange('financials', 'property', v)} />
-                      <Field label="Pension Assets ($)" value={localProfile.financials.pension} type="number" max={2000000} step={1000} icon={<Briefcase size={16}/>} onChange={(v) => handleFieldChange('financials', 'pension', v)} />
+                      <Field label="Liquid Cash ($)" value={localBackground.financials.cash} type="number" max={2000000} step={1000} icon={<Wallet size={16}/>} onChange={(v) => handleFieldChange('financials', 'cash', v)} />
+                      <Field label="Brokerage Portfolio ($)" value={localBackground.financials.investments} type="number" max={5000000} step={5000} icon={<TrendingUp size={16}/>} onChange={(v) => handleFieldChange('financials', 'investments', v)} />
+                      <Field label="Real Estate Equity ($)" value={localBackground.financials.property} type="number" max={10000000} step={10000} icon={<Landmark size={16}/>} onChange={(v) => handleFieldChange('financials', 'property', v)} />
+                      <Field label="Pension Assets ($)" value={localBackground.financials.pension} type="number" max={2000000} step={1000} icon={<Briefcase size={16}/>} onChange={(v) => handleFieldChange('financials', 'pension', v)} />
                     </div>
                     <div className="pt-8 border-t border-slate-100 grid grid-cols-2 gap-x-10 gap-y-8">
-                      <Field label="Mortgage Balance ($)" value={localProfile.financials.mortgage} type="number" max={5000000} step={10000} color="rose" icon={<TrendingDown size={16}/>} onChange={(v) => handleFieldChange('financials', 'mortgage', v)} />
-                      <Field label="Consumer Debt ($)" value={localProfile.financials.otherDebt} type="number" max={500000} step={1000} color="rose" icon={<Trash2 size={16}/>} onChange={(v) => handleFieldChange('financials', 'otherDebt', v)} />
+                      <Field label="Mortgage Balance ($)" value={localBackground.financials.mortgage} type="number" max={5000000} step={10000} color="rose" icon={<TrendingDown size={16}/>} onChange={(v) => handleFieldChange('financials', 'mortgage', v)} />
+                      <Field label="Consumer Debt ($)" value={localBackground.financials.otherDebt} type="number" max={500000} step={1000} color="rose" icon={<Trash2 size={16}/>} onChange={(v) => handleFieldChange('financials', 'otherDebt', v)} />
                     </div>
                   </div>
                 )}
                 {activeTab === 'income' && (
                   <div className="grid grid-cols-2 gap-x-10 gap-y-8">
-                    <Field label="Gross Annual Salary ($)" value={localProfile.income.annualGross} type="number" max={1000000} step={1000} icon={<Landmark size={16}/>} onChange={(v) => handleFieldChange('income', 'annualGross', v)} />
-                    <Field label="Career Growth Rate (%)" value={localProfile.income.growthRate} type="number" min={0} max={20} step={0.5} icon={<TrendingUp size={16}/>} onChange={(v) => handleFieldChange('income', 'growthRate', v)} />
+                    <Field label="Gross Annual Salary ($)" value={localBackground.income.annualGross} type="number" max={1000000} step={1000} icon={<Landmark size={16}/>} onChange={(v) => handleFieldChange('income', 'annualGross', v)} />
+                    <Field label="Career Growth Rate (%)" value={localBackground.income.growthRate} type="number" min={0} max={20} step={0.5} icon={<TrendingUp size={16}/>} onChange={(v) => handleFieldChange('income', 'growthRate', v)} />
                   </div>
                 )}
                 {activeTab === 'preferences' && (
@@ -350,7 +368,7 @@ const ProfileRow = ({ profile, isExpanded, onToggle, onUpdate, onDelete }) => {
                         Risk Appetite
                       </label>
                       <select 
-                        value={localProfile.preferences.riskTolerance}
+                        value={localBackground.preferences.riskTolerance}
                         onChange={(e) => handleFieldChange('preferences', 'riskTolerance', e.target.value)}
                         className="w-full px-6 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-900 focus:ring-4 focus:ring-indigo-50 focus:bg-white outline-none appearance-none cursor-pointer transition-all text-sm"
                       >
@@ -360,8 +378,8 @@ const ProfileRow = ({ profile, isExpanded, onToggle, onUpdate, onDelete }) => {
                         <option value="Aggressive">Aggressive</option>
                       </select>
                     </div>
-                    <Field label="Volatility Limit (%)" value={localProfile.preferences.volatilityLimit} type="number" min={0} max={50} step={1} icon={<TrendingUp size={16}/>} onChange={(v) => handleFieldChange('preferences', 'volatilityLimit', v)} />
-                    <Field label="Max Drawdown Limit (%)" value={localProfile.preferences.maxDrawdown || 20} type="number" min={0} max={100} step={1} icon={<TrendingDown size={16}/>} onChange={(v) => handleFieldChange('preferences', 'maxDrawdown', v)} />
+                    <Field label="Volatility Limit (%)" value={localBackground.preferences.volatilityLimit} type="number" min={0} max={50} step={1} icon={<TrendingUp size={16}/>} onChange={(v) => handleFieldChange('preferences', 'volatilityLimit', v)} />
+                    <Field label="Max Drawdown Limit (%)" value={localBackground.preferences.maxDrawdown || 20} type="number" min={0} max={100} step={1} icon={<TrendingDown size={16}/>} onChange={(v) => handleFieldChange('preferences', 'maxDrawdown', v)} />
                   </div>
                 )}
               </div>
@@ -377,7 +395,7 @@ const ProfileRow = ({ profile, isExpanded, onToggle, onUpdate, onDelete }) => {
                   <div className="space-y-8 flex-1">
                     <Metric 
                       label="Liquidity Ratio" 
-                      percentage={((localProfile.financials.cash / Math.max(totalAssets, 1)) * 100)} 
+                      percentage={((localBackground.financials.cash / Math.max(totalAssets, 1)) * 100)} 
                       colorClass="bg-indigo-500" 
                     />
                     <Metric 
@@ -387,17 +405,37 @@ const ProfileRow = ({ profile, isExpanded, onToggle, onUpdate, onDelete }) => {
                     />
                     <Metric 
                       label="Risk Exposure" 
-                      percentage={(( (localProfile.financials.investments + localProfile.financials.pension) / Math.max(totalAssets, 1)) * 100)} 
+                      percentage={(( (localBackground.financials.investments + localBackground.financials.pension) / Math.max(totalAssets, 1)) * 100)} 
                       colorClass="bg-fuchsia-500" 
                     />
                   </div>
 
                   <div className="mt-8">
                     <button 
-                      onClick={() => onUpdate(localProfile)} 
-                      className="w-full bg-slate-900 text-white font-bold uppercase tracking-widest text-[11px] py-4 rounded-xl hover:bg-indigo-600 shadow-xl shadow-slate-200 transition-all flex items-center justify-center gap-3"
+                      onClick={handleSave} 
+                      disabled={isSaving}
+                      className={`w-full font-bold uppercase tracking-widest text-[11px] py-4 rounded-xl shadow-xl transition-all flex items-center justify-center gap-3 ${
+                        saveSuccess 
+                          ? 'bg-emerald-500 text-white shadow-emerald-100' 
+                          : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100'
+                      } ${isSaving ? 'opacity-70 cursor-wait' : 'active:scale-95'}`}
                     >
-                      <Save size={16} /> Commit Changes
+                      {isSaving ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Saving...
+                        </>
+                      ) : saveSuccess ? (
+                        <>
+                          <CheckCircle2 size={16} />
+                          Saved Successfully
+                        </>
+                      ) : (
+                        <>
+                          <Save size={16} />
+                          Commit Changes
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -493,7 +531,7 @@ const Field = ({ label, value, type = "text", onChange, color = "indigo", icon, 
   </div>
 );
 
-const CreateProfileModal = ({ onClose, onSave }) => {
+const CreateBackgroundModal = ({ onClose, onSave }) => {
   const [name, setName] = useState('');
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -514,9 +552,9 @@ const CreateProfileModal = ({ onClose, onSave }) => {
   );
 };
 
-const CreatePathModal = ({ profiles, goals, goalsLoading, onClose, onSave }) => {
+const CreateSimulationModal = ({ backgrounds, goals, goalsLoading, onClose, onSave }) => {
   const [name, setName] = useState('');
-  const [profileId, setProfileId] = useState(profiles[0]?.id);
+  const [backgroundId, setBackgroundId] = useState(backgrounds[0]?.id);
   const [goalId, setGoalId] = useState(goals[0]?.id);
 
   useEffect(() => {
@@ -535,7 +573,7 @@ const CreatePathModal = ({ profiles, goals, goalsLoading, onClose, onSave }) => 
               <Play size={32} fill="currentColor" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Run New Path</h2>
+              <h2 className="text-2xl font-bold text-slate-900 tracking-tight">New Simulation</h2>
               <p className="text-slate-500 text-sm font-medium">Connect a background to a goal to start simulating.</p>
             </div>
           </div>
@@ -560,11 +598,11 @@ const CreatePathModal = ({ profiles, goals, goalsLoading, onClose, onSave }) => 
                   <UserCircle2 size={12} className="text-indigo-400" /> Select Background
                 </label>
                 <select 
-                  value={profileId}
-                  onChange={(e) => setProfileId(e.target.value)}
+                  value={backgroundId}
+                  onChange={(e) => setBackgroundId(e.target.value)}
                   className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-900 focus:ring-4 focus:ring-indigo-50 outline-none appearance-none"
                 >
-                  {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  {backgrounds.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
 
@@ -589,7 +627,7 @@ const CreatePathModal = ({ profiles, goals, goalsLoading, onClose, onSave }) => 
             <button onClick={onClose} className="flex-1 py-4 bg-slate-100 text-slate-500 font-bold uppercase tracking-widest text-[11px] rounded-2xl hover:bg-slate-200 transition-all">Cancel</button>
             <button 
               disabled={!name || !goalId}
-              onClick={() => onSave({ name, profileId, goalId })} 
+              onClick={() => onSave({ name, backgroundId, goalId })} 
               className="flex-1 py-4 bg-indigo-600 text-white font-bold uppercase tracking-widest text-[11px] rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all disabled:opacity-50"
             >
               Start Simulation
@@ -601,4 +639,4 @@ const CreatePathModal = ({ profiles, goals, goalsLoading, onClose, onSave }) => 
   );
 };
 
-export default ScenarioLobby;
+export default PlaygroundLobby;

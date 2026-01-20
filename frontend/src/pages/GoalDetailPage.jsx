@@ -94,6 +94,61 @@ const formatDateTime = (dateString) => {
   });
 };
 
+const normalizeAllocation = (allocation = {}) => {
+  if (!allocation) return { growth: 0, defensive: 0, cash: 0 };
+  const toNumber = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
+  const hasPillars =
+    allocation.growth !== undefined ||
+    allocation.defensive !== undefined ||
+    allocation.cash !== undefined ||
+    allocation.liquidity !== undefined;
+
+  let growth = 0;
+  let defensive = 0;
+  let cash = 0;
+
+  if (hasPillars) {
+    growth = toNumber(allocation.growth);
+    defensive = toNumber(allocation.defensive);
+    cash = toNumber(allocation.cash ?? allocation.liquidity);
+  } else {
+    const equities = toNumber(allocation.equities);
+    const property = toNumber(allocation.property);
+    const other = toNumber(allocation.other);
+    const bonds = toNumber(allocation.bonds);
+    const cashVal = toNumber(allocation.cash);
+    growth = equities + property + other;
+    defensive = bonds;
+    cash = cashVal;
+  }
+
+  const total = growth + defensive + cash;
+  if (total <= 0) {
+    return { growth: 0, defensive: 0, cash: 0 };
+  }
+
+  let scale = 1;
+  if (total <= 1.2) {
+    scale = 100 / total;
+  } else if (total > 100) {
+    scale = 100 / total;
+  }
+
+  const clamp = (val) => Math.max(0, Number((val * scale).toFixed(2)));
+  return {
+    growth: clamp(growth),
+    defensive: clamp(defensive),
+    cash: clamp(cash),
+  };
+};
+
+const formatPct = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '0';
+  const rounded = Math.round(num * 100) / 100;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+};
+
 const getTimeRemaining = (dueDate) => {
   if (!dueDate) return { text: 'No date set', isOverdue: false };
   const now = new Date();
@@ -383,7 +438,7 @@ const ProductDetailPanel = ({ product, onClose }) => {
 
   const riskScore = product.riskScore || (product.metrics?.risk?.level ? parseInt(product.metrics.risk.level) : 4);
   const topHoldings = Array.isArray(product.topHoldings) ? product.topHoldings : [];
-  const allocation = product.allocation || product.metrics?.allocation;
+  const allocation = normalizeAllocation(product.allocation || product.metrics?.allocation);
   const feeValue = product.fees ?? product.metrics?.fees?.total;
 
   const tabs = [
@@ -559,15 +614,15 @@ const ProductDetailPanel = ({ product, onClose }) => {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm font-bold text-slate-700">
                         <div className="flex items-center gap-2">
                           <div className="w-3 h-3 rounded-full bg-indigo-500" />
-                          Growth Assets: {allocation.growth || 0}%
+                          Growth Assets: {formatPct(allocation.growth)}%
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="w-3 h-3 rounded-full bg-sky-400" />
-                          Defensive Assets: {allocation.defensive || 0}%
+                          Defensive Assets: {formatPct(allocation.defensive)}%
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="w-3 h-3 rounded-full bg-fuchsia-400" />
-                          Cash & Liquidity: {allocation.cash || allocation.liquidity || 0}%
+                          Cash & Liquidity: {formatPct(allocation.cash || allocation.liquidity)}%
                         </div>
                       </div>
                     </>
