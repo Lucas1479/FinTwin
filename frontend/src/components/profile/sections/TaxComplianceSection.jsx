@@ -1,4 +1,6 @@
 import { Calculator, ShieldCheck, Info } from 'lucide-react';
+import InfoTooltip from '../../common/InfoTooltip'; // Import Tooltip
+import { HELP_ANCHORS } from '../../../constants/helpAnchors'; // Import Registry
 
 const TaxComplianceSection = ({ data, onChange }) => {
   const pirRates = [
@@ -20,7 +22,13 @@ const TaxComplianceSection = ({ data, onChange }) => {
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-xl font-bold text-slate-900">Tax & Compliance</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-slate-900">Tax & Compliance</h2>
+            <InfoTooltip 
+                content="Your tax settings (PIR, Residency) ensure accurate Net Return projections."
+                anchor={HELP_ANCHORS.USER_PROFILE.COMPLIANCE} 
+            />
+          </div>
           <p className="text-slate-500 text-sm mt-1">Regulatory settings for NZ financial products</p>
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 rounded-full text-[10px] font-black uppercase tracking-wider">
@@ -32,12 +40,10 @@ const TaxComplianceSection = ({ data, onChange }) => {
       <div className="space-y-4">
         <div className="flex items-center gap-2 ml-1">
           <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Prescribed Investor Rate (PIR)</label>
-          <div className="group relative">
-             <Info size={14} className="text-slate-300 cursor-help" />
-             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
-               PIR is the tax rate applied to your PIE (Portfolio Investment Entity) investments, like most KiwiSaver funds.
-             </div>
-          </div>
+          <InfoTooltip 
+            content="PIR is the tax rate applied to your PIE (Portfolio Investment Entity) investments, like most KiwiSaver funds."
+            anchor={HELP_ANCHORS.USER_PROFILE.COMPLIANCE} 
+          />
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -1,5 +1,7 @@
 import { Shield, TrendingUp, AlertTriangle, Target, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import InfoTooltip from '../../common/InfoTooltip'; // Import Tooltip
+import { HELP_ANCHORS } from '../../../constants/helpAnchors'; // Import Registry
 
 const RiskStrategySection = ({ data, onChange }) => {
   const navigate = useNavigate();
@@ -20,7 +22,13 @@ const RiskStrategySection = ({ data, onChange }) => {
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div>
-        <h2 className="text-xl font-bold text-slate-900">Risk & Strategy</h2>
+        <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-slate-900">Risk & Strategy</h2>
+            <InfoTooltip 
+                content="Your Risk DNA determines the asset mix (Growth vs Defensive) for your AI-generated portfolios."
+                anchor={HELP_ANCHORS.USER_PROFILE.RISK_DNA} 
+            />
+        </div>
         <p className="text-slate-500 text-sm mt-1">Define your investment personality and AI-driven guardrails</p>
       </div>
 
@@ -161,7 +169,14 @@ const RiskStrategySection = ({ data, onChange }) => {
              <Target size={24} />
           </div>
           <div className="flex-1 z-10 text-center md:text-left">
-            <p className="text-sm font-bold">AI Strategy Impact</p>
+            <div className="flex items-center gap-2 justify-center md:justify-start">
+                <p className="text-sm font-bold">AI Strategy Impact</p>
+                <InfoTooltip 
+                    content="How your preferences shift the AI's logic (e.g., Aggressive Growth prioritizes Equities over Debt repayment)."
+                    anchor={HELP_ANCHORS.USER_PROFILE.ALLOCATION} 
+                    className="text-brand-200"
+                />
+            </div>
             <p className="text-xs text-slate-400 mt-1">Based on a <span className="text-brand-400">{data.level}</span> profile, the engine will prioritize diversified growth assets with a {data.retirementAge ? data.retirementAge - 30 : 35}-year horizon.</p>
           </div>
           

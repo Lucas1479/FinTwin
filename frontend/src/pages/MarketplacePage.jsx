@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Loader2, Search } from "lucide-react";
 import MainLayout from "../components/layout/MainLayout";
+import InfoTooltip from "../components/common/InfoTooltip"; // Import Tooltip
+import { HELP_ANCHORS } from "../constants/helpAnchors"; // Import Registry
 import FilterPanel from "../components/marketplace/FilterPanel";
 import HorizontalFilterBar from "../components/marketplace/HorizontalFilterBar";
 import SorterBar from "../components/marketplace/SorterBar";
@@ -288,7 +290,13 @@ const MarketplacePage = () => {
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Marketplace</h1>
+            <div className="flex items-center gap-2">
+                <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Marketplace</h1>
+                <InfoTooltip 
+                    content="Products are rated 1-7 (Defensive to Aggressive). The AI matches these to your Risk DNA."
+                    anchor={HELP_ANCHORS.MARKETPLACE.RISK_LEVELS} 
+                />
+            </div>
             <p className="mt-1 text-slate-500 text-sm">Discover investment opportunities tailored for you</p>
           </div>
         </div>

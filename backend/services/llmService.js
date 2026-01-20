@@ -248,7 +248,7 @@ class LLMService {
    * @param {string} params.stage - goal engine stage
    * @param {object} params.goalContext - enriched context for hints
    */
-  async fetchRagContext({ query, stage, goalContext }) {
+  async fetchRagContext({ query, stage, goalContext, filter }) {
     const useRag = process.env.ENABLE_VECTARA_RAG === 'true' || process.env.VECTARA_API_KEY;
     if (!useRag) {
       console.log('[LLMService] RAG disabled (ENABLE_VECTARA_RAG not true and no VECTARA_API_KEY).');
@@ -258,7 +258,7 @@ class LLMService {
     const defaultQuery = this._buildRagQuery(stage, goalContext);
     const queryText = query || defaultQuery;
     try {
-      const rag = await vectaraClient.searchAndSummarize(queryText);
+      const rag = await vectaraClient.searchAndSummarize(queryText, { metadataFilter: filter });
       return {
         query: queryText,
         summary: rag.summary,
@@ -440,6 +440,32 @@ DO NOT make up product IDs. You MUST call the tool first.`;
         console.error(`[LLMService] Forced tool call failed:`, err);
         toolResults = [{ tool: 'search_portfolio_candidates', error: err.message }];
       }
+    }
+
+    const hasToolResults = (toolResults || []).some((entry) => {
+      const result = entry?.result;
+      if (!result) return false;
+      if (Array.isArray(result) && result.length > 0) return true;
+      if (Array.isArray(result?.portfolio_options) && result.portfolio_options.length > 0) return true;
+      if (Array.isArray(result?.optimized_products) && result.optimized_products.length > 0) return true;
+      if (result?.summary?.total_candidates > 0) return true;
+      return false;
+    });
+
+    if (!hasToolResults) {
+      console.warn('[LLMService] Fallback: No eligible products from tools. Skipping Phase 2 generation.');
+      return {
+        json: {
+          ai_decision: {
+            thought_process:
+              'Tool search returned 0 eligible products (e.g., negative 5Y return filter or data gaps).',
+            rationale:
+              'No eligible products were found after applying the current filters (e.g., excluding negative 5Y returns). Please adjust the filters, relax constraints, or update product data, then retry.',
+            portfolio_options: [],
+          },
+        },
+        toolCalls: allToolCalls,
+      };
     }
 
     // PHASE 2: Build portfolio from tool results

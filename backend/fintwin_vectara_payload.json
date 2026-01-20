@@ -1,0 +1,329 @@
+{
+  "id": "fintwin-spec-v1.3",
+  "type": "structured",
+  "title": "FinTwin Technical Specification & Logic",
+  "description": "Core Business Logic, Algorithms, and Financial Models for FinTwin Application.",
+  "metadata": {
+    "version": "1.3",
+    "scope": "Business Logic",
+    "audience": "AI Agents"
+  },
+  "sections": [
+    {
+      "title": "Introduction",
+      "text": "# FinTwin Technical Specification & Logic\r\n\r\n> **Version**: 1.3\r\n> **Scope**: Core Business Logic & Algorithms\r\n> **Audience**: AI Agents (RAG), Backend Developers\r\n\r\n---",
+      "metadata": {
+        "type": "intro"
+      }
+    },
+    {
+      "title": "1. Wealth Center Module",
+      "text": "",
+      "sections": [
+        {
+          "title": "Overview",
+          "text": "The Wealth Center acts as the **Data Foundation** for the FinTwin ecosystem. It aggregates all user assets and liabilities to calculate Net Worth, Liquid Capital, and Risk Exposure. This data directly feeds into the Goal Engine and Simulation modules.",
+          "metadata": {
+            "type": "overview"
+          }
+        },
+        {
+          "title": "1.1 Core Definitions & Calculations",
+          "text": "The system tracks financial health through two primary metrics, updated in real-time as users modify their ledger.\r\n\r\n#### Net Worth\r\nThe absolute measure of financial position.\r\n$$ \\text{Net Worth} = \\sum (\\text{Assets}) - \\sum (\\text{Liabilities}) $$\r\n\r\n- **Update Frequency**: Real-time (upon any CRUD operation on assets/liabilities).\r\n- **Historical Tracking**: Snapshots are taken daily to generate the \"Net Worth History\" trendline (visible in Dashboard).\r\n\r\n#### Liquid Capital (Available Funds)\r\nA subset of Net Worth representing funds accessible for **immediate** use or Short/Medium-term Goal allocation. This excludes illiquid assets like Property, Vehicles, or locked KiwiSaver funds.\r\n\r\n\r\n$$ \\text{Liquid Capital} = \\text{Spendable (Cash)} + \\text{Allocated (Working Investments)} $$\r\n\r\n**Breakdown of Use:**\r\n1.  **Spendable (Unallocated)**: Pure cash holdings (e.g., Bank Accounts, Physical Cash). These are funds with zero friction and zero market risk, ready for immediate deployment or emergency use.\r\n2.  **Allocated (Working Capital)**: Liquid investments (e.g., Managed Funds, ETFs) or assets explicitly linked to a specific Goal. While these can be sold quickly, they are considered \"busy\" working towards your objectives and are not \"idle cash.\"\r\n\r\n- **Default Liquid Assets**: `Cash_Bank`, `Cash_Physical`, `Invest_Shares`.\r\n- **Default Illiquid Assets**: `Property`, `KiwiSaver`, `Cash_TermDeposit`, `Vehicle`.\r\n\r\n\r\n#### Liquidity Tiers (Chart Analysis)\r\nWhile `Liquid Capital` is a binary available/unavailable metric for calculations, the Liquidity Analysis Charts categorize assets into three distinct tiers based on **allocatability**:\r\n\r\n1.  **Liquid (Immediate Access)**\r\n    - *Definition*: Cash or equivalents available within 24 hours with zero value loss.\r\n    - *Components*: `Cash_Bank`, `Cash_Physical`.\r\n    - *Primary Use*: Emergency Fund, Daily Expenses, Short-term Goals (< 1 year).\r\n\r\n2.  **Semi-Liquid (Marketable Securities)**\r\n    - *Definition*: Assets that can be sold relatively quickly (T+2 settlement) but carry **Market Risk** or **Conversion Friction**.\r\n    - *Components*: `Invest_Shares`, `Invest_ManagedFunds`, `Crypto`.\r\n    - *Nuance*: While technically \"liquid\", converting these for short-term spending is often suboptimal due to market volatility or tax events.\r\n    - *Primary Use*: Medium-term Goals (1-5 years), Wealth Accumulation.\r\n\r\n3.  **Locked / Illiquid (Restricted)**\r\n    - *Definition*: Assets that cannot be accessed without specific trigger events (Age, Sale of Property) or carry significant penalties.\r\n    - *Components*: \r\n        - `KiwiSaver`: Locked until Age 65 or First Home purchase.\r\n        - `Property`: Requires months to sell; high transaction costs.\r\n        - `Cash_TermDeposit`: Locked until Maturity Date.\r\n        - `Vehicle`: Depreciating use-assets, generally not considered investment capital.\r\n    - *Primary Use*: Long-term Goals (Retirement), Lifestyle utility (Home/Car).\r\n\r\n---",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "LIQUIDITY_TIER_ANALYSIS"
+          }
+        },
+        {
+          "title": "1.2 Asset & Liability Classification",
+          "text": "FinTwin uses a polymorphic schema where each category enforces specific data validation rules (`asset_details`).\r\n\r\n#### A. Cash & Banking\r\n- **Cash_Bank**: Standard operating accounts. Supports Interest Rate fields for daily accrual.\r\n- **Cash_TermDeposit**: Locked funds with a specific `maturity_date`.\r\n    - *System Logic*: The system automatically triggers a **Maturity Reminder** 30 days before `maturity_date`.\r\n- **Cash_Physical**: Cash on hand or foreign currency holdings.\r\n\r\n#### B. Investment Vehicles\r\n- **KiwiSaver**: NZ-specific retirement scheme.\r\n    - *Constraint*: Funds are strictly **locked** until Age 65 (Retirement Goal) or First Home Purchase.\r\n    - *Risk Profiling*: Mapped to standard profiles (Defensive to Aggressive).\r\n- **Invest_Shares / Managed Funds**: Market-linked assets.\r\n    - *Valuation*: Currently manual or API-linked.\r\n    - *Currency*: Supports multi-currency (e.g., USD stocks are converted to NZD for Net Worth using daily spot rates).\r\n\r\n#### C. Physical Assets\r\n- **Property**: Real estate holdings.\r\n    - *Linkage*: Can be explicitly linked to a `Mortgage` liability to calculate **LVR (Loan-to-Value Ratio)** per property.\r\n- **Vehicle**: Depreciating assets.\r\n\r\n#### D. Liabilities (Debt)\r\n- **Mortgage**:\r\n    - *Refix Logic*: Tracks `fixed_until` date. System triggers alerts for \"Mortgage Refixing\" 30 days prior to expiry.\r\n- **Loan_Student**:\r\n    - *NZ Specifics*: Treated as 0% interest debt if `is_nz_student_loan` is true (Domestic students).\r\n- **Credit_Card**: High-interest revolving debt.\r\n\r\n---",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "WEALTH_ASSET_CLASSES"
+          }
+        },
+        {
+          "title": "1.3 Financial Health Ratios",
+          "text": "#### Loan-to-Value Ratio (LVR)\r\nUsed primarily for Property analysis to assess leverage risk.\r\n\r\n$$ \\text{LVR} = \\frac{\\text{Outstanding Mortgage Balance}}{\\text{Property Market Valuation}} \\times 100 $$\r\n\r\n- **Healthy Range**: < 80% (Standard Bank Requirement).\r\n- **Risk Threshold**: > 80% triggers warnings about potential Low Equity Premiums (LEP) or refinancing difficulties.\r\n- **Context**: The AI uses this to recommend debt repayment strategies over investing if LVR is critically high.\r\n\r\n\r\n#### Debt Service Ratio (DSR)\r\nMeasures the percentage of income committed to debt repayment.\r\n\r\n$$ \\text{DSR} = \\frac{\\text{Total Monthly Debt Repayments}}{\\text{Total Monthly Net Income}} \\times 100 $$\r\n\r\n- **Healthy Range**: < 30-35%.\r\n- **Critical Threshold**: > 40%. The Simulation Engine will flag \"High Insolvency Risk\" if DSR exceeds this during stress tests (e.g., interest rate hikes).\r\n\r\n---",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "FINANCIAL_RATIOS_DSR"
+          }
+        },
+        {
+          "title": "1.4 Interest & Cash Flow Synchronization",
+          "text": "The system employs a \"Sync\" mechanism (`syncCashAssets`) that reconciles static asset values with dynamic Cash Flow events.\r\n\r\n1.  **Daily Interest Accrual**:\r\n    - For `Cash_Bank` and `Cash_TermDeposit`, interest is calculated daily as:\r\n    $$ \\text{Daily Interest} = \\text{Principal} \\times \\frac{\\text{Annual Rate}}{365} $$\r\n    - *Note*: This is currently calculated as Simple Interest during the sync period, not continuous compounding.\r\n\r\n2.  **Maturity Logic**:\r\n    - **Term Deposits**: When `maturity_date` is reached, the asset is logically \"unlocked\" (becomes Liquid) unless `auto_rollover` is set to true.\r\n    - **Mortgages**: When `fixed_until` expires, the loan reverts to `Floating` rate logic unless refixed.\r\n\r\n---",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "WEALTH_INTEREST_LOGIC"
+          }
+        }
+      ],
+      "metadata": {
+        "type": "module"
+      }
+    },
+    {
+      "title": "2. Cash Flow Engine",
+      "text": "",
+      "sections": [
+        {
+          "title": "Overview",
+          "text": "The Cash Flow Engine is the dynamic counterpart to the Wealth Center. While Wealth tracks *stock* (what you have), Cash Flow tracks *flow* (what comes in and out). It is the primary driver for the **Evolution Engine** (Time Machine).",
+          "metadata": {
+            "type": "overview"
+          }
+        },
+        {
+          "title": "2.1 Core Metrics",
+          "text": "#### Monthly Surplus (Free Cash Flow)\r\nThe critical metric determining how much capital is available for *new* goals or wealth acceleration.\r\n\r\n$$ \\text{Surplus} = \\text{Total Income} - (\\text{Living Expenses} + \\text{Committed Investments}) $$\r\n\r\n- **Interpretation**: A positive surplus means the user is building wealth. A negative surplus indicates \"burning capital\" (eating into savings).\r\n- **Nuance**: `Investments` (e.g., automatic transfers to Sharesies) are treated as *outflows* from the Cash Account, even though they increase Net Worth.\r\n\r\n#### Savings Rate\r\n$$ \\text{Savings Rate} = \\frac{\\text{Net Flow (Income - Expenses)}}{\\text{Total Income}} \\times 100\\% $$\r\n\r\n- **Benchmark**: FinTwin considers > 20% as \"Healthy\" and > 50% as \"Aggressive/FIRE\".\r\n\r\n\r\n#### Active vs. Passive Income Analysis\r\nThe Cash Flow engine strictly categorizes income sources to track progress toward Financial Independence (FIRE).\r\n\r\n1.  **Active Income (Time-Dependent)**\r\n    - *Definition*: Income generated by direct labor or employment. If you stop working, this income stops.\r\n    - *Examples*: Salary, Hourly Wages, Contract Fees.\r\n    - *Role*: The primary engine for building initial capital.\r\n\r\n2.  **Passive Income (Asset-Dependent)**\r\n    - *Definition*: Income generated by assets without active daily involvement.\r\n    - *Examples*: Dividends, Bank Interest, Rental Income (net), Royalties.\r\n    - *System Logic*: \r\n        - Users can manually tag income as `is_passive`.\r\n        - The system *automatically* generates passive income entries for assets with defined interest rates (e.g., Term Deposits).\r\n\r\n#### Financial Independence (FI) Ratio\r\nThis chart metric tracks how much of your lifestyle is funded by your assets.\r\n\r\n$$ \\text{FI Ratio} = \\frac{\\text{Total Passive Income}}{\\text{Total Living Expenses}} \\times 100\\% $$\r\n\r\n- **0 - 10%**: **Reliance Phase**. You are entirely dependent on your job.\r\n- **50%**: **Security Phase**. Assets cover basic survival needs (Rent/Food).\r\n- **> 100%**: **Financial Independence**. Work becomes optional.\r\n\r\n---",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "CASH_FLOW_INCOME_TYPES"
+          }
+        },
+        {
+          "title": "2.2 Frequency Normalization",
+          "text": "To reconcile diverse financial cadences (e.g., Weekly wages vs Monthly rent), the system normalizes all flows to an **Annual Base** before converting to the requested view.\r\n\r\n| Frequency | Annual Multiplier | Notes |\r\n| :--- | :--- | :--- |\r\n| Weekly | 52 | Standard 52-week year |\r\n| Fortnightly | 26 | Common NZ pay cycle |\r\n| Monthly | 12 | Standard billing cycle |\r\n| Yearly | 1 | Insurance premiums, Rates |\r\n| One-Off | 0 | Excluded from recurring forecasts |\r\n\r\n---",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "CASH_FLOW_NORMALIZATION"
+          }
+        },
+        {
+          "title": "2.3 Cash Flow Forecast (Short-Term Projection)",
+          "text": "**Distinction**: Unlike the *Time Machine* (which projects years into the future), the Cash Flow Forecast focuses on the **Next 30 Days** (or Monthly Average).\r\n\r\n**Forecast vs Actual View**:\r\n1.  **Actual View**: Based on historical, verified transactions imported from bank feeds. It shows what *really* happened.\r\n2.  **Forecast View**: A forward-looking projection based on your **Cash Flow Rules** (Recurring Income/Expenses). It shows what *should* happen in the coming weeks if your budget is followed.\r\n\r\n**Projection Modes**:\r\nThe system uses two distinct timing modes to generate daily cash flow curves (seen in the \"Calibration\" charts):\r\n\r\n1.  **Discrete Events (`Specific_Date`)**\r\n    - *Use Case*: Salary, Rent, Mortgage Payments.\r\n    - *Algorithm*: The flow occurs *only* on the specific `anchor_date` (e.g., the 1st or 15th of the month).\r\n    - *Visual*: Appears as sharp spikes in the daily net flow chart.\r\n\r\n2.  **Continuous Flow (`Daily_Spread`)**\r\n    - *Use Case*: Groceries, Fuel, Entertainment.\r\n    - *Algorithm*: The annual amount is divided by 365 to create a smooth daily \"burn rate\".\r\n    - *Visual*: Appears as a constant baseline level (the \"cost of existing\").\r\n\r\n---",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "CASH_FLOW_PROJECTION_LOGIC"
+          }
+        },
+        {
+          "title": "2.4 The Evolution Engine (Time Machine)",
+          "text": "The \"Time Machine\" is a client-side simulation that projects current Wealth + Cash Flow into the future (up to 20 years).\r\n\r\n#### Deterministic Randomness\r\nTo ensure a consistent user experience (UX), the simulation uses a **Seeded Random Number Generator** (Mulberry32).\r\n- *Effect*: If a user refreshes the page, the \"random\" market fluctuations remain identical. They only change if the user alters inputs (e.g., changes Risk Profile).\r\n\r\n#### Market Conditions (Scenarios)\r\nUsers can toggle \"Market Modes\" to stress-test their strategy. These apply offsets to the Base Return Rate (7% default):\r\n\r\n| Mode | Return Offset | Effective Return (Approx) |\r\n| :--- | :--- | :--- |\r\n| **Bull** | +5% | ~12% p.a. |\r\n| **Neutral** | 0% | ~7% p.a. |\r\n| **Bear** | -10% | ~ -3% p.a. |\r\n\r\n- **Volatility**: In addition to the base trend, the engine applies a monthly random fluctuation (Noise) of ±2% to simulate market jitter.\r\n\r\n#### Asset Evolution Rules\r\n1.  **Cash**: Grows by `Surplus` + `Interest Rate` (Compounded Monthly).\r\n2.  **Liabilities**: Mortgages amortize linearly over a standard 25-year curve (simplified for simulation speed).\r\n3.  **Investments**: Grow by `Market Return` + `Monthly Contributions`.\r\n\r\n---",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "MARKET_SIMULATION_MODELS"
+          }
+        }
+      ],
+      "metadata": {
+        "type": "module"
+      }
+    },
+    {
+      "title": "3. Dashboard & Visualization Logic",
+      "text": "",
+      "sections": [
+        {
+          "title": "Overview",
+          "text": "The Dashboard serves as the \"Cockpit\" for the Financial Digital Twin. While many elements are interactive widgets, the core visualizations follow strict data representation rules.",
+          "metadata": {
+            "type": "overview"
+          }
+        },
+        {
+          "title": "3.1 Goal Heatmap (Squarified Treemap)",
+          "text": "The `GoalHeatmapWidget` visualizes the user's Net Worth through the lens of their Life Goals.\r\n\r\n#### 1. Area Represents Value\r\nThe surface area of each rectangular block is mathematically proportional to the **Current Market Value** of the assets contained within it.\r\n- *Visual Insight*: Users can instantly assess which Goals are \"Capital Heavy\" (e.g., Retirement) vs \"Capital Light\".\r\n\r\n#### 2. Hierarchical Grouping (Goal-First)\r\nUnlike a standard asset class view, this map groups assets by their **Assigned Goal**.\r\n- *Container*: The outer boundary represents a single Goal (e.g., \"Retirement\").\r\n- *Items*: Inside the container, individual assets (e.g., \"KiwiSaver\", \"Growth Fund\") are nested.\r\n- *Color Coding*: Each Goal group is assigned a distinct theme color to visually separate objectives.\r\n\r\n#### 3. Dynamic Typography\r\nTo maintain legibility, font sizes for asset labels are dynamically calculated based on the tile's surface area. Small tiles may hide labels entirely to reduce clutter.\r\n\r\n---",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "DASHBOARD_HEATMAP_LOGIC"
+          }
+        },
+        {
+          "title": "3.2 Funding Flow (Surplus Allocation)",
+          "text": "The `FundingFlowWidget` (Donut Chart) answers the question: *\"Where is my monthly surplus going?\"*\r\n\r\n#### 1. Focus on Surplus, Not Income\r\nCrucially, this chart **excludes** Living Expenses. It only visualizes the `Pre-Investment Surplus` (Income - Living Expenses).\r\n\r\n#### 2. The \"Green Slice\" (Free Cash)\r\n- **Definition**: The portion of surplus that is *not* currently assigned to any investment plan.\r\n- **Color**: Emerald Green (`#10b981`).\r\n- **Strategic Insight**: This represents **Unused Potential**. A large green slice suggests the user is hoarding cash in a bank account rather than deploying it towards goals.\r\n\r\n#### 3. Investment Slices\r\n- **Definition**: Committed monthly contributions to specific goals/products.\r\n- **Visual**: Each slice corresponds to an active `Investment` cash flow item.\r\n\r\n---",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "DASHBOARD_FUNDING_FLOW"
+          }
+        },
+        {
+          "title": "3.3 The Digital Twin \"Pulse\" (Health Score)",
+          "text": "The central \"Health Score\" (0-100) is a composite metric derived from three weighted pillars:\r\n\r\n1.  **Solvency (40%)**: Based on Net Worth and LVR.\r\n    - *Penalty*: High Debt (LVR > 80%) drastically reduces this component.\r\n2.  **Liquidity (30%)**: Based on Emergency Fund coverage.\r\n    - *Target*: 3-6 months of expenses in Liquid Assets.\r\n3.  **Growth (30%)**: Based on Savings Rate and Goal Feasibility.\r\n    - *Bonus*: High Savings Rate (>20%) boosts this score.\r\n\r\n---",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "DASHBOARD_HEALTH_SCORE"
+          }
+        }
+      ],
+      "metadata": {
+        "type": "module"
+      }
+    },
+    {
+      "title": "4. Goal Engine: The GBI-MPT Translation Layer",
+      "text": "",
+      "sections": [
+        {
+          "title": "Overview",
+          "text": "The Goal Engine is the architectural brain of FinTwin. It translates human desires into financial mathematics.",
+          "metadata": {
+            "type": "overview"
+          }
+        },
+        {
+          "title": "Core Philosophy: Gamma over Alpha",
+          "text": "FinTwin is built on the principle of **Gamma ($\\gamma$) Revenue**.\r\n- **No Alpha ($\\alpha$) Chasing**: We do not attempt to \"beat the market\" through stock picking, market timing, or complex derivatives. There is no real-time trading capability.\r\n- **Focus on Gamma ($\\gamma$)**: Value is generated through **Rational Resource Management**:\r\n    1.  **Goal Alignment**: Ensuring assets match the time horizon of the goal.\r\n    2.  **Tax Efficiency**: Optimizing PIR and fund selection.\r\n    3.  **Behavioral Coaching**: Preventing panic selling during volatility (via Risk DNA).",
+          "metadata": {
+            "type": "subsection"
+          }
+        },
+        {
+          "title": "Phase 1: Translation (GBI Logic)",
+          "text": "*Tech Implementation: Stage 'Definition' & 'Strategy'*\r\n\r\nThe engine converts abstract user intent into concrete financial constraints.\r\n- **Input**: \"I want to retire at 65 comfortably.\"\r\n- **GBI Transformation**:\r\n    - *Time Horizon*: 30 years ($T=30$)\r\n    - *Target Corpus*: $1.2M (Inflation-adjusted future value)\r\n    - *Liquidity Constraint*: High (KiwiSaver locked until 65)\r\n    - *Risk Capacity*: High (Long horizon allows recovery from volatility)",
+          "metadata": {
+            "type": "subsection"
+          }
+        },
+        {
+          "title": "Phase 2: Allocation (MPT Logic)",
+          "text": "*Tech Implementation: Stage 'Strategy' & 'Product'*\r\n\r\nOnce constraints are defined, the engine applies Modern Portfolio Theory (MPT) not to maximize speculative returns, but to **minimize uncompensated risk**.\r\n- **Efficiency, not Speculation**: The system constructs a diversified portfolio that sits on the \"Efficient Frontier\" to ensure the user is not taking unnecessary risk for their required return.\r\n- **Target Vector Construction**: Based on the GBI constraints, the system defines an ideal exposure, e.g., `{ Growth: 70%, Defensive: 30% }`.\r\n- **Product Matching**: The Portfolio Optimizer searches the Marketplace for managed funds (not individual stocks) that structurally match this vector.",
+          "metadata": {
+            "type": "subsection"
+          }
+        },
+        {
+          "title": "Phase 3: Feasibility (Simulation Logic)",
+          "text": "*Tech Implementation: Stage 'Simulation'*\r\n\r\nFinally, the engine stress-tests the allocation against the GBI targets.\r\n- **Feasibility Score**: A 0-100 probability metric.\r\n    $$ \\text{Score} = P(\\text{Portfolio Value} \\ge \\text{Target Cost}) $$\r\n- **Gap Analysis**: If the Score < 100%, the engine solves for the missing variable:\r\n    - *Savings Gap*: \"Increase monthly contribution by $X\"\r\n    - *Time Gap*: \"Delay retirement by Y years\"\r\n    - *Return Gap*: \"Increase risk profile (if capacity allows)\"\r\n\r\n---",
+          "metadata": {
+            "type": "subsection"
+          }
+        }
+      ],
+      "metadata": {
+        "type": "module",
+        "anchor_id": "GOAL_ENGINE_PHILOSOPHY"
+      }
+    },
+    {
+      "title": "5. Marketplace & Portfolio Engine",
+      "text": "",
+      "sections": [
+        {
+          "title": "Overview",
+          "text": "The Marketplace is not just a catalog; it is an intelligent engine that constructs compliant investment portfolios using the **Aggregation-Optimization** pattern.",
+          "metadata": {
+            "type": "overview"
+          }
+        },
+        {
+          "title": "5.1 Product Taxonomy & Risk",
+          "text": "Products are strictly classified to ensure regulatory compliance (especially for KiwiSaver) and accurate risk matching.\r\n\r\n#### 1. Category (Legal Structure)\r\n- **KiwiSaver**: Government-regulated retirement funds.\r\n    - *Constraint*: Funds cannot be withdrawn until Age 65 or First Home.\r\n    - *Benefits*: Includes Employer Contributions (3%) and Government Credits.\r\n- **Managed Funds**: Open-ended investment trusts. Liquid (T+2 days).\r\n- **Term Deposits**: Fixed-interest bank products. Illiquid until maturity.\r\n\r\n#### 2. Risk Score (1-7 Scale)\r\nFinTwin adopts the standard industry risk indicator derived from 5-year annualized volatility.\r\n- **1 (Defensive)**: Cash & Bonds. Minimal volatility.\r\n- **2-3 (Conservative)**: <35% Growth Assets. 2-5 year horizon.\r\n- **4 (Balanced)**: ~50% Growth Assets. 5-10 year horizon.\r\n- **5 (Growth)**: ~80% Growth Assets. 10+ year horizon.\r\n- **6-7 (Aggressive)**: 90-100% Growth Assets. High volatility tolerance required.\r\n\r\n---",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "MARKETPLACE_TAXONOMY"
+          }
+        },
+        {
+          "title": "5.2 Asset Allocation Model",
+          "text": "To simplify complex fund holdings for AI analysis, FinTwin uses a **Three-Pillar Aggregation Model**:\r\n\r\n1.  **Growth Assets** (`Equities` + `Property`)\r\n    - The engine for long-term wealth compounding. High volatility.\r\n2.  **Defensive Assets** (`Bonds` + `Fixed Interest`)\r\n    - The stabilizer. Reduces portfolio drawdowns during market corrections.\r\n3.  **Liquidity** (`Cash`)\r\n    - The buffer. Ensures short-term obligations can be met without selling assets at a loss.\r\n\r\n*Optimization Logic*: The Portfolio Engine treats these three pillars as the \"Target Vector\". For example, a \"Balanced\" user target is `{ Growth: 50%, Defensive: 40%, Cash: 10% }`.\r\n\r\n---",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "ASSET_ALLOCATION_MODEL"
+          }
+        },
+        {
+          "title": "5.3 The Portfolio Optimizer",
+          "text": "When the AI recommends a portfolio, it does not guess. It uses a deterministic **Gradient Optimization Algorithm** (`optimize_portfolio_weights`) to construct the mathematical ideal.\r\n\r\n#### How it Works:\r\n1.  **Candidate Selection**: The system fetches top-rated products across all 3 asset classes (Growth/Defensive/Cash).\r\n2.  **Strategy Application**: It selects products based on user preference:\r\n    - *Lowest Cost Strategy*: Minimizes total Weighted Average Management Fee.\r\n    - *Diversified Strategy*: Maximizes the number of distinct Providers (issuers) to reduce institutional risk.\r\n3.  **Weight Solver**: The algorithm iteratively adjusts the % weight of each selected product until the total portfolio exposure matches the User's Target Vector (within ±5% tolerance).\r\n\r\n#### Why this matters:\r\nThis ensures that if a user wants a \"60/40\" portfolio, the AI creates exactly that, even if the underlying funds are \"55/45\" or \"70/30\". It mixes them mathematically to achieve the precise target.\r\n\r\n---",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "PORTFOLIO_OPTIMIZATION_LOGIC"
+          }
+        }
+      ],
+      "metadata": {
+        "type": "module"
+      }
+    },
+    {
+      "title": "6. User Profile & Risk DNA",
+      "text": "",
+      "sections": [
+        {
+          "title": "Overview",
+          "text": "The User Profile is the metadata layer that governs all AI decisions. It is not just biographical data; it acts as a set of **hard constraints** and **soft preferences** for the Goal & Simulation engines.",
+          "metadata": {
+            "type": "overview"
+          }
+        },
+        {
+          "title": "6.1 Risk Profiling (The DNA)",
+          "text": "FinTwin defines a user's financial personality through a composite \"Risk DNA\" rather than a single label.\r\n\r\n#### Risk Tolerance (Psychological)\r\nMapped to `riskProfile.level` (e.g., \"Growth\").\r\n- Determines the **Target Asset Allocation** for goals (e.g., Growth = 80% Equities).\r\n- Collected via the Onboarding Quiz (\"What would you do if the market drops 20%?\").\r\n\r\n#### Volatility Tolerance (Statistical)\r\nMapped to `riskProfile.volatilityTolerance` (e.g., 15%).\r\n- A hard constraint for the Portfolio Optimizer. The AI will reject portfolios with historical volatility exceeding this threshold, even if they offer higher returns.\r\n\r\n#### Drawdown Capacity (Financial)\r\nMapped to `riskProfile.maxDrawdown` (e.g., -20%).\r\n- Used in Stress Testing simulations. If a \"Bear Market\" scenario triggers a drop larger than this, the AI will issue a \"Risk Warning\".",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "USER_RISK_PROFILE"
+          }
+        },
+        {
+          "title": "6.2 Household & Tax Structure",
+          "text": "#### Household Status\r\n- **Single**: Standard analysis.\r\n- **Partnered/Family**:\r\n    - *Assumption*: \"Dual Income Potential\" (unless specified otherwise).\r\n    - *Impact*: Increases Emergency Fund requirements (more dependents = larger buffer needed).\r\n\r\n#### Compliance Settings\r\n- **PIR (Prescribed Investor Rate)**: The tax rate applied to PIE funds (KiwiSaver/Managed Funds).\r\n    - *Defaults*: 28% (standard), but can be 10.5% or 17.5% for lower incomes.\r\n    - *AI Role*: The AI uses this to calculate **Net Returns** (After-Tax) for accurate projections.\r\n- **KiwiSaver Contribution**:\r\n    - *Impact*: Directly affects the \"Employment Income\" cash flow projections.\r\n    - *Employee Match*: The AI automatically calculates the employer's 3% match (taxed at ESCT rates) as \"Free Money\".",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "USER_HOUSEHOLD_CONTEXT"
+          }
+        },
+        {
+          "title": "6.3 Allocation Preferences",
+          "text": "Users explicitly define their strategy via `allocation.debtVsInvest`.\r\n\r\n1.  **Aggressive Debt**:\r\n    - *AI Behavior*: Prioritizes paying down High-Interest Debt (Credit Cards) and Mortgage Principal over investing.\r\n    - *Surplus Routing*: Surplus -> Debt Repayment.\r\n2.  **Balanced**:\r\n    - *AI Behavior*: Splits surplus between Debt (to meet minimums) and Investing (for growth).\r\n3.  **Aggressive Invest**:\r\n    - *AI Behavior*: Prioritizes High-Growth Assets, assuming returns > mortgage interest rates.\r\n    - *Surplus Routing*: Surplus -> Growth Funds / ETFs.\r\n\r\n---",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "USER_ALLOCATION_PREFS"
+          }
+        }
+      ],
+      "metadata": {
+        "type": "module"
+      }
+    },
+    {
+      "title": "7. Playground & Simulation Engine",
+      "text": "",
+      "sections": [
+        {
+          "title": "Overview",
+          "text": "The Playground is an interactive \"Sandbox\" that allows users to perform \"What-If\" analysis without affecting their core financial plan. It uses stochastic modeling to predict outcomes under uncertainty.",
+          "metadata": {
+            "type": "overview"
+          }
+        },
+        {
+          "title": "7.1 Background Scenarios (Shadow Profiles)",
+          "text": "To test hypothetical situations safely, users can create **Backgrounds**.\r\n- *Concept*: A \"Shadow Profile\" that inherits from the real User Profile but allows specific variables to be overridden.\r\n- *Use Case*: \"What if I get a pay rise?\" or \"What if inflation hits 5%?\"\r\n- *Persistence*: Scenarios are saved independently, preserving the integrity of the live data.",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "PLAYGROUND_SCENARIOS"
+          }
+        },
+        {
+          "title": "7.2 Monte Carlo Simulation",
+          "text": "Unlike the deterministic \"Time Machine\" (which shows one path), the Playground uses a **Monte Carlo Engine** to simulate 100 possible futures.\r\n\r\n#### The Algorithm\r\n1.  **Volatility Injection**: Instead of a fixed return, the engine applies random monthly variance based on a Normal Distribution (Gaussian).\r\n    $$ \\text{Return} = \\mu + \\sigma \\times \\mathcal{N}(0,1) $$\r\n    *(Where $\\mu$ is expected return and $\\sigma$ is volatility derived from asset exposure)*\r\n2.  **Iteration**: The simulation runs 100 independent lifecycles.\r\n3.  **Percentile Ranking**: The output generates three curves:\r\n    - **Optimistic (90th percentile)**: \"Lucky\" market conditions.\r\n    - **Median (50th percentile)**: The most likely outcome.\r\n    - **Pessimistic (10th percentile)**: A bad sequence of returns (Sequence Risk).",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "MONTE_CARLO_LOGIC"
+          }
+        },
+        {
+          "title": "7.3 Success Probability",
+          "text": "The core metric for decision-making.\r\n$$ P(\\text{Success}) = \\frac{\\text{Count of Iterations where Final Balance } \\ge \\text{Target}}{\\text{Total Iterations (100)}} $$\r\n\r\n- **Safe Zone**: > 85% probability.\r\n- **Risky Zone**: < 70%. The AI will suggest increasing contributions or reducing the target amount.",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "SIMULATION_SUCCESS_PROB"
+          }
+        },
+        {
+          "title": "7.4 Nominal vs. Real Returns",
+          "text": "The simulator allows toggling `isInflationAdjusted`.\r\n- **Nominal Return**: Raw numbers. Looks impressive but misleading over long horizons.\r\n- **Real Return**: Adjusted for purchasing power.\r\n    $$ \\text{Real Return} \\approx \\text{Nominal Return} - \\text{Inflation Rate} $$\r\n- *Default*: The AI defaults to **Real Returns** (Inflation-Adjusted) to give users a realistic view of future buying power.",
+          "metadata": {
+            "type": "subsection",
+            "anchor_id": "INFLATION_ADJUSTMENT"
+          }
+        }
+      ],
+      "metadata": {
+        "type": "module"
+      }
+    }
+  ]
+}

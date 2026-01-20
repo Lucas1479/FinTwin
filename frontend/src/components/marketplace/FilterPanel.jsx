@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, SlidersHorizontal, Check } from "lucide-react";
+import InfoTooltip from '../common/InfoTooltip'; // Import Tooltip
+import { HELP_ANCHORS } from '../../constants/helpAnchors'; // Import Registry
 
 // Helper for collapsible sections
 const FilterSection = ({ title, children, defaultOpen = true, count = 0 }) => {
@@ -104,7 +106,18 @@ export default function FilterPanel({ filters, setFilters, providers, maxTicketS
       </div>
 
       {/* Risk Profile - Custom Checkbox */}
-      <FilterSection title="Risk Profile" count={filters.riskLevels.length}>
+      <FilterSection 
+        title={
+            <div className="flex items-center gap-2">
+                <span>Risk Profile</span>
+                <InfoTooltip 
+                    content="Filter products by their SRRI (Standard Risk Indicator). 1=Low, 7=High."
+                    anchor={HELP_ANCHORS.MARKETPLACE.RISK_LEVELS} 
+                />
+            </div>
+        } 
+        count={filters.riskLevels.length}
+      >
         <div className="space-y-3">
           {RISK_OPTIONS.map(({ label, color }) => {
             const isChecked = (filters.riskLevels ?? []).includes(label);

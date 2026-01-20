@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   X, Upload, Check, ScanLine, DollarSign, Calendar, Building, Tag, 
   Percent, ArrowRight, Trash2, TrendingUp, Sparkles, ArrowRightLeft,
-  Briefcase, Home, Car, CreditCard, Shield, Banknote, HelpCircle, AlertCircle
+  Briefcase, Home, Car, CreditCard, Shield, Banknote, HelpCircle, AlertCircle,
+  Zap, Loader2, ArrowLeft, Landmark, PieChart, Coins
 } from 'lucide-react';
 import { createAsset, updateAsset, deleteAsset } from '../../services/wealthService';
 import { createPassiveIncome } from '../../services/cashFlowService';
@@ -35,6 +36,23 @@ const CATEGORY_LABELS = {
   Loan_Student: 'Student Loan',
   Credit_Card: 'Credit Card',
   Other_Liability: 'Other Debt'
+};
+
+const CATEGORY_DESCRIPTIONS = {
+  Cash_Bank: 'Current or savings accounts',
+  Cash_TermDeposit: 'Fixed term investments',
+  Cash_Physical: 'Physical cash or gold',
+  Invest_Shares: 'Stock market investments',
+  Invest_ManagedFund: 'Mutual funds or ETFs',
+  KiwiSaver: 'Retirement savings fund',
+  Property: 'Residential or commercial',
+  Vehicle: 'Cars, boats, or bikes',
+  Other_Asset: 'Art, collectibles, etc.',
+  Mortgage: 'Property-backed loans',
+  Loan_Personal: 'Unsecured personal debt',
+  Loan_Student: 'Educational financing',
+  Credit_Card: 'Credit line balances',
+  Other_Liability: 'Miscellaneous debts'
 };
 
 const CASH_CATEGORIES = ['Cash_Bank', 'Cash_Physical', 'Cash_TermDeposit'];
@@ -241,115 +259,152 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null, onOpen
 
   // --- Render Helpers ---
 
-  const renderCategoryIcon = (category) => {
-      const props = { size: 20, className: "text-indigo-600" };
-      if (category?.includes('Cash')) return <Banknote {...props} />;
-      if (category?.includes('Invest')) return <TrendingUp {...props} />;
-      if (category === 'Property') return <Home {...props} />;
-      if (category === 'Vehicle') return <Car {...props} />;
-      if (category === 'Mortgage') return <Home {...props} className="text-rose-500" />;
-      if (category?.includes('Loan') || category?.includes('Card')) return <CreditCard {...props} className="text-rose-500" />;
-      return <Briefcase {...props} />;
+  const renderCategoryIcon = (category, size = 20, className = "text-indigo-600") => {
+      if (category?.includes('Cash')) return <Banknote size={size} className={className} />;
+      if (category?.includes('Invest')) return <TrendingUp size={size} className={className} />;
+      if (category === 'Property') return <Home size={size} className={className} />;
+      if (category === 'Vehicle') return <Car size={size} className={className} />;
+      if (category === 'Mortgage') return <Landmark size={size} className={className} />;
+      if (category?.includes('Loan') || category?.includes('Card')) return <CreditCard size={size} className={className} />;
+      return <Briefcase size={size} className={className} />;
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 transition-opacity">
-      <div className="bg-white rounded-3xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-500/20 transition-opacity">
+      <div className="bg-white rounded-[32px] w-full max-w-4xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-in fade-in zoom-in-95 duration-300">
         
-        {/* Header */}
-        <div className="px-8 py-5 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
-          <div className="flex items-center gap-4">
-             {selectedCategory && (
-                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${recordType === 'Liability' ? 'bg-rose-50' : 'bg-indigo-50'}`}>
-                    {renderCategoryIcon(selectedCategory)}
-                 </div>
-             )}
+        {/* Header - Reimagined for Balance */}
+        <div className="px-10 pt-8 pb-6 border-b border-slate-100 bg-white sticky top-0 z-10 space-y-6">
+          <div className="flex justify-between items-start">
              <div>
-                <h2 className="text-xl font-bold text-slate-900">
-                {assetToEdit ? 'Edit Details' : (step === 1 ? 'New Entry' : CATEGORY_LABELS[selectedCategory])}
+                <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+                {assetToEdit ? 'Edit Details' : (step === 1 ? 'Add New Item' : CATEGORY_LABELS[selectedCategory])}
                 </h2>
-                <div className="flex items-center gap-2 mt-0.5">
-                    {assetToEdit && (
-                         <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${recordType === 'Liability' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
-                            {recordType}
-                         </span>
-                    )}
-                    <p className="text-sm text-slate-500">
-                    {assetToEdit ? 'Update your portfolio item' : (step === 1 ? 'Select a category to begin' : 'Fill in the details below')}
-                    </p>
-                </div>
+                <p className="text-xs text-slate-500 font-medium mt-1">
+                {assetToEdit ? 'Update your portfolio item' : (step === 1 ? 'Choose a type to begin tracking your wealth' : `Fill in the details for your ${CATEGORY_LABELS[selectedCategory].toLowerCase()}`)}
+                </p>
              </div>
+             <button onClick={onClose} className="p-2.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all">
+                <X size={24} />
+             </button>
           </div>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
-            <X size={20} />
-          </button>
+
+          {/* Symmetrical Mode Selector for Step 1 */}
+          {step === 1 && !assetToEdit && (
+              <div className="flex bg-slate-100 p-1.5 rounded-[18px] shadow-inner w-full max-w-md mx-auto">
+                  {['Asset', 'Liability'].map(type => (
+                      <button 
+                      key={type}
+                      onClick={() => setRecordType(type)}
+                      className={`flex-1 py-3 rounded-[14px] text-xs font-black transition-all duration-300 flex items-center justify-center gap-2 ${recordType === type 
+                          ? (type === 'Asset' ? 'bg-white text-indigo-600 shadow-md' : 'bg-white text-rose-600 shadow-md') 
+                          : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                      {type === 'Asset' ? <TrendingUp size={16} /> : <CreditCard size={16} />}
+                      {type}
+                      </button>
+                  ))}
+              </div>
+          )}
+
+          {/* Breadcrumb for Step 2 */}
+          {step === 2 && !assetToEdit && (
+              <button 
+                onClick={() => setStep(1)}
+                className="flex items-center gap-2 text-xs font-bold text-indigo-600 hover:text-indigo-700 transition-colors group w-fit"
+              >
+                  <div className="p-1 rounded-full bg-indigo-50 group-hover:bg-indigo-100 transition-colors">
+                    <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
+                  </div>
+                  <span>Back to {recordType}s</span>
+              </button>
+          )}
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-10 custom-scrollbar">
           
           {/* PASSIVE INCOME PROMPT */}
           {showPassiveIncomePrompt && pendingAsset ? (
-            <div className="max-w-md mx-auto space-y-6 text-center animate-in fade-in slide-in-from-bottom-4 duration-300">
-               {/* ... (Keep existing Passive Income Prompt logic but simplified for brevity in this rewrite) ... */}
-               <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
-                <Check size={32} className="text-emerald-600" />
-              </div>
+            <div className="max-w-md mx-auto space-y-8 text-center animate-in fade-in slide-in-from-bottom-6 duration-500 py-10">
+               <div className="relative">
+                  <div className="w-24 h-24 bg-emerald-50 rounded-full flex items-center justify-center mx-auto ring-8 ring-emerald-50/50">
+                    <Check size={48} className="text-emerald-600" />
+                  </div>
+                  <div className="absolute top-0 right-1/3 animate-bounce">
+                    <Sparkles className="text-amber-400" size={24} />
+                  </div>
+               </div>
+
               <div>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">Asset Created!</h3>
-                <p className="text-slate-500 text-sm">
-                  <span className="font-bold text-slate-700">{pendingAsset.name}</span> has been added.
+                <h3 className="text-3xl font-bold text-slate-900 mb-3">Item Created!</h3>
+                <p className="text-slate-500 text-lg">
+                  <span className="font-bold text-slate-800">{pendingAsset.name}</span> has been added to your portfolio.
                 </p>
               </div>
-              <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5 text-left">
-                  <h4 className="font-bold text-indigo-900 mb-1 flex items-center gap-2">
-                      <Sparkles size={16} className="text-indigo-500" />
-                      Passive Income Detected
-                  </h4>
-                  <p className="text-sm text-indigo-700 mb-3">
-                      Based on the interest rate, we estimate:
-                  </p>
-                  <div className="bg-white rounded-xl p-4 border border-indigo-100 flex justify-between items-center">
-                        <span className="text-sm text-slate-500">Monthly Income</span>
-                        <span className="text-lg font-bold text-emerald-600">+${calculatedInterest.monthly.toFixed(2)}</span>
+
+              <div className="bg-indigo-50/50 rounded-3xl p-8 border border-indigo-100 relative overflow-hidden group">
+                  <div className="absolute -right-6 -bottom-6 opacity-5 group-hover:scale-110 transition-transform duration-700">
+                    <TrendingUp size={120} />
+                  </div>
+                  
+                  <div className="relative z-10 text-left">
+                    <h4 className="font-bold text-indigo-900 text-lg mb-2 flex items-center gap-2">
+                        <Coins size={20} className="text-indigo-500" />
+                        Smart Recommendation
+                    </h4>
+                    <p className="text-sm text-indigo-700 leading-relaxed mb-6">
+                        We detected an interest rate on this asset. Would you like to automatically track the monthly interest as passive income?
+                    </p>
+                    
+                    <div className="bg-white rounded-[20px] p-5 border border-indigo-100 flex justify-between items-center shadow-sm">
+                          <div>
+                            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Est. Monthly Return</span>
+                            <span className="text-2xl font-black text-emerald-600">+{formatCurrency(calculatedInterest.monthly)}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Yearly</span>
+                            <span className="text-sm font-bold text-slate-600">{formatCurrency(calculatedInterest.yearly)}</span>
+                          </div>
+                    </div>
                   </div>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button onClick={handleSkipPassiveIncome} className="flex-1 px-5 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200">Skip</button>
-                <button onClick={handleCreatePassiveIncome} className="flex-1 px-5 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700">Add to Cash Flow</button>
+
+              <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                <button onClick={handleSkipPassiveIncome} className="flex-1 px-8 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all">Not Now</button>
+                <button onClick={handleCreatePassiveIncome} className="flex-1 px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2">
+                    <Plus size={20} className="hidden sm:block" />
+                    Track Income
+                </button>
               </div>
             </div>
           ) : (
-             <>
+            <>
                 {/* STEP 1: Category Selection */}
                 {step === 1 && !assetToEdit && (
-                    <div className="space-y-8 max-w-4xl mx-auto">
-                        <div className="flex bg-slate-100 p-1 rounded-xl w-fit mx-auto">
-                            {['Asset', 'Liability'].map(type => (
-                                <button 
-                                key={type}
-                                onClick={() => setRecordType(type)}
-                                className={`px-10 py-2.5 rounded-lg text-sm font-bold transition-all ${recordType === type 
-                                    ? (type === 'Asset' ? 'bg-white text-indigo-600 shadow-sm' : 'bg-white text-rose-600 shadow-sm') 
-                                    : 'text-slate-500 hover:text-slate-700'}`}
-                                >
-                                {type}
-                                </button>
-                            ))}
-                        </div>
+                    <div className="max-w-5xl mx-auto">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {Object.entries(CATEGORIES[recordType]).map(([group, types]) => (
-                                <div key={group} className="bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 ml-1">{group}</h3>
-                                    <div className="space-y-2">
+                                <div key={group} className="space-y-4">
+                                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 ml-1 flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
+                                        {group}
+                                    </h3>
+                                    <div className="space-y-3">
                                     {types.map(type => (
                                         <button
                                         key={type}
                                         onClick={() => { setSelectedCategory(type); setStep(2); }}
-                                        className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-indigo-50 hover:text-indigo-700 border border-slate-200 hover:border-indigo-200 transition-all flex items-center justify-between group shadow-sm"
+                                        className="w-full text-left p-4 rounded-[20px] bg-white border border-slate-100 hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/5 transition-all flex items-center gap-4 group"
                                         >
-                                        <span className="font-medium text-slate-700 group-hover:text-indigo-700">{CATEGORY_LABELS[type]}</span>
-                                        <ArrowRight size={16} className="text-slate-300 group-hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-all" />
+                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${recordType === 'Liability' ? 'bg-rose-50 text-rose-500 group-hover:bg-rose-500 group-hover:text-white' : 'bg-indigo-50 text-indigo-500 group-hover:bg-indigo-500 group-hover:text-white'}`}>
+                                            {renderCategoryIcon(type, 22, "currentColor")}
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="font-bold text-slate-800 group-hover:text-slate-900 transition-colors">{CATEGORY_LABELS[type]}</div>
+                                            <div className="text-[10px] text-slate-400 font-medium mt-0.5">{CATEGORY_DESCRIPTIONS[type]}</div>
+                                        </div>
+                                        <ArrowRight size={18} className="text-slate-200 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" />
                                         </button>
                                     ))}
                                     </div>
@@ -361,19 +416,67 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null, onOpen
 
                 {/* STEP 2: Form */}
                 {step === 2 && (
-                    <form onSubmit={handleSubmit} className="space-y-8">
-                        {/* Two Column Layout for better density */}
-                        <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+                    <form onSubmit={handleSubmit} className="space-y-10">
+                        {/* 1. AI Assistant Section (If creating) */}
+                        {!assetToEdit && (
+                            <div 
+                                onClick={() => fileInputRef.current?.click()}
+                                className={`relative border-2 border-dashed rounded-[24px] p-8 text-center transition-all cursor-pointer group overflow-hidden
+                                ${isUploading ? 'border-indigo-300 bg-indigo-50' : (ocrSuccess ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/30')}
+                                `}
+                            >
+                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
+                                
+                                {isUploading ? (
+                                    <div className="flex flex-col items-center py-2">
+                                        <div className="relative">
+                                            <ScanLine className="text-indigo-500 mb-4 animate-pulse" size={40} />
+                                            <div className="absolute inset-0 bg-indigo-500/20 blur-xl rounded-full"></div>
+                                        </div>
+                                        <p className="text-sm font-black text-indigo-700 uppercase tracking-widest">Analyzing Statement...</p>
+                                    </div>
+                                ) : ocrSuccess ? (
+                                    <div className="flex flex-col items-center py-2">
+                                        <div className="w-12 h-12 bg-emerald-500 text-white rounded-full flex items-center justify-center mb-4 shadow-lg shadow-emerald-200">
+                                            <Check size={24} />
+                                        </div>
+                                        <p className="text-sm font-bold text-emerald-700">Auto-fill Successful!</p>
+                                        <p className="text-xs text-emerald-600 font-medium mt-1">We've pre-filled the form with the detected data.</p>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center justify-center gap-10">
+                                        <div className="flex flex-col items-center">
+                                            <div className="w-16 h-16 bg-white border border-slate-100 rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm group-hover:scale-110 group-hover:shadow-indigo-100 transition-all duration-300 mb-3">
+                                                <Zap size={28} fill="currentColor" className="opacity-80" />
+                                            </div>
+                                            <div className="text-xs font-black text-indigo-600 uppercase tracking-wider">AI Auto-Fill</div>
+                                        </div>
+                                        <div className="text-left">
+                                            <p className="text-lg font-bold text-slate-800">Smart Asset Scanner</p>
+                                            <p className="text-sm text-slate-500 max-w-[280px] mt-1">Upload a screenshot of your bank app or statement to fill in the details automatically.</p>
+                                        </div>
+                                        <div className="ml-auto">
+                                            <div className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-100 group-hover:bg-indigo-700 transition-all">
+                                                Upload Image
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* 2. Form Fields Grid */}
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
                             
-                            {/* LEFT COLUMN: Identity & Core Info */}
-                            <div className="md:col-span-7 space-y-6">
-                                <div className="space-y-4">
-                                    <h4 className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-2">
-                                        <Tag size={14} /> Basic Information
+                            {/* LEFT COLUMN: Identity & Group Info */}
+                            <div className="lg:col-span-7 space-y-8">
+                                <div className="space-y-6">
+                                    <h4 className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-100 pb-3">
+                                        <Tag size={14} /> Identity & Info
                                     </h4>
                                     
                                     <InputField 
-                                        label="Name / Title" 
+                                        label="Name / Description" 
                                         placeholder={`e.g. My ${CATEGORY_LABELS[selectedCategory]}`}
                                         value={formData.name}
                                         onChange={v => setFormData({...formData, name: v})}
@@ -381,41 +484,53 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null, onOpen
                                         autoFocus
                                     />
 
-                                    {/* Dynamic Fields based on Category - Identity Group */}
-                                    {['Cash_Bank', 'Cash_TermDeposit'].includes(selectedCategory) && (
-                                        <InputField label="Bank Name" placeholder="e.g. ANZ, ASB" 
-                                            icon={Building}
-                                            value={formData.details.bank_name} onChange={v => updateDetail('bank_name', v)} />
-                                    )}
-                                    {['KiwiSaver', 'Invest_ManagedFund'].includes(selectedCategory) && (
-                                        <>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <InputField label="Provider" placeholder="e.g. Simplicity" icon={Building}
-                                                    value={formData.details.provider} onChange={v => updateDetail('provider', v)} />
-                                                <InputField label="Fund Name" placeholder="e.g. Growth" 
-                                                    value={formData.details.fund_name} onChange={v => updateDetail('fund_name', v)} />
-                                            </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                        {/* Dynamic Fields based on Category */}
+                                        {['Cash_Bank', 'Cash_TermDeposit'].includes(selectedCategory) && (
+                                            <InputField label="Bank Name" placeholder="e.g. ANZ, Westpac" 
+                                                icon={Landmark}
+                                                value={formData.details.bank_name} onChange={v => updateDetail('bank_name', v)} />
+                                        )}
+                                        {['KiwiSaver', 'Invest_ManagedFund'].includes(selectedCategory) && (
+                                            <InputField label="Provider" placeholder="e.g. Simplicity, Milford" icon={Landmark}
+                                                value={formData.details.provider} onChange={v => updateDetail('provider', v)} />
+                                        )}
+                                        {['KiwiSaver', 'Invest_ManagedFund'].includes(selectedCategory) && (
+                                            <InputField label="Fund Name" placeholder="e.g. Growth Fund" 
+                                                value={formData.details.fund_name} onChange={v => updateDetail('fund_name', v)} />
+                                        )}
+                                        {['KiwiSaver', 'Invest_ManagedFund'].includes(selectedCategory) && (
                                             <SelectField label="Risk Profile" 
                                                 options={['Defensive', 'Conservative', 'Balanced', 'Growth', 'Aggressive']}
                                                 value={formData.details.risk_level} onChange={v => updateDetail('risk_level', v)} />
-                                        </>
-                                    )}
-                                    {selectedCategory === 'Property' && (
-                                        <InputField label="Address" placeholder="Full property address" icon={Home}
-                                            value={formData.details.address} onChange={v => updateDetail('address', v)} />
-                                    )}
-                                    {selectedCategory === 'Mortgage' && (
-                                        <InputField label="Lender" placeholder="e.g. Westpac" icon={Building}
-                                            value={formData.details.lender} onChange={v => updateDetail('lender', v)} />
-                                    )}
+                                        )}
+                                        {selectedCategory === 'Property' && (
+                                            <div className="col-span-2">
+                                                <InputField label="Property Address" placeholder="Full address" icon={Home}
+                                                    value={formData.details.address} onChange={v => updateDetail('address', v)} />
+                                            </div>
+                                        )}
+                                        {selectedCategory === 'Mortgage' && (
+                                            <InputField label="Lender" placeholder="e.g. Westpac" icon={Landmark}
+                                                value={formData.details.lender} onChange={v => updateDetail('lender', v)} />
+                                        )}
+                                        {selectedCategory === 'Vehicle' && (
+                                            <>
+                                                <InputField label="Make & Model" placeholder="e.g. Tesla Model 3" icon={Car}
+                                                    value={formData.details.model} onChange={v => updateDetail('model', v)} />
+                                                <InputField label="Year" type="number" placeholder="2023"
+                                                    value={formData.details.year} onChange={v => updateDetail('year', v)} />
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
                                 
-                                {/* Additional Metadata Section */}
-                                <div className="space-y-4 pt-2">
-                                     <h4 className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-2">
-                                        <Calendar size={14} /> Key Dates
+                                {/* Dates Section */}
+                                <div className="space-y-6 pt-2">
+                                     <h4 className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-100 pb-3">
+                                        <Calendar size={14} /> Timeframe
                                     </h4>
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-2 gap-6">
                                         {selectedCategory === 'Cash_TermDeposit' && (
                                             <>
                                                 <InputField label="Term (Months)" type="number" placeholder="12"
@@ -432,9 +547,8 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null, onOpen
                                             <InputField label="Purchase Year" type="number" placeholder="YYYY"
                                                 value={formData.details.purchase_year} onChange={v => updateDetail('purchase_year', v)} />
                                         )}
-                                        {/* Fallback for others */}
                                         {!['Cash_TermDeposit', 'Mortgage', 'Property'].includes(selectedCategory) && (
-                                            <div className="col-span-2 text-sm text-slate-400 italic bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                            <div className="col-span-2 text-xs text-slate-400 font-medium bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50 italic">
                                                 No specific dates required for this category.
                                             </div>
                                         )}
@@ -443,39 +557,41 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null, onOpen
                             </div>
 
                             {/* RIGHT COLUMN: Financials */}
-                            <div className="md:col-span-5 space-y-6">
-                                <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100 space-y-5">
-                                    <h4 className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                        <DollarSign size={14} /> Valuation & Returns
+                            <div className="lg:col-span-5 space-y-8">
+                                <div className="bg-slate-50/50 rounded-3xl p-8 border border-slate-100 space-y-8 shadow-inner">
+                                    <h4 className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
+                                        <PieChart size={14} className="text-indigo-500" /> Valuation & Returns
                                     </h4>
                                     
                                     <InputField 
-                                        label="Current Value (NZD)" 
+                                        label="Current Balance / Value" 
                                         type="number" 
                                         placeholder="0.00" 
-                                        icon={DollarSign}
+                                        prefix="$"
                                         value={formData.value}
                                         onChange={v => setFormData({...formData, value: v})}
                                         required
-                                        className="text-lg font-bold text-slate-700"
+                                        className="text-2xl font-black text-slate-800"
                                     />
                                     
-                                    {/* Interest / Return Rate */}
                                     {(['Cash_Bank', 'Cash_TermDeposit', 'Mortgage', 'Loan_Personal', 'Loan_Student'].includes(selectedCategory)) && (
-                                        <div className="relative">
+                                        <div className="space-y-5">
                                             <InputField label="Interest Rate (%)" type="number" placeholder="0.00" 
                                                 icon={Percent}
                                                 value={formData.details.interest_rate} onChange={v => updateDetail('interest_rate', v)} />
                                             
-                                            {/* Estimated Return Badge */}
-                                            {estimatedReturn > 0 && recordType === 'Asset' && (
-                                                <div className="mt-3 bg-emerald-100/50 border border-emerald-200 rounded-lg p-3 flex items-start gap-3">
-                                                    <TrendingUp size={16} className="text-emerald-600 mt-0.5" />
+                                            {/* Impact Preview Card */}
+                                            {estimatedReturn !== 0 && (
+                                                <div className={`rounded-2xl p-5 border flex items-start gap-4 transition-all duration-500 ${recordType === 'Asset' ? 'bg-emerald-50 border-emerald-100 shadow-emerald-50' : 'bg-rose-50 border-rose-100 shadow-rose-50'} shadow-lg`}>
+                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${recordType === 'Asset' ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}`}>
+                                                        {recordType === 'Asset' ? <TrendingUp size={20} /> : <ArrowRightLeft size={20} className="rotate-90" />}
+                                                    </div>
                                                     <div>
-                                                        <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wide block">Est. Annual Return</span>
-                                                        <span className="text-sm font-bold text-emerald-800">
-                                                            +${estimatedReturn.toLocaleString('en-NZ', {maximumFractionDigits: 0})}
-                                                            <span className="text-xs font-normal text-emerald-600 ml-1">/ yr</span>
+                                                        <span className={`text-[10px] font-black uppercase tracking-wider block mb-0.5 ${recordType === 'Asset' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                            {recordType === 'Asset' ? 'Est. Annual Return' : 'Est. Annual Cost'}
+                                                        </span>
+                                                        <span className={`text-xl font-black ${recordType === 'Asset' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                                            {recordType === 'Asset' ? '+' : '-'}{formatCurrency(Math.abs(estimatedReturn))}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -489,22 +605,46 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null, onOpen
                                     )}
                                 </div>
 
-                                {/* Liquidity Toggle */}
-                                {recordType === 'Asset' && (
-                                    <div className="bg-white rounded-2xl border border-slate-200 p-4 flex items-center justify-between">
-                                        <div>
-                                            <label className="text-sm font-bold text-slate-700 block">Liquid Asset</label>
-                                            <span className="text-xs text-slate-500">Can be accessed easily?</span>
+                                {/* Status Options Card */}
+                                <div className="bg-white rounded-3xl border border-slate-200 p-6 space-y-5 shadow-sm">
+                                     <h4 className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                        <Shield size={14} /> Status & Settings
+                                    </h4>
+                                    
+                                    {recordType === 'Asset' && (
+                                        <div className="flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 transition-colors">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${formData.is_liquid ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>
+                                                    <ArrowRightLeft size={18} />
+                                                </div>
+                                                <div>
+                                                    <label className="text-sm font-bold text-slate-800 block">Liquid Asset</label>
+                                                    <span className="text-[10px] font-medium text-slate-500">Accessible within 24 hours</span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormData(prev => ({...prev, is_liquid: !prev.is_liquid}))}
+                                                className={`w-14 h-7 rounded-full transition-all duration-300 relative ${formData.is_liquid ? 'bg-indigo-600 ring-4 ring-indigo-50' : 'bg-slate-200'}`}
+                                            >
+                                                <div className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-300 ${formData.is_liquid ? 'left-8' : 'left-1'}`} />
+                                            </button>
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => setFormData(prev => ({...prev, is_liquid: !prev.is_liquid}))}
-                                            className={`w-12 h-6 rounded-full transition-colors relative ${formData.is_liquid ? 'bg-indigo-600' : 'bg-slate-200'}`}
-                                        >
-                                            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${formData.is_liquid ? 'left-7' : 'left-1'}`} />
-                                        </button>
+                                    )}
+                                    
+                                    <div className="flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 transition-colors">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center">
+                                                <Tag size={18} />
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-bold text-slate-800 block">Category Label</label>
+                                                <span className="text-[10px] font-medium text-slate-500 uppercase">{CATEGORY_LABELS[selectedCategory]}</span>
+                                            </div>
+                                        </div>
+                                        <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Locked</div>
                                     </div>
-                                )}
+                                </div>
                             </div>
                         </div>
                     </form>
@@ -515,34 +655,38 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null, onOpen
 
         {/* Footer */}
         {step === 2 && !showPassiveIncomePrompt && (
-          <div className="px-8 py-5 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
-             <div className="flex items-center gap-3">
+          <div className="px-10 py-6 bg-white border-t border-slate-100 flex justify-between items-center sticky bottom-0">
+             <div className="flex items-center gap-4">
               {assetToEdit ? (
                 <>
+                  <button 
+                    type="button"
+                    onClick={handleDelete}
+                    className="group flex items-center gap-2 px-5 py-3 text-rose-500 font-bold text-sm hover:bg-rose-50 rounded-2xl transition-all"
+                  >
+                    <Trash2 size={18} className="group-hover:scale-110 transition-transform" />
+                    <span>Delete Item</span>
+                  </button>
+                  
                   {assetToEdit.record_type === 'Asset' && (
                     <button
                       type="button"
                       onClick={handleOpenConversion}
-                      className="text-sm font-bold text-slate-500 hover:text-indigo-600 flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-white border border-transparent hover:border-slate-200 transition-all"
+                      className="flex items-center gap-2 px-5 py-3 text-slate-500 font-bold text-sm hover:bg-slate-50 hover:text-indigo-600 rounded-2xl transition-all"
                     >
-                      <ArrowRightLeft size={16} /> Convert Asset
+                      <ArrowRightLeft size={18} />
+                      <span>Convert Asset</span>
                     </button>
                   )}
-                  <button 
-                    type="button"
-                    onClick={handleDelete}
-                    className="text-sm font-bold text-rose-500 hover:text-rose-700 flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-rose-50 border border-transparent hover:border-rose-100 transition-all"
-                  >
-                    <Trash2 size={16} /> Delete
-                  </button>
                 </>
               ) : (
                 <button 
                   type="button"
                   onClick={() => { setStep(1); setOcrSuccess(false); }}
-                  className="text-sm font-bold text-slate-500 hover:text-slate-800"
+                  className="flex items-center gap-2 px-6 py-3 text-slate-500 font-bold text-sm hover:text-slate-900 transition-colors"
                 >
-                  Back
+                  <ArrowLeft size={18} />
+                  <span>Back to Categories</span>
                 </button>
               )}
             </div>
@@ -550,10 +694,10 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null, onOpen
             <button 
               onClick={handleSubmit}
               disabled={loading}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-indigo-200 hover:shadow-indigo-300 transition-all disabled:opacity-50 flex items-center gap-2 transform hover:-translate-y-0.5"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-10 py-4 rounded-[20px] font-black text-sm shadow-xl shadow-indigo-200 hover:shadow-indigo-300 transition-all disabled:opacity-50 flex items-center gap-3 transform hover:-translate-y-1 active:translate-y-0"
             >
-              {loading ? <Loader size={18} className="animate-spin" /> : <Check size={18} />}
-              {assetToEdit ? 'Save Changes' : 'Create Item'}
+              {loading ? <Loader2 size={20} className="animate-spin" /> : <Check size={20} strokeWidth={3} />}
+              <span>{assetToEdit ? 'Save Changes' : 'Create Item'}</span>
             </button>
           </div>
         )}
@@ -562,15 +706,22 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null, onOpen
   );
 };
 
+// --- Helper Functions ---
+const formatCurrency = (val) => new Intl.NumberFormat('en-NZ', { 
+  style: 'currency', 
+  currency: 'NZD',
+  minimumFractionDigits: 0
+}).format(val);
+
 // UI Components
 const InputField = ({ label, type = "text", placeholder, value, onChange, icon: Icon, prefix, required, className, autoFocus }) => (
-  <div className="space-y-1.5">
-    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+  <div className="space-y-2">
+    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5 ml-1">
         {label} {required && <span className="text-rose-500">*</span>}
     </label>
     <div className="relative group">
-      {Icon && <Icon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />}
-      {prefix && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium">{prefix}</span>}
+      {Icon && <Icon size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />}
+      {prefix && <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">{prefix}</span>}
       <input
         type={type}
         placeholder={placeholder}
@@ -578,26 +729,26 @@ const InputField = ({ label, type = "text", placeholder, value, onChange, icon: 
         onChange={(e) => onChange(e.target.value)}
         required={required}
         autoFocus={autoFocus}
-        className={`w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl py-3 transition-all outline-none focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 ${Icon || prefix ? 'pl-10' : 'pl-4'} pr-4 ${className}`}
+        className={`w-full bg-slate-100/50 border border-slate-100 text-slate-900 text-sm font-bold rounded-2xl py-3.5 transition-all outline-none focus:bg-white focus:border-indigo-500 focus:ring-8 focus:ring-indigo-500/5 ${Icon || prefix ? 'pl-12' : 'pl-5'} pr-5 ${className}`}
       />
     </div>
   </div>
 );
 
 const SelectField = ({ label, options, value, onChange }) => (
-  <div className="space-y-1.5">
-    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">{label}</label>
-    <div className="relative">
+  <div className="space-y-2">
+    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{label}</label>
+    <div className="relative group">
       <select
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl py-3 pl-4 pr-10 appearance-none outline-none focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 cursor-pointer"
+        className="w-full bg-slate-100/50 border border-slate-100 text-slate-900 text-sm font-bold rounded-2xl py-3.5 pl-5 pr-12 appearance-none outline-none focus:bg-white focus:border-indigo-500 focus:ring-8 focus:ring-indigo-500/5 cursor-pointer transition-all"
       >
         <option value="" disabled>Select...</option>
         {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
       </select>
-      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-        <ArrowRight size={14} className="rotate-90" />
+      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+        <ArrowRight size={16} className="rotate-90" />
       </div>
     </div>
   </div>

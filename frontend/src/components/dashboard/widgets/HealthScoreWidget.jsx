@@ -1,4 +1,6 @@
 import { TrendingUp, Activity, ShieldCheck, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import InfoTooltip from '../../common/InfoTooltip'; // Import Tooltip
+import { HELP_ANCHORS } from '../../../constants/helpAnchors'; // Import Registry
 
 const HealthScoreWidget = ({ netWorth, liquidCapital, healthScore = 85, totalAssets, totalLiabilities }) => {
   const formatCurrency = (val) => 
@@ -16,7 +18,13 @@ const HealthScoreWidget = ({ netWorth, liquidCapital, healthScore = 85, totalAss
         {/* 1. Primary Metric: Net Worth */}
         <div className="flex-1 w-full lg:w-auto border-b lg:border-b-0 lg:border-r border-slate-100 pb-8 lg:pb-0 lg:pr-12">
           <div className="flex items-center gap-2 mb-3">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Financial Pulse</p>
+            <div className="flex items-center gap-2">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Financial Pulse</p>
+                <InfoTooltip 
+                    content="Your real-time Net Worth snapshot. Assets minus Liabilities."
+                    anchor={HELP_ANCHORS.WEALTH.NET_WORTH} 
+                />
+            </div>
             <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-[9px] font-black uppercase tracking-widest animate-in fade-in slide-in-from-left duration-700 delay-300">
               <TrendingUp size={10} /> +2.4%
             </span>
@@ -69,7 +77,14 @@ const HealthScoreWidget = ({ netWorth, liquidCapital, healthScore = 85, totalAss
           </div>
 
           {/* AI Health Score */}
-          <div className="bg-primary/5 rounded-2xl p-4 flex flex-col justify-center border border-primary/10 hover:bg-primary hover:text-white transition-all duration-500 cursor-help group/score">
+          <div className="bg-primary/5 rounded-2xl p-4 flex flex-col justify-center border border-primary/10 hover:bg-primary hover:text-white transition-all duration-500 group/score relative">
+            <div className="absolute top-2 right-2">
+                <InfoTooltip 
+                    content="Score derived from Solvency (40%), Liquidity (30%), and Growth (30%)."
+                    anchor={HELP_ANCHORS.DASHBOARD.HEALTH_SCORE} 
+                    className="text-primary group-hover/score:text-white"
+                />
+            </div>
             <p className="text-[8px] font-black uppercase tracking-widest opacity-60 mb-1 text-center group-hover/score:text-white">AI Health</p>
             <div className="flex items-center justify-center gap-1">
               <span className="text-2xl font-black">{healthScore}</span>

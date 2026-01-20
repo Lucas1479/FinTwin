@@ -1,8 +1,8 @@
 import React from 'react';
-import ScenarioLobby from './pages/Playground/ScenarioLobby';
+import PlaygroundLobby from './pages/Playground/PlaygroundLobby';
 
 function App() {
-  return <ScenarioLobby />;
+  return <PlaygroundLobby />;
 }
 
 export default App;

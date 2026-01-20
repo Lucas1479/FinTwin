@@ -4,15 +4,26 @@ import {
   Area,
   AreaChart,
   ResponsiveContainer,
+  Tooltip,
 } from 'recharts';
 import {
   AlertCircle,
   ExternalLink,
   Zap,
+  Info,
+  TrendingUp,
+  PieChart as PieChartIcon,
+  Shield,
+  Clock,
+  ChevronRight,
+  Target,
+  FileText,
 } from 'lucide-react';
 
 import StageLoading from './common/StageLoading';
 import productService from '../../services/productService';
+import InfoTooltip from '../common/InfoTooltip';
+import { HELP_ANCHORS } from '../../constants/helpAnchors';
 
 const StageProduct = ({ goalContext, onSelect, isLoadingAI }) => {
   const navigate = useNavigate();
@@ -21,6 +32,87 @@ const StageProduct = ({ goalContext, onSelect, isLoadingAI }) => {
   const [portfolioOptions, setPortfolioOptions] = useState([]);
   const [detailProduct, setDetailProduct] = useState(null);
   const [detailTab, setDetailTab] = useState('overview');
+  const [detailsLoading, setDetailsLoading] = useState(false);
+
+  const normalizeAllocation = (allocation = {}) => {
+    if (!allocation) return { growth: 0, defensive: 0, cash: 0 };
+    const toNumber = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
+    const hasPillars =
+      allocation.growth !== undefined ||
+      allocation.defensive !== undefined ||
+      allocation.cash !== undefined ||
+      allocation.liquidity !== undefined;
+
+    let growth = 0;
+    let defensive = 0;
+    let cash = 0;
+
+    if (hasPillars) {
+      growth = toNumber(allocation.growth);
+      defensive = toNumber(allocation.defensive);
+      cash = toNumber(allocation.cash ?? allocation.liquidity);
+    } else {
+      const equities = toNumber(allocation.equities);
+      const property = toNumber(allocation.property);
+      const other = toNumber(allocation.other);
+      const bonds = toNumber(allocation.bonds);
+      const cashVal = toNumber(allocation.cash);
+      growth = equities + property + other;
+      defensive = bonds;
+      cash = cashVal;
+    }
+
+    const total = growth + defensive + cash;
+    if (total <= 0) {
+      return { growth: 0, defensive: 0, cash: 0 };
+    }
+
+    let scale = 1;
+    if (total <= 1.2) {
+      scale = 100 / total;
+    } else if (total > 100) {
+      scale = 100 / total;
+    }
+
+    const clamp = (val) => Math.max(0, Number((val * scale).toFixed(2)));
+    return {
+      growth: clamp(growth),
+      defensive: clamp(defensive),
+      cash: clamp(cash),
+    };
+  };
+
+  const formatPct = (value) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '0';
+    const rounded = Math.round(num * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+  };
+
+  const formatExposure = (value) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '0.0';
+    return num.toFixed(1);
+  };
+
+  const computeExposureFromProducts = (products = []) => {
+    let growth = 0;
+    let defensive = 0;
+    let liquidity = 0;
+    let totalWeight = 0;
+
+    products.forEach((product) => {
+      const weight = Number(product.weight_pct) || 0;
+      if (weight <= 0) return;
+      totalWeight += weight;
+      const alloc = normalizeAllocation(product.allocation || product.metrics?.allocation);
+      growth += (weight / 100) * (alloc.growth || 0);
+      defensive += (weight / 100) * (alloc.defensive || 0);
+      liquidity += (weight / 100) * (alloc.cash || 0);
+    });
+
+    return { growth, defensive, liquidity, totalWeight };
+  };
 
   const aiOptions =
     goalContext.ai_decision?.portfolio_options ||
@@ -132,6 +224,25 @@ const StageProduct = ({ goalContext, onSelect, isLoadingAI }) => {
     onSelect(option);
   };
 
+  const handleViewProductDetails = async (product) => {
+    if (!product?.id) return;
+    setDetailProduct(product);
+    setDetailsLoading(true);
+    try {
+      const full = await productService.getProductById(product.id);
+      if (full) {
+        setDetailProduct({
+          ...product, // Preserve weight/rationale from the AI recommended portfolio
+          ...full
+        });
+      }
+    } catch (err) {
+      console.error('[StageProduct] Failed to fetch product details:', err);
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
   if (isLoadingAI && portfolioOptions.length === 0 && !legacySelection.length) {
     return <StageLoading text="AI is structuring your investment products..." />;
   }
@@ -185,19 +296,30 @@ const StageProduct = ({ goalContext, onSelect, isLoadingAI }) => {
                     </div>
                     <p className="text-sm text-slate-600 mt-1">{option.description}</p>
 
-                    {option.calculated_exposure && (
+                  {option.calculated_exposure && (
                       <div className="flex items-center gap-3 mt-2">
                         <span className="text-[10px] font-bold uppercase text-slate-400">Exposure:</span>
                         <div className="flex items-center gap-2">
+                          {(() => {
+                            const computed = computeExposureFromProducts(option.products || []);
+                            const exposure =
+                              computed.totalWeight > 0
+                                ? computed
+                                : option.calculated_exposure;
+                            return (
+                              <>
                           <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-semibold rounded">
-                            {option.calculated_exposure.growth || 0}% Growth
+                            {formatExposure(exposure.growth || 0)}% Growth
                           </span>
                           <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-semibold rounded">
-                            {option.calculated_exposure.defensive || 0}% Defensive
+                            {formatExposure(exposure.defensive || 0)}% Defensive
                           </span>
                           <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-semibold rounded">
-                            {option.calculated_exposure.liquidity || 0}% Liquidity
+                            {formatExposure(exposure.liquidity || 0)}% Liquidity
                           </span>
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     )}
@@ -217,7 +339,7 @@ const StageProduct = ({ goalContext, onSelect, isLoadingAI }) => {
                     key={p.id}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setDetailProduct(p);
+                      handleViewProductDetails(p);
                     }}
                     className="px-5 py-3 bg-white cursor-pointer transition-all duration-200 hover:bg-slate-50 group"
                   >
@@ -266,221 +388,271 @@ const StageProduct = ({ goalContext, onSelect, isLoadingAI }) => {
       )}
 
       {detailProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 animate-fade-in overflow-hidden backdrop-blur-[2px]">
-          <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 flex items-center justify-between border-b border-slate-50 shrink-0 bg-white z-10">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 font-black text-sm border border-indigo-100/50 shrink-0">
-                  {(detailProduct.provider ?? 'PF').slice(0, 2).toUpperCase()}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 animate-fade-in overflow-hidden">
+          {(() => {
+            const allocation = normalizeAllocation(
+              detailProduct.allocation || detailProduct.metrics?.allocation,
+            );
+            const holdings = Array.isArray(detailProduct.topHoldings) ? detailProduct.topHoldings : [];
+            const riskScore = typeof detailProduct.riskScore === 'number' ? detailProduct.riskScore : null;
+
+            return (
+              <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-slate-200">
+                {/* Header - More compact */}
+                <div className="px-5 py-4 flex items-center justify-between border-b border-slate-100 shrink-0 bg-white">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400 font-bold text-xs border border-slate-200 shrink-0 overflow-hidden">
+                      {detailProduct.providerLogo ? (
+                        <img src={detailProduct.providerLogo} alt={detailProduct.provider} className="w-full h-full object-cover" />
+                      ) : (
+                        (detailProduct.provider ?? 'PF').slice(0, 2).toUpperCase()
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="text-base font-bold text-slate-900 truncate leading-tight">
+                        {detailProduct.name}
+                      </h2>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] font-bold text-brand-600 uppercase tracking-tight">{detailProduct.provider}</span>
+                        <span className="w-1 h-1 rounded-full bg-slate-300" />
+                        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-tight">{detailProduct.category || 'Fund'}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setDetailProduct(null);
+                      setDetailTab('overview');
+                    }}
+                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors shrink-0"
+                  >
+                    <span className="text-xl leading-none">×</span>
+                  </button>
                 </div>
-                <div className="min-w-0">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 mb-0.5 block">
-                    {detailProduct.category || 'Product'}
-                  </span>
-                  <h2 className="text-lg font-black text-slate-900 tracking-tight truncate max-w-[200px]">
-                    {detailProduct.name}
-                  </h2>
+
+                {/* Tabs - Compressed height */}
+                <div className="px-5 border-b border-slate-100 bg-white">
+                  <div className="flex gap-6">
+                    {[
+                      { id: 'overview', label: 'OVERVIEW', icon: FileText },
+                      { id: 'performance', label: 'METRICS', icon: TrendingUp },
+                      { id: 'composition', label: 'ALLOCATION', icon: PieChartIcon },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setDetailTab(tab.id)}
+                        className={`flex items-center gap-1.5 py-3 text-[10px] font-bold tracking-wider transition-all relative ${
+                          detailTab === tab.id ? 'text-brand-600' : 'text-slate-400 hover:text-slate-500'
+                        }`}
+                      >
+                        <tab.icon size={12} />
+                        {tab.label}
+                        {detailTab === tab.id && (
+                          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-600 rounded-full" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Content Area - Higher Density */}
+                <div className="flex-1 overflow-y-auto p-5 scrollbar-soft bg-slate-50/20 min-h-[320px]">
+                  {detailsLoading ? (
+                    <div className="flex flex-col items-center justify-center h-full py-12">
+                      <div className="w-8 h-8 border-3 border-slate-100 border-t-brand-600 rounded-full animate-spin mb-3"></div>
+                      <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest">Updating data...</p>
+                    </div>
+                  ) : (
+                    <>
+                      {detailTab === 'overview' && (
+                        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-1 duration-200">
+                          {/* Key Indicators Grid */}
+                          <div className="grid grid-cols-3 gap-3">
+                            <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                              <div className="text-[9px] font-bold text-slate-400 uppercase mb-1">Annual Fee</div>
+                              <div className="text-sm font-bold text-slate-900">{detailProduct.fees ?? '0.00'}%</div>
+                            </div>
+                            <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                              <div className="text-[9px] font-bold text-slate-400 uppercase mb-1">5Y Return</div>
+                              <div className="text-sm font-bold text-emerald-600">
+                                {detailProduct.returns?.['5y'] !== null 
+                                  ? `${detailProduct.returns['5y'].toFixed(1)}%` 
+                                  : detailProduct.returns?.['1y'] !== null 
+                                    ? `${detailProduct.returns['1y'].toFixed(1)}%` 
+                                    : '—'}
+                              </div>
+                            </div>
+                            <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                              <div className="text-[9px] font-bold text-slate-400 uppercase mb-1">Risk RI</div>
+                              <div className="text-sm font-bold text-slate-900">{riskScore || 'N/A'}</div>
+                            </div>
+                          </div>
+
+                          {/* Rationale - Professional Box */}
+                          <div className="bg-brand-50/40 rounded-xl p-4 border border-brand-100/50">
+                            <div className="flex items-center gap-1.5 mb-2">
+                              <Zap size={12} className="text-brand-600" />
+                              <span className="text-[10px] font-bold text-brand-700 uppercase tracking-wider">AI Recommendation</span>
+                            </div>
+                            <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
+                              {detailProduct.rationale || 'Selected for its optimized fee-to-performance ratio and alignment with your target risk profile.'}
+                            </p>
+                          </div>
+
+                          {/* Strategy */}
+                          <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
+                            <h3 className="text-[10px] font-bold text-slate-900 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                              <Target size={12} className="text-brand-500" />
+                              Objective & Strategy
+                            </h3>
+                            <p className="text-[11px] text-slate-500 leading-relaxed">
+                              {detailProduct.strategy || detailProduct.description || 'Data unavailable.'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {detailTab === 'performance' && (
+                        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-1 duration-200">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                              <h3 className="text-[10px] font-bold text-slate-900 mb-3 uppercase tracking-wider">Risk Assessment</h3>
+                              <div className="space-y-3">
+                                <div className="flex gap-1">
+                                  {[1, 2, 3, 4, 5, 6, 7].map((val) => (
+                                    <div key={val} className={`flex-1 h-1.5 rounded-full ${riskScore && riskScore >= val ? 'bg-brand-500' : 'bg-slate-100'}`} />
+                                  ))}
+                                </div>
+                                <div className="flex justify-between items-center text-[9px] font-bold text-slate-400">
+                                  <span>CONSERVATIVE</span>
+                                  <span className="text-brand-600">{riskScore || 'N/A'}</span>
+                                  <span>AGGRESSIVE</span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                              <h3 className="text-[10px] font-bold text-slate-900 mb-3 uppercase tracking-wider">Historical Return</h3>
+                              <div className="flex items-baseline gap-1">
+                                <span className="text-lg font-bold text-emerald-600">
+                                  {detailProduct.returns?.['5y'] !== null 
+                                    ? `+${detailProduct.returns['5y'].toFixed(1)}%` 
+                                    : detailProduct.returns?.['1y'] !== null 
+                                      ? `+${detailProduct.returns['1y'].toFixed(1)}%` 
+                                      : '—'}
+                                </span>
+                                <span className="text-[9px] text-slate-400 font-bold uppercase">
+                                  {detailProduct.returns?.['5y'] !== null ? '5Y AVG' : '1Y AVG'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Projection Chart - Compact */}
+                          <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                            <div className="flex items-center justify-between mb-4">
+                              <h3 className="text-[10px] font-bold text-slate-900 uppercase tracking-wider">Growth Projection</h3>
+                              <span className="text-[9px] font-medium text-slate-400">Compounded 5Y Rate</span>
+                            </div>
+                            <div className="h-32 w-full">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={[
+                                  { m: 0, v: 100 },
+                                  { m: 12, v: 100 * Math.pow(1 + (detailProduct.returns?.['5y'] ?? detailProduct.returns?.['1y'] ?? 6) / 100, 1) },
+                                  { m: 36, v: 100 * Math.pow(1 + (detailProduct.returns?.['5y'] ?? detailProduct.returns?.['1y'] ?? 6) / 100, 3) },
+                                  { m: 60, v: 100 * Math.pow(1 + (detailProduct.returns?.['5y'] ?? detailProduct.returns?.['1y'] ?? 6) / 100, 5) },
+                                ]}>
+                                  <defs>
+                                    <linearGradient id="brandGradient" x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.1} />
+                                      <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
+                                    </linearGradient>
+                                  </defs>
+                                  <Area type="monotone" dataKey="v" stroke="#7c3aed" strokeWidth={2} fill="url(#brandGradient)" />
+                                </AreaChart>
+                              </ResponsiveContainer>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {detailTab === 'composition' && (
+                        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-1 duration-200">
+                          <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                            <h3 className="text-[10px] font-bold text-slate-900 mb-4 uppercase tracking-wider">Asset Allocation</h3>
+                            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden flex mb-4">
+                              <div style={{ width: `${allocation.growth}%` }} className="h-full bg-brand-500" />
+                              <div style={{ width: `${allocation.defensive}%` }} className="h-full bg-sky-400" />
+                              <div style={{ width: `${allocation.cash}%` }} className="h-full bg-slate-300" />
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              {['Growth', 'Defensive', 'Cash'].map((label, i) => (
+                                <div key={label} className="text-center">
+                                  <div className="text-[8px] font-bold text-slate-400 uppercase mb-0.5">{label}</div>
+                                  <div className="text-[11px] font-bold text-slate-700">
+                                    {i === 0 ? formatPct(allocation.growth) : i === 1 ? formatPct(allocation.defensive) : formatPct(allocation.cash)}%
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                            <h3 className="text-[10px] font-bold text-slate-900 mb-3 uppercase tracking-wider">Key Holdings</h3>
+                            <div className="space-y-3">
+                              {holdings.length > 0 ? (
+                                holdings.slice(0, 5).map((h, i) => {
+                                  const name = h?.name || h || "Unknown";
+                                  const pct = typeof h?.percent === "number" ? h.percent : 0;
+                                  return (
+                                    <div key={i}>
+                                      <div className="flex justify-between items-center mb-1 text-[10px]">
+                                        <span className="font-bold text-slate-600 truncate mr-4">{name}</span>
+                                        <span className="font-black text-slate-900 shrink-0">{pct.toFixed(1)}%</span>
+                                      </div>
+                                      <div className="h-1 w-full bg-slate-50 rounded-full overflow-hidden">
+                                        <div className="h-full bg-brand-400 opacity-60 rounded-full" style={{ width: `${Math.max(pct, 1)}%` }} />
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <p className="text-[10px] text-slate-400 py-4 text-center">Holding data not available</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Footer - Compact */}
+                <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-1.5 text-slate-400">
+                    <Clock size={12} />
+                    <span className="text-[9px] font-bold uppercase tracking-widest">Verified 2026</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setDetailProduct(null)}
+                      className="px-4 py-2 rounded-lg text-[10px] font-bold text-slate-500 hover:bg-slate-50"
+                    >
+                      CLOSE
+                    </button>
+                    <button
+                      onClick={() => {
+                        setDetailProduct(null);
+                        navigate(`/marketplace?search=${encodeURIComponent(detailProduct.name)}`);
+                      }}
+                      className="px-4 py-2 bg-brand-600 text-white rounded-lg text-[10px] font-bold flex items-center gap-2 hover:bg-brand-700 transition-all shadow-lg shadow-brand-100"
+                    >
+                      MARKETPLACE <ExternalLink size={12} />
+                    </button>
+                  </div>
                 </div>
               </div>
-              <button
-                onClick={() => {
-                  setDetailProduct(null);
-                  setDetailTab('analysis');
-                }}
-                className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-slate-100 transition-all active:scale-95 shrink-0"
-              >
-                <span className="text-xl leading-none">×</span>
-              </button>
-            </div>
-
-            <div className="px-6 py-2 bg-slate-50/50 flex gap-6 border-b border-slate-50 shrink-0 overflow-x-auto no-scrollbar">
-              {[
-                { id: 'analysis', label: 'ANALYSIS' },
-                { id: 'composition', label: 'MIX' },
-                { id: 'holdings', label: 'HOLDINGS' },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setDetailTab(tab.id)}
-                  className={`flex items-center gap-2 py-2 text-[10px] font-bold tracking-widest transition-all relative whitespace-nowrap ${
-                    detailTab === tab.id ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'
-                  }`}
-                >
-                  {tab.label}
-                  {detailTab === tab.id && (
-                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
-                  )}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-white">
-              {detailTab === 'analysis' && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-slate-50 rounded-2xl p-4 text-center border border-slate-100">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Fees</span>
-                      <div className="text-2xl font-black text-slate-900">{detailProduct.fees ?? '0.00'}%</div>
-                    </div>
-                    <div className="bg-emerald-50/50 rounded-2xl p-4 text-center border border-emerald-100/30">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-600/60 block mb-1">5Y Return</span>
-                      <div className="text-2xl font-black text-emerald-600">
-                        {detailProduct.returns?.['5y']?.toFixed(1) || '0.0'}%
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-indigo-50/30 rounded-2xl p-5 border border-indigo-100/30">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-600">Why this product?</span>
-                    </div>
-                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                      {detailProduct.rationale ||
-                        'Selected based on risk-adjusted returns and alignment with your goal strategy.'}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Strategy</span>
-                      <div className="text-sm font-bold text-slate-700">
-                        {detailProduct.riskLevel || detailProduct.strategy || 'Balanced'}
-                      </div>
-                    </div>
-                    <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 text-white relative overflow-hidden">
-                      <Zap size={40} className="absolute -right-2 -top-2 text-indigo-500/20" />
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-400 block mb-1">Weight</span>
-                      <div className="text-2xl font-black relative z-10">{detailProduct.weight_pct || '0.0'}%</div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 px-1">Projection</span>
-                    <div className="h-32 bg-slate-50 rounded-2xl border border-slate-100 p-2 relative overflow-hidden">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart
-                          data={[
-                            { x: 0, y: 100 },
-                            { x: 1, y: 105 },
-                            { x: 2, y: 112 },
-                            { x: 3, y: 125 },
-                            { x: 4, y: 135 },
-                            { x: 5, y: 150 },
-                          ]}
-                        >
-                          <defs>
-                            <linearGradient id="compactChartGradient" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1} />
-                              <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <Area
-                            type="monotone"
-                            dataKey="y"
-                            stroke="#6366f1"
-                            strokeWidth={2}
-                            fill="url(#compactChartGradient)"
-                          />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {detailTab === 'composition' && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className="space-y-4">
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-900 px-1">Asset Allocation</span>
-                    <div className="bg-slate-50 rounded-3xl p-6 border border-slate-100">
-                      <div className="flex h-3 rounded-full overflow-hidden bg-slate-200 shadow-inner mb-6">
-                        <div
-                          style={{ width: `${detailProduct.allocation?.growth || 60}%` }}
-                          className="bg-indigo-500"
-                        />
-                        <div
-                          style={{ width: `${detailProduct.allocation?.defensive || 30}%` }}
-                          className="bg-sky-400"
-                        />
-                        <div
-                          style={{ width: `${detailProduct.allocation?.cash || 10}%` }}
-                          className="bg-fuchsia-400"
-                        />
-                      </div>
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
-                            <span className="text-xs font-medium text-slate-600">Growth Assets</span>
-                          </div>
-                          <span className="text-xs font-bold text-slate-900">
-                            {`${detailProduct.allocation?.growth || 60}%`}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-2.5 h-2.5 rounded-full bg-sky-400" />
-                            <span className="text-xs font-medium text-slate-600">Defensive Assets</span>
-                          </div>
-                          <span className="text-xs font-bold text-slate-900">
-                            {`${detailProduct.allocation?.defensive || 30}%`}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-2.5 h-2.5 rounded-full bg-fuchsia-400" />
-                            <span className="text-xs font-medium text-slate-600">Cash & Liquidity</span>
-                          </div>
-                          <span className="text-xs font-bold text-slate-900">
-                            {`${detailProduct.allocation?.cash || 10}%`}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {detailTab === 'holdings' && (
-                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  {detailProduct.topHoldings?.slice(0, 5).map((holding, idx) => (
-                    <div
-                      key={idx}
-                      className="bg-slate-50 rounded-2xl p-4 border border-slate-100 flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-6 h-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-400">
-                          {idx + 1}
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-slate-900 text-xs truncate max-w-[150px]">{holding.name}</h4>
-                          <span className="text-[9px] text-slate-400 font-bold uppercase">{holding.type || 'ASSET'}</span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-black text-indigo-600">{holding.percent?.toFixed(1)}%</div>
-                      </div>
-                    </div>
-                  ))}
-                  {!detailProduct.topHoldings?.length && (
-                    <div className="text-center py-10 text-slate-400 text-xs">No holdings data available</div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="p-4 bg-white border-t border-slate-50 shrink-0">
-              <button
-                onClick={() => {
-                  setDetailProduct(null);
-                  navigate(`/marketplace?search=${encodeURIComponent(detailProduct.name)}`);
-                }}
-                className="w-full h-12 bg-[#101827] text-white rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-600 transition-all shadow-lg shadow-slate-200 active:scale-[0.98]"
-              >
-                View in Marketplace <ExternalLink size={14} className="opacity-50" />
-              </button>
-            </div>
-          </div>
+            );
+          })()}
         </div>
       )}
     </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout';
 import { getWealthSummary, getAssets } from '../services/wealthService';
 import { getGoals } from '../services/goalService';
@@ -13,9 +14,10 @@ import AdvisorPulseWidget from '../components/dashboard/widgets/AdvisorPulseWidg
 import FundingFlowWidget from '../components/dashboard/widgets/FundingFlowWidget';
 import GoalProgressChartWidget from '../components/dashboard/widgets/GoalProgressChartWidget';
 import DigitalTwinCore from '../components/dashboard/DigitalTwinCore';
-import { Zap } from 'lucide-react';
+import { Zap, Plus } from 'lucide-react';
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const { timeOffset, marketMode } = useSimulation(); // Consume global simulation state
   
@@ -114,6 +116,15 @@ const Dashboard = () => {
             </p>
           </div>
         </div>
+
+        {/* New Goal CTA - Minimalist Professional Style */}
+        <button 
+          onClick={() => navigate('/goals/intake')}
+          className="hidden sm:flex items-center gap-2.5 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white px-5 py-2.5 rounded-2xl transition-all duration-300 group border border-indigo-100/50 shadow-sm"
+        >
+          <Plus size={16} className="transition-transform group-hover:rotate-90" />
+          <span className="text-xs font-bold tracking-tight">New Goal</span>
+        </button>
       </div>
     );
   };

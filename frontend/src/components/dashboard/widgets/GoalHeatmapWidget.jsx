@@ -1,4 +1,6 @@
 import { useState, useMemo } from 'react';
+import InfoTooltip from '../../common/InfoTooltip'; // Import Tooltip
+import { HELP_ANCHORS } from '../../../constants/helpAnchors'; // Import Registry
 
 const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
   const [viewMode, setViewMode] = useState('target');
@@ -243,6 +245,10 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
         <div>
           <div className="flex items-center gap-3">
             <h2 className="text-xl font-black tracking-tight">Strategy Heatmap</h2>
+            <InfoTooltip 
+                content="Visualizes your wealth distribution by Goal. Larger blocks mean higher current value."
+                anchor={HELP_ANCHORS.DASHBOARD.HEATMAP} 
+            />
           </div>
           <p className="text-slate-400 text-[10px] mt-1 font-bold uppercase tracking-widest opacity-60">
             Proportional Asset-to-Goal Allocation

@@ -1,6 +1,8 @@
 import React, { useContext } from 'react';
-import { WealthContext } from '../WealthCenterPage';
+import { WealthContext } from '../../context/WealthContext';
 import AssetLiabilityList from '../../components/wealth/AssetLiabilityList';
+import InfoTooltip from '../../components/common/InfoTooltip'; // Import Tooltip
+import { HELP_ANCHORS } from '../../constants/helpAnchors'; // Import Registry
 import { 
   Download, Plus, Search, Filter, Wallet, Building2, TrendingUp, CreditCard,
   ArrowUpRight, ArrowDownRight, PieChart, ShieldCheck, Banknote
@@ -48,34 +50,20 @@ const WealthPortfolio = () => {
     maximumFractionDigits: 0
   }).format(val);
 
+  const SplitCurrency = ({ value, prefix = "$", mainClass = "", decimalClass = "text-slate-300 ml-0.5 font-bold" }) => {
+    const valStr = new Intl.NumberFormat('en-NZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(value));
+    const [integerPart, decimalPart] = valStr.split('.');
+    
+    return (
+      <span className={mainClass}>
+        {value < 0 ? '-' : ''}{prefix}{integerPart}
+        <span className={decimalClass}>.{decimalPart}</span>
+      </span>
+    );
+  };
+
   return (
     <div className="animate-fade-in space-y-8">
-      
-      {/* Page Context Toolbar (Search & Actions) */}
-      <div className="flex justify-end items-center gap-3">
-            <div className="relative hidden md:block">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input 
-                    type="text" 
-                    placeholder="Search assets..." 
-                    className="pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all w-64"
-                />
-            </div>
-
-            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-semibold hover:bg-slate-50 hover:text-indigo-600 transition-colors">
-                <Download size={16} />
-                <span className="hidden sm:inline">Export</span>
-            </button>
-
-            <button 
-                onClick={onAddAsset}
-                className="flex items-center gap-2 px-5 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-md shadow-indigo-200 hover:shadow-indigo-300 transform hover:-translate-y-0.5"
-            >
-                <Plus size={18} />
-                <span>Add Item</span>
-            </button>
-      </div>
-
       {/* Main Net Worth Card - Enhanced Design (Compact Version) */}
       <div className="bg-white rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden group hover:shadow-md transition-all duration-300">
         {/* Decorative Background */}
@@ -88,14 +76,22 @@ const WealthPortfolio = () => {
             {/* Header */}
             <div className="flex justify-between items-start mb-4">
                 <div>
-                    <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                        <ShieldCheck size={14} className="text-indigo-500" />
-                        Net Wealth Position
-                    </h2>
+                    <div className="flex items-center gap-2">
+                        <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                            <ShieldCheck size={14} className="text-indigo-500" />
+                            Net Wealth Position
+                        </h2>
+                        <InfoTooltip 
+                            content="The 'Scorecard' of your financial life. Assets (Owned) minus Liabilities (Owed)."
+                            anchor={HELP_ANCHORS.WEALTH.BALANCE_SHEET} 
+                        />
+                    </div>
                     <div className="flex items-baseline gap-2 mt-1">
-                        <span className="text-3xl font-bold text-slate-900 tracking-tight">
-                            {formatCurrency(netWorth)}
-                        </span>
+                        <SplitCurrency 
+                            value={netWorth} 
+                            mainClass="text-3xl font-bold text-slate-900 tracking-tight"
+                            decimalClass="text-xl text-slate-300 ml-0.5 font-bold"
+                        />
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-lg ${debtRatio < 30 ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
                             {debtRatio.toFixed(1)}% Debt Ratio
                         </span>
@@ -122,7 +118,11 @@ const WealthPortfolio = () => {
                     <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 block">Total Assets</span>
                         <div className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                            {formatCurrency(totalAssets)}
+                            <SplitCurrency 
+                                value={totalAssets} 
+                                mainClass="text-lg font-bold text-slate-800"
+                                decimalClass="text-sm text-slate-300 ml-0.5 font-bold"
+                            />
                             <ArrowUpRight size={16} className="text-emerald-500 opacity-0 group-hover/asset:opacity-100 transition-opacity transform group-hover/asset:translate-x-1" />
                         </div>
                     </div>
@@ -136,7 +136,12 @@ const WealthPortfolio = () => {
                     <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 block">Total Liabilities</span>
                         <div className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                            -{formatCurrency(totalLiabilities)}
+                            <SplitCurrency 
+                                value={totalLiabilities} 
+                                prefix="-$"
+                                mainClass="text-lg font-bold text-slate-800"
+                                decimalClass="text-sm text-slate-300 ml-0.5 font-bold"
+                            />
                             <ArrowDownRight size={16} className="text-rose-500 opacity-0 group-hover/debt:opacity-100 transition-opacity transform group-hover/debt:translate-x-1" />
                         </div>
                     </div>

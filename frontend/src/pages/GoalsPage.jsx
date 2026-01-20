@@ -10,6 +10,8 @@ import GoalFilters from '../components/goals/GoalFilters';
 import GoalDetailModal from '../components/goals/GoalDetailModal';
 import { useSimulatedData, useSimulation } from '../context/SimulationContext';
 import { Zap } from 'lucide-react';
+import InfoTooltip from '../components/common/InfoTooltip';
+import { HELP_ANCHORS } from '../constants/helpAnchors';
 
 // Mock data to match the design
 const MOCK_GOALS = [
@@ -225,7 +227,13 @@ const GoalsPage = () => {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pt-2">
           <div>
              <div className="flex items-center gap-3">
-                <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Goals</h1>
+                <div className="flex items-center gap-2">
+                    <h1 className="text-3xl font-bold text-slate-900 tracking-tight">My Goals</h1>
+                    <InfoTooltip 
+                        content="Goal-Based Investing (GBI) focuses on funding your specific life aspirations rather than beating the market."
+                        anchor={HELP_ANCHORS.GOALS.INTRO} 
+                    />
+                </div>
                 {timeOffset > 0 && (
                   <div className="bg-indigo-600 text-white text-[10px] font-black uppercase px-2 py-1 rounded flex items-center gap-1 shadow-sm animate-pulse">
                     <Zap size={12} fill="currentColor" /> Simulation Mode
@@ -241,10 +249,13 @@ const GoalsPage = () => {
           
           <Link 
             to="/goals/new/ai" 
-            className="btn-primary-rounded flex items-center gap-2 shadow-lg shadow-brand-500/20 hover:shadow-brand-500/30 transition-all px-5 py-2.5 text-sm"
+            className="h-14 pl-6 pr-8 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-100 flex items-center gap-4 hover:bg-indigo-700 hover:shadow-indigo-200 transition-all active:scale-95 group border border-indigo-500/30"
           >
-            <Plus size={18} strokeWidth={2.5} />
-            Add new goal
+            <Plus size={22} strokeWidth={3} className="text-white" />
+            <div className="flex flex-col items-start text-left">
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-200/80 leading-none mb-1.5">AI Engine</span>
+                <span className="text-sm font-bold tracking-wide leading-none text-white">Create New Goal</span>
+            </div>
           </Link>
         </div>
 

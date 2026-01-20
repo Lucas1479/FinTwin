@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout';
 import { Calculator, PlayCircle, Settings2, RotateCw } from 'lucide-react';
-import ScenarioLobby from './Playground/ScenarioLobby';
-import ScenarioWorkspace from './Playground/ScenarioWorkspace';
+import InfoTooltip from '../components/common/InfoTooltip'; // Import Tooltip
+import { HELP_ANCHORS } from '../constants/helpAnchors'; // Import Registry
+import PlaygroundLobby from './Playground/PlaygroundLobby';
+import SimulationWorkspace from './Playground/SimulationWorkspace';
 import PlaygroundTools, { CalculatorModal } from './Playground/PlaygroundTools';
 import { getGoals } from '../services/goalService';
 import {
@@ -18,14 +20,14 @@ import {
 
 const PlaygroundPage = () => {
   const [activeTab, setActiveTab] = useState('simulations'); // 'simulations' | 'tools'
-  const [selectedScenarioId, setSelectedScenarioId] = useState(null);
+  const [selectedSimulationId, setSelectedSimulationId] = useState(null);
   const [activeTool, setActiveTool] = useState(null);
   const [goals, setGoals] = useState([]);
   const [goalsLoading, setGoalsLoading] = useState(false);
   
-  const [profiles, setProfiles] = useState([]); // This might become deprecated if profiles are embedded in simulations
-  const [scenarios, setScenarios] = useState([]);
-  const [scenariosLoading, setScenariosLoading] = useState(true);
+  const [backgrounds, setBackgrounds] = useState([]); // This might become deprecated if backgrounds are embedded in simulations
+  const [simulations, setSimulations] = useState([]);
+  const [simulationsLoading, setSimulationsLoading] = useState(true);
 
   // Normalize goal payloads
   const normalizeGoal = (goal) => {
@@ -92,7 +94,7 @@ const PlaygroundPage = () => {
 
   const fetchInitialData = async () => {
     setGoalsLoading(true);
-    setScenariosLoading(true);
+    setSimulationsLoading(true);
     try {
       const [goalsData, backgroundsData, simsData] = await Promise.all([
         getGoals(),
@@ -108,19 +110,19 @@ const PlaygroundPage = () => {
       // Handle Backgrounds
       const rawBackgrounds = Array.isArray(backgroundsData) ? backgroundsData : [];
       const normalizedBackgrounds = rawBackgrounds.map(normalizeBackground).filter(Boolean);
-      setProfiles(normalizedBackgrounds);
+      setBackgrounds(normalizedBackgrounds);
 
       // Handle Simulations
-      const normalizedScenarios = Array.isArray(simsData)
+      const normalizedSimulations = Array.isArray(simsData)
         ? simsData.map(normalizeSimulation).filter(Boolean)
         : [];
-      setScenarios(normalizedScenarios);
+      setSimulations(normalizedSimulations);
 
     } catch (err) {
       console.error('[Playground] Failed to load initial data', err);
     } finally {
       setGoalsLoading(false);
-      setScenariosLoading(false);
+      setSimulationsLoading(false);
     }
   };
 
@@ -137,7 +139,7 @@ const PlaygroundPage = () => {
     const created = await createBackground(cleaned);
     const normalized = normalizeBackground(created);
     if (normalized) {
-      setProfiles((prev) => [normalized, ...prev]);
+      setBackgrounds((prev) => [normalized, ...prev]);
     }
     return normalized;
   };
@@ -157,46 +159,46 @@ const PlaygroundPage = () => {
     const updated = await updateBackground(id, cleaned);
     const normalized = normalizeBackground(updated);
     if (normalized) {
-      setProfiles((prev) => prev.map((p) => (p.id === normalized.id ? normalized : p)));
+      setBackgrounds((prev) => prev.map((p) => (p.id === normalized.id ? normalized : p)));
     }
     return normalized;
   };
 
   const handleDeleteBackground = async (id) => {
     await deleteBackground(id);
-    setProfiles((prev) => prev.filter((p) => p.id !== id));
+    setBackgrounds((prev) => prev.filter((p) => p.id !== id));
   };
 
-  const handleCreateScenario = async (newScenario) => {
+  const handleCreateSimulation = async (newSimulation) => {
     try {
       // Backend expects: name, profile, goalId, parameters, results, backgroundId
-      const background = profiles.find((p) => p.id === newScenario.profileId) || newScenario.profile;
-      const backgroundId = newScenario.profileId || background?.id;
+      const background = backgrounds.find((p) => p.id === newSimulation.profileId) || newSimulation.profile;
+      const backgroundId = newSimulation.profileId || background?.id;
 
       const parameters = {
-        monthlyContribution: newScenario.monthlyContribution ?? 0,
-        retirementAge: newScenario.retirementAge ?? background?.identity?.retirementAge ?? 65,
-        inflationRate: newScenario.inflationRate ?? 3,
-        returnRate: newScenario.returnRate ?? 7,
-        lumpSum: newScenario.lumpSum ?? 0,
-        isInflationAdjusted: newScenario.isInflationAdjusted ?? true,
+        monthlyContribution: newSimulation.monthlyContribution ?? 0,
+        retirementAge: newSimulation.retirementAge ?? background?.identity?.retirementAge ?? 65,
+        inflationRate: newSimulation.inflationRate ?? 3,
+        returnRate: newSimulation.returnRate ?? 7,
+        lumpSum: newSimulation.lumpSum ?? 0,
+        isInflationAdjusted: newSimulation.isInflationAdjusted ?? true,
       };
 
       const results = {};
-      if (typeof newScenario.successProbability !== 'undefined') {
-        results.successProbability = newScenario.successProbability;
+      if (typeof newSimulation.successProbability !== 'undefined') {
+        results.successProbability = newSimulation.successProbability;
       }
-      if (typeof newScenario.finalAmount !== 'undefined') {
-        results.finalAmount = newScenario.finalAmount;
+      if (typeof newSimulation.finalAmount !== 'undefined') {
+        results.finalAmount = newSimulation.finalAmount;
       }
-      if (newScenario.status) {
-        results.status = newScenario.status;
+      if (newSimulation.status) {
+        results.status = newSimulation.status;
       }
 
       const payload = {
-        name: newScenario.name,
+        name: newSimulation.name,
         profile: background || {},
-        goalId: newScenario.goalId,
+        goalId: newSimulation.goalId,
         backgroundId,
         parameters,
         results,
@@ -206,15 +208,15 @@ const PlaygroundPage = () => {
 
       const normalized = normalizeSimulation(created);
 
-      setScenarios(prev => normalized ? [normalized, ...prev] : prev);
+      setSimulations(prev => normalized ? [normalized, ...prev] : prev);
       return normalized;
     } catch (err) {
-      console.error('Failed to create scenario', err);
+      console.error('Failed to create simulation', err);
       throw err;
     }
   };
 
-  const handleUpdateScenario = async (id, updates) => {
+  const handleUpdateSimulation = async (id, updates) => {
     try {
         const { name, goalId, profile, backgroundId, profileId, ...rest } = updates;
 
@@ -250,28 +252,28 @@ const PlaygroundPage = () => {
         const updated = await updateSimulation(id, payload);
         const normalized = normalizeSimulation(updated);
 
-        setScenarios(prev => prev.map(s => (s.id === id && normalized ? normalized : s)));
+        setSimulations(prev => prev.map(s => (s.id === id && normalized ? normalized : s)));
     } catch (err) {
-        console.error('Failed to update scenario', err);
+        console.error('Failed to update simulation', err);
     }
   };
 
-  const handleDeleteScenario = async (id) => {
+  const handleDeleteSimulation = async (id) => {
       try {
           await deleteSimulation(id);
-          setScenarios(prev => prev.filter(s => s.id !== id));
-          if (selectedScenarioId === id) setSelectedScenarioId(null);
+          setSimulations(prev => prev.filter(s => s.id !== id));
+          if (selectedSimulationId === id) setSelectedSimulationId(null);
       } catch (err) {
-          console.error('Failed to delete scenario', err);
+          console.error('Failed to delete simulation', err);
       }
   };
 
-  const handleEditScenario = (id) => {
-    setSelectedScenarioId(id);
+  const handleEditSimulation = (id) => {
+    setSelectedSimulationId(id);
   };
 
   const handleBackToLobby = () => {
-    setSelectedScenarioId(null);
+    setSelectedSimulationId(null);
     // Refresh list to ensure consistency? Not strictly needed if optimistic updates work well
     fetchInitialData(); 
   };
@@ -284,17 +286,23 @@ const PlaygroundPage = () => {
           {/* Header Section - Refined Title */}
           <div className="mb-8 flex justify-between items-start">
             <div>
-                <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Playground</h1>
+                <div className="flex items-center gap-2">
+                    <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Playground</h1>
+                    <InfoTooltip 
+                        content="A sandbox environment to test 'What-If' scenarios without affecting your live financial plan."
+                        anchor={HELP_ANCHORS.PLAYGROUND.SIMULATIONS} 
+                    />
+                </div>
                 <p className="text-slate-500 text-sm mt-1">Design backgrounds and test life scenarios in a risk-free environment.</p>
             </div>
             {/* Refresh Button */}
             <button 
                 onClick={fetchInitialData}
-                disabled={scenariosLoading}
+                disabled={simulationsLoading}
                 className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
                 title="Refresh Simulations"
             >
-                <RotateCw size={20} className={scenariosLoading ? 'animate-spin' : ''} />
+                <RotateCw size={20} className={simulationsLoading ? 'animate-spin' : ''} />
             </button>
           </div>
 
@@ -319,29 +327,29 @@ const PlaygroundPage = () => {
           {/* Content Area */}
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             {activeTab === 'simulations' ? (
-              selectedScenarioId ? (
-                <ScenarioWorkspace 
-                  scenarioId={selectedScenarioId} 
-                  scenario={scenarios.find(s => s.id === selectedScenarioId)}
+              selectedSimulationId ? (
+                <SimulationWorkspace 
+                  simulationId={selectedSimulationId} 
+                  simulation={simulations.find(s => s.id === selectedSimulationId)}
                   onBack={handleBackToLobby} 
-                  onSave={handleUpdateScenario}
-                  profiles={profiles} // Pass empty or mock if now embedded
+                  onSave={handleUpdateSimulation}
+                  backgrounds={backgrounds} // Pass empty or mock if now embedded
                   goals={goals}
                   goalsLoading={goalsLoading}
                 />
               ) : (
-                <ScenarioLobby 
-                  onEditScenario={handleEditScenario} 
-                  onCreateScenario={handleCreateScenario}
-                  onDeleteScenario={handleDeleteScenario}
-                  onCreateProfile={handleCreateBackground}
-                  onUpdateProfile={handleUpdateBackground}
-                  onDeleteProfile={handleDeleteBackground}
-                  profiles={profiles}
-                  scenarios={scenarios}
+                <PlaygroundLobby 
+                  onEditSimulation={handleEditSimulation} 
+                  onCreateSimulation={handleCreateSimulation}
+                  onDeleteSimulation={handleDeleteSimulation}
+                  onCreateBackground={handleCreateBackground}
+                  onUpdateBackground={handleUpdateBackground}
+                  onDeleteBackground={handleDeleteBackground}
+                  backgrounds={backgrounds}
+                  simulations={simulations}
                   goals={goals}
                   goalsLoading={goalsLoading}
-                  loading={scenariosLoading}
+                  loading={simulationsLoading}
                 />
               )
             ) : (
