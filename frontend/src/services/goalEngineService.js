@@ -72,7 +72,12 @@ const goalEngineService = {
         })
       });
 
-      if (!response.ok) throw new Error('Network response was not ok');
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        const err = new Error(`Network response was not ok (${response.status})`);
+        err.details = errorText;
+        throw err;
+      }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();

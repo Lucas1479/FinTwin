@@ -12,6 +12,7 @@ import Goal from '../models/goalModel.js';
 import Product from '../models/productModel.js';
 import GoalDecisionLog from '../models/goalDecisionLogModel.js';
 import productTools from '../services/productTools.js';
+import { optimizeGoalAllocations as runGoalOptimization } from '../services/goalOptimizationService.js';
 
 // Build a stage-aware Vectara query to enrich LLM with grounded knowledge
 const buildRagQueryForStage = (stage, goalContext = {}, userInput = {}) => {
@@ -95,6 +96,29 @@ const resolveTargetExposure = (goalContext = {}) => {
         growth: Number(exposure.growth) || 60,
         defensive: Number(exposure.defensive) || 30,
         liquidity: Number(exposure.liquidity) || 10
+    };
+};
+
+const normalizeStrategyAllocation = (decision = {}) => {
+    const recommendation = decision?.ai_decision?.strategy_recommendation;
+    if (!recommendation?.economic_exposure) return decision;
+
+    const exposure = recommendation.economic_exposure || {};
+    const normalized = {
+        stocks: Number(exposure.growth) || 0,
+        bonds: Number(exposure.defensive) || 0,
+        cash: Number(exposure.liquidity) || 0
+    };
+
+    return {
+        ...decision,
+        ai_decision: {
+            ...decision.ai_decision,
+            strategy_recommendation: {
+                ...recommendation,
+                allocation: normalized
+            }
+        }
     };
 };
 
@@ -288,9 +312,13 @@ const handleAskMode = async ({
         try {
             const jsonStr = fullText.match(/\{[\s\S]*\}/)?.[0] || fullText;
             finalJson = JSON.parse(jsonStr);
-            if (finalJson?.ai_decision) {
-                finalJson.ai_decision = attachRagMetadata(finalJson.ai_decision, ragContext);
-            }
+              if (finalJson?.ai_decision) {
+                  finalJson.ai_decision = attachRagMetadata(finalJson.ai_decision, ragContext);
+              }
+
+              if (stage === GOAL_ENGINE_STAGES.STRATEGY) {
+                  finalJson = normalizeStrategyAllocation(finalJson);
+              }
         } catch (e) {
             console.warn('[Goal Engine] Ask mode JSON parse failed', e);
         }
@@ -660,89 +688,127 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
       }
   }
 
-  // === STRATEGY STAGE: Full enrichment ===
+  // === STRATEGY STAGE: Trust frontend + Backend enrichment ===
   if (stage === GOAL_ENGINE_STAGES.STRATEGY) {
       const userId = req.user._id;
 
-      // Helper: convert amount to annual based on frequency
-      // IMPORTANT:
-      // - CashFlowModel uses: 'Weekly' | 'Fortnightly' | 'Monthly' | 'Yearly' | 'One-Off'
-      // - PlanModel uses: 'weekly' | 'fortnightly' | 'monthly' | 'lump_sum'
-      // For multi-goal budgeting, we must support both (case-insensitive + synonyms).
-      const normalizeFrequency = (frequency) => {
-          if (!frequency) return null;
-          const raw = String(frequency).trim();
-          if (!raw) return null;
+      // === 前端主导：优先使用前端传递的 financials ===
+      const frontendFinancials = goalContext?.simulation_data?.financials;
+      const hasFrontendFinancials = 
+          frontendFinancials?.calculation_source === 'frontend_real_time' &&
+          frontendFinancials?.monthly_surplus_total !== undefined &&
+          frontendFinancials?.monthly_surplus_total >= 0;  // 允许合法的 0
 
-          const key = raw
-              .toLowerCase()
-              .replace(/\s+/g, '_')
-              .replace(/-/g, '_');
+      let financials;
+      let liquidCapital;
 
-          if (key === 'weekly') return 'weekly';
-          if (key === 'fortnightly') return 'fortnightly';
-          if (key === 'monthly') return 'monthly';
-          if (key === 'yearly' || key === 'annually' || key === 'annual') return 'yearly';
+      if (hasFrontendFinancials) {
+          // 信任前端计算
+          console.log('[Strategy] ✅ Using frontend-calculated financials:', frontendFinancials);
+          financials = frontendFinancials;
+          
+          // 从 DB 获取 liquid_capital（前端可能没有这个数据）
+          const assets = await FinancialAsset.find({ user_id: userId }).lean();
+          liquidCapital = assets.filter(a => a.record_type === 'Asset' && a.is_liquid)
+              .reduce((sum, a) => sum + (a.value || 0), 0);
+          
+          financials.liquid_capital = liquidCapital;
+      } else {
+          // Fallback：后端重新计算（兼容性保障）
+          console.log('[Strategy] ⚠️ Frontend financials missing/invalid, calculating from DB');
+          
+          const normalizeFrequency = (frequency) => {
+              if (!frequency) return null;
+              const raw = String(frequency).trim();
+              if (!raw) return null;
 
-          // Treat one-off / lump sum as non-recurring for surplus budgeting
-          if (key === 'one_off' || key === 'oneoff') return 'one_off';
-          if (key === 'lump_sum' || key === 'lumpsum') return 'lump_sum';
+              const key = raw
+                  .toLowerCase()
+                  .replace(/\s+/g, '_')
+                  .replace(/-/g, '_');
 
-          return null;
-      };
+              if (key === 'weekly') return 'weekly';
+              if (key === 'fortnightly') return 'fortnightly';
+              if (key === 'monthly') return 'monthly';
+              if (key === 'yearly' || key === 'annually' || key === 'annual') return 'yearly';
+              if (key === 'one_off' || key === 'oneoff') return 'one_off';
+              if (key === 'lump_sum' || key === 'lumpsum') return 'lump_sum';
 
-      const TO_ANNUAL = {
-          weekly: 52,
-          fortnightly: 26,
-          monthly: 12,
-          yearly: 1,
-          one_off: 0,
-          lump_sum: 0
-      };
+              return null;
+          };
 
-      const toAnnual = (amount, frequency) => {
-          const amt = Number(amount) || 0;
-          if (!amt) return 0;
-          const f = normalizeFrequency(frequency);
-          const multiplier = f ? (TO_ANNUAL[f] ?? 0) : 0;
-          return amt * multiplier;
-      };
+          const TO_ANNUAL = {
+              weekly: 52,
+              fortnightly: 26,
+              monthly: 12,
+              yearly: 1,
+              one_off: 0,
+              lump_sum: 0
+          };
 
-      const [assets, cashFlows, userDoc, plans, goals] = await Promise.all([
-          FinancialAsset.find({ user_id: userId }).lean(),
-          CashFlow.find({ user_id: userId }).lean(),
+          const toAnnual = (amount, frequency) => {
+              const amt = Number(amount) || 0;
+              if (!amt) return 0;
+              const f = normalizeFrequency(frequency);
+              const multiplier = f ? (TO_ANNUAL[f] ?? 0) : 0;
+              return amt * multiplier;
+          };
+
+          const [assets, cashFlows] = await Promise.all([
+              FinancialAsset.find({ user_id: userId }).lean(),
+              CashFlow.find({ user_id: userId }).lean()
+          ]);
+
+          liquidCapital = assets.filter(a => a.record_type === 'Asset' && a.is_liquid)
+              .reduce((sum, a) => sum + (a.value || 0), 0);
+
+          const incomes = cashFlows.filter(f => f.type === 'Income');
+          const outflows = cashFlows.filter(f => f.type === 'Expense' || f.type === 'Subscription' || f.type === 'Investment');
+          
+          const annualIncome = incomes.reduce((sum, f) => sum + toAnnual(f.amount, f.frequency), 0);
+          const annualOutflow = outflows.reduce((sum, f) => sum + toAnnual(f.amount, f.frequency), 0);
+          
+          const monthlyIncome = annualIncome / 12;
+          const monthlyOutflow = annualOutflow / 12;
+          const monthlySurplus = Math.max(0, monthlyIncome - monthlyOutflow);
+          const maxAllocatableSurplus = Math.max(0, monthlySurplus * 0.6);
+
+          financials = {
+              monthly_income: Math.round(monthlyIncome),
+              monthly_outflow: Math.round(monthlyOutflow),
+              monthly_surplus_total: Math.round(monthlySurplus),
+              monthly_surplus_allocatable: Math.round(maxAllocatableSurplus),
+              reserve_for_other_goals_pct: 40,
+              liquid_capital: liquidCapital,
+              calculation_source: 'backend_fallback'
+          };
+      }
+
+      // === 后端增强：获取前端无法访问的数据 ===
+      const [userDoc, plans, goals] = await Promise.all([
           User.findById(userId).lean(),
           Plan.find({ user_id: userId }).lean(),
           Goal.find({ user_id: userId }).lean()
       ]);
 
-      const totalAssets = assets.filter(a => a.record_type === 'Asset').reduce((sum, a) => sum + (a.value || 0), 0);
-      const totalLiabilities = assets.filter(a => a.record_type === 'Liability').reduce((sum, a) => sum + (a.value || 0), 0);
-      const liquidCapital = assets.filter(a => a.record_type === 'Asset' && a.is_liquid).reduce((sum, a) => sum + (a.value || 0), 0);
-
-      // Cashflow summary (monthly)
-      const incomes = cashFlows.filter(f => f.type === 'Income');
-      // Include all outflows: Expenses, Subscriptions, and Investment contributions
-      const outflows = cashFlows.filter(f => f.type === 'Expense' || f.type === 'Subscription' || f.type === 'Investment');
-      
-      const annualIncome = incomes.reduce((sum, f) => sum + toAnnual(f.amount, f.frequency), 0);
-      const annualOutflow = outflows.reduce((sum, f) => sum + toAnnual(f.amount, f.frequency), 0);
-      
-      const monthlyIncome = annualIncome / 12;
-      const monthlyOutflow = annualOutflow / 12;
-      const monthlySurplus = Math.max(0, monthlyIncome - monthlyOutflow);
-
-      // Avoid single goal consuming all surplus; reserve 40% of the REMAINING surplus by default.
-      const maxAllocatableSurplus = Math.max(0, monthlySurplus * 0.6);
-
-      // Derive age & risk
+      // === 后端职责：补充前端无法获取的 User Profile 数据 ===
       const age = (() => {
-          const dob = userDoc?.household?.dob || userDoc?.dob; // Support migration
+          const dob = userDoc?.household?.dob || userDoc?.dob;
           if (!dob) return 30;
           const diff = Date.now() - new Date(dob).getTime();
           return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24 * 365.25)));
       })();
       const overallRisk = (userDoc?.riskProfile?.level || userDoc?.riskTolerance || 'Balanced').toLowerCase();
+
+      // 计算 totalAssets/totalLiabilities（用于 net_worth）
+      let totalAssets = 0;
+      let totalLiabilities = 0;
+      if (!hasFrontendFinancials) {
+          // 只在 fallback 模式下查询（前端模式已经有了 liquid_capital）
+          const assets = await FinancialAsset.find({ user_id: userId }).lean();
+          totalAssets = assets.filter(a => a.record_type === 'Asset').reduce((sum, a) => sum + (a.value || 0), 0);
+          totalLiabilities = assets.filter(a => a.record_type === 'Liability').reduce((sum, a) => sum + (a.value || 0), 0);
+      }
 
       // Standardized risk profile for LLM
       const riskProfile = {
@@ -752,30 +818,21 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
           notes: userDoc?.riskProfile?.notes || 'Derived from user profile; tighten if goal priority is high.'
       };
 
-      // Existing assets snapshot for context
-      const existingAssets = assets
-          .filter(a => a.record_type === 'Asset')
-          .map(a => ({
-              name: a.name,
-              category: a.category,
-              value: a.value,
-              is_liquid: !!a.is_liquid,
-              wrapper: a.category?.toLowerCase().includes('kiwisaver') ? 'kiwisaver' :
-                        a.category?.toLowerCase().includes('fund') ? 'managed_fund' :
-                        a.category?.toLowerCase().includes('cash') ? 'cash' : 'other'
-          }));
+      // Existing assets snapshot for context（简化版，只在需要时查询）
+      const existingAssets = [];
 
-      // Contribution strategy hint
+      // Contribution strategy hint（使用前端计算的 financials）
+      const allocatable = financials.monthly_surplus_allocatable || financials.available_to_allocate || 0;
       const contributionStrategy = {
-          mode: liquidCapital > 0 && maxAllocatableSurplus > 0 ? 'hybrid'
-               : maxAllocatableSurplus > 0 ? 'recurring'
+          mode: liquidCapital > 0 && allocatable > 0 ? 'hybrid'
+               : allocatable > 0 ? 'recurring'
                : liquidCapital > 0 ? 'lump_sum'
                : 'recurring',
-          monthly_amount_hint: Math.round(maxAllocatableSurplus),
-          lump_sum_hint: Math.round(liquidCapital * 0.2), // leave buffer; avoid draining liquidity
+          monthly_amount_hint: Math.round(allocatable),
+          lump_sum_hint: Math.round(liquidCapital * 0.2),
           income_linked: true,
-          reserve_for_other_goals_pct: 40,
-          rationale: 'Limit this goal to ~60% of monthly surplus to avoid starving other goals.'
+          reserve_for_other_goals_pct: financials.reserve_for_other_goals_pct || 40,
+          rationale: 'Calculated based on current surplus and other goal commitments.'
       };
 
       // Implementation notes (product-agnostic)
@@ -793,53 +850,29 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
           liquidity: 5
       };
 
-      // Build other_goals from existing Plans (monthly normalized), excluding current goal if id known
-      const toMonthly = (amount, freq) => {
-          const annual = toAnnual(amount, freq);
-          return annual / 12;
-      };
-      const currentGoalId = goalContext?._id || goalContext?.goal_id;
-      const otherGoals = plans.map(p => {
-          const goal = goals.find(g => g._id.toString() === p.goal_id.toString());
-          const name = goal?.goal_name || 'Goal';
-          const priority = goal?.priority || 'want';
-          const monthly = p.contribution?.amount ? toMonthly(p.contribution.amount, p.contribution.frequency) : 0;
-          return {
-              goal_id: p.goal_id,
-              name,
-              priority,
-              monthly_allocation: Math.round(monthly)
-          };
-      }).filter(g => g.monthly_allocation > 0 && (!currentGoalId || g.goal_id.toString() !== currentGoalId.toString()));
-
-      const reservedOtherGoals = otherGoals.reduce((sum, g) => sum + (g.monthly_allocation || 0), 0);
-      const allocatableSurplus = Math.max(0, monthlySurplus - reservedOtherGoals);
+      // 使用前端传递的 other_goals（前端主导）
+      const otherGoals = goalContext?.simulation_data?.other_goals || [];
+      const reservedOtherGoals = financials.reserved_other_goals || 0;
 
       enrichedContext.simulation_data = {
           ...(goalContext?.simulation_data || {}),
           user_profile: {
               age,
-              income_pa: Math.round(annualIncome),
-              monthly_surplus: Math.round(monthlySurplus),
+              income_pa: Math.round(financials.monthly_income * 12),
+              monthly_surplus: financials.monthly_surplus_total,
               risk_profile: riskProfile,
               existing_assets: existingAssets,
               vision_statement: userDoc?.household?.statement || ''
           },
           financials: {
-              net_worth: totalAssets - totalLiabilities,
-              liquid_capital: liquidCapital,
-              monthly_income: Math.round(monthlyIncome),
-              monthly_outflow: Math.round(monthlyOutflow),
-              monthly_surplus_total: Math.round(monthlySurplus),
-              monthly_surplus_allocatable: Math.round(allocatableSurplus),
-              reserve_for_other_goals_pct: 40,
-              reserved_other_goals: reservedOtherGoals
+              ...financials,
+              net_worth: totalAssets > 0 ? totalAssets - totalLiabilities : undefined,
+              liquid_capital: liquidCapital
           },
           target_exposure: targetExposure,
           contribution_strategy_hint: contributionStrategy,
-          other_goals: (goalContext?.simulation_data?.other_goals?.length ? goalContext.simulation_data.other_goals : otherGoals),
+          other_goals: otherGoals,
           implementation_notes: implementationNotes,
-          // Keep a minimal product list as hint; real selection happens in Stage 3.
           market_products: [
               { type: 'KiwiSaver', category: 'Growth', avg_return: 0.08, liquidity: 'locked', description: 'Long-term retirement savings' },
               { type: 'Managed Fund', category: 'Global Index', avg_return: 0.07, liquidity: 'high', description: 'Liquid diversified fund' },
@@ -1203,6 +1236,9 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
       } else {
           // Legacy non-streaming path
           result = await llmService.generate(prompt, context);
+          if (stage === GOAL_ENGINE_STAGES.STRATEGY && result?.json) {
+              result.json = normalizeStrategyAllocation(result.json);
+          }
           console.log(`[Goal Engine] Non-streaming Response JSON:`);
           console.log(JSON.stringify(result.json, null, 2));
       }
@@ -1237,6 +1273,9 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
 
   if (result?.json?.ai_decision) {
       result.json.ai_decision = attachRagMetadata(result.json.ai_decision, ragContext);
+  }
+  if (stage === GOAL_ENGINE_STAGES.STRATEGY && result?.json) {
+      result.json = normalizeStrategyAllocation(result.json);
   }
 
   // --- CLEANUP: Ensure 'text' is user-friendly, not raw JSON ---
@@ -1293,4 +1332,273 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
     // If we reach here and result is still undefined, something went wrong but wasn't caught
     res.status(500).json({ message: 'Failed to generate goal decision' });
   }
+});
+
+// @desc    Optimize monthly allocations across goals (multi-goal resource management)
+// @route   POST /api/goals/engine/optimize
+// @access  Private
+export const optimizeGoalAllocations = asyncHandler(async (req, res) => {
+  const { goalContext = {}, options = {} } = req.body || {};
+  const userId = req.user?._id;
+
+  const [goals, cashFlows, plans, assets] = await Promise.all([
+    Goal.find({ user_id: userId, status: { $ne: 'canceled' } }).lean(),
+    CashFlow.find({ user_id: userId }).lean(),
+    Plan.find({ user_id: userId, status: { $ne: 'completed' } }).lean(),
+    FinancialAsset.find({ user_id: userId }).lean()
+  ]);
+
+  const existingFinancials = goalContext?.simulation_data?.financials || {};
+  const algorithm = options.algorithm || 'heuristic';
+  const snapshotGoals = Array.isArray(options.goalsSnapshot) ? options.goalsSnapshot : null;
+  const snapshotCashFlows = Array.isArray(options.cashFlowsSnapshot) ? options.cashFlowsSnapshot : null;
+  const snapshotFinancials = options.financialsSnapshot && typeof options.financialsSnapshot === 'object'
+    ? options.financialsSnapshot
+    : null;
+  const normalizeFinancialsSnapshot = (snapshot) => {
+    if (!snapshot) return null;
+    const toNum = (val) => (Number.isFinite(Number(val)) ? Number(val) : undefined);
+    const monthly_income = toNum(snapshot.monthly_income);
+    const monthly_outflow = toNum(snapshot.monthly_outflow);
+    const reserve_for_other_goals_pct = toNum(snapshot.reserve_for_other_goals_pct);
+    const reserved_other_goals = toNum(snapshot.reserved_other_goals);
+    const available_to_allocate = toNum(snapshot.available_to_allocate);
+    const monthly_surplus_total_raw = toNum(snapshot.monthly_surplus_total);
+    let monthly_surplus_total = monthly_surplus_total_raw;
+    if (monthly_surplus_total === undefined && monthly_income !== undefined && monthly_outflow !== undefined) {
+      monthly_surplus_total = Math.max(0, monthly_income - monthly_outflow);
+    }
+    let monthly_surplus_allocatable = toNum(snapshot.monthly_surplus_allocatable);
+    if (monthly_surplus_allocatable === undefined) {
+      if (available_to_allocate !== undefined) {
+        monthly_surplus_allocatable = available_to_allocate;
+      } else if (monthly_surplus_total !== undefined && reserve_for_other_goals_pct !== undefined) {
+        monthly_surplus_allocatable = Math.max(0, Math.round(monthly_surplus_total * (1 - reserve_for_other_goals_pct / 100)));
+      }
+    }
+    return {
+      ...snapshot,
+      monthly_income,
+      monthly_outflow,
+      monthly_surplus_total,
+      monthly_surplus_allocatable,
+      reserve_for_other_goals_pct,
+      reserved_other_goals,
+      available_to_allocate
+    };
+  };
+  const normalizedSnapshotFinancials = normalizeFinancialsSnapshot(snapshotFinancials);
+  const baseGoals = snapshotGoals && snapshotGoals.length > 0 ? snapshotGoals : goals;
+  const baseCashFlows = snapshotCashFlows && snapshotCashFlows.length > 0 ? snapshotCashFlows : cashFlows;
+  const mergedFinancials = normalizedSnapshotFinancials
+    ? { ...existingFinancials, ...normalizedSnapshotFinancials }
+    : existingFinancials;
+
+  const currentGoalId = goalContext?._id || goalContext?.goal_id;
+  let mergedGoals = baseGoals;
+
+  if (currentGoalId) {
+    mergedGoals = baseGoals.map(g => (
+      g._id?.toString() === currentGoalId.toString()
+        ? { ...g, ...goalContext }
+        : g
+    ));
+  } else if (
+    goalContext?.goal_name &&
+    (goalContext?.target_amount || goalContext?.goal_details?.property_price_estimate)
+  ) {
+    // Extract current_amount from goal_details if not at top level
+    const currentAmountValue = goalContext.current_amount 
+      ?? goalContext.goal_details?.current_amount 
+      ?? 0;
+    
+    mergedGoals = [
+      ...baseGoals,
+      {
+        _id: 'current_goal',
+        goal_name: goalContext.goal_name,
+        category: goalContext.category,
+        priority: goalContext.priority || 'want',
+        target_amount: goalContext.target_amount,
+        current_amount: currentAmountValue,
+        due_date: goalContext.due_date,
+        goal_details: goalContext.goal_details || {},
+        status: 'in_progress'
+      }
+    ];
+  }
+
+  // Extract current monthly allocations from CashFlows (type=Investment) and Plans
+  const toMonthlyFromFreq = (amount, freq) => {
+    const f = (freq || 'monthly').toLowerCase();
+    if (f.includes('week') && !f.includes('fort')) return amount * 52 / 12;
+    if (f.includes('fort')) return amount * 26 / 12;
+    if (f.includes('year')) return amount / 12;
+    if (f.includes('lump')) return 0;
+    return amount; // default monthly
+  };
+
+  // Get allocations from CashFlows (type=Investment matched by goal_name)
+  const allocationByGoalName = {};
+  const allocationByGoalId = {};
+  
+  baseCashFlows.filter(cf => cf.type === 'Investment').forEach(cf => {
+    const amt = toMonthlyFromFreq(cf.amount || 0, cf.frequency);
+    
+    // Match by goal_id if available
+    if (cf.goal_id) {
+      const gid = cf.goal_id.toString();
+      allocationByGoalId[gid] = (allocationByGoalId[gid] || 0) + amt;
+    }
+    
+    // Also match by goal_name in cf.name (format: "Investment (Goal Name)")
+    if (cf.name) {
+      const match = cf.name.match(/\(([^)]+)\)/);
+      if (match) {
+        const goalName = match[1].trim();
+        allocationByGoalName[goalName] = (allocationByGoalName[goalName] || 0) + amt;
+      }
+    }
+  });
+
+  // Merge with Plans data (Plans is fallback if CashFlows don't have it)
+  const planByGoal = plans.reduce((acc, p) => {
+    if (!p.goal_id) return acc;
+    const gid = p.goal_id.toString();
+    const planMonthly = toMonthlyFromFreq(p.contribution?.amount || 0, p.contribution?.frequency);
+    // Use CashFlows if available, otherwise use Plan
+    acc[gid] = {
+      monthly_contribution: Math.round(allocationByGoalId[gid] || planMonthly || 0)
+    };
+    return acc;
+  }, {});
+
+  const currentGoalTarget = goalContext?.ai_decision?.strategy_recommendation?.contribution_strategy?.monthly_amount
+    ?? goalContext?.ai_decision?.strategy_recommendation?.contribution_strategy?.monthly_amount_hint;
+
+  const liquidCapital = assets
+    .filter(a => a.record_type === 'Asset' && a.is_liquid)
+    .reduce((sum, a) => sum + (a.value || 0), 0);
+
+  const calcMortgageMonthly = (goal) => {
+    if (goal.category !== 'home') return 0;
+    const details = goal.goal_details || {};
+    const price = Number(details.property_price_estimate) || 0;
+    const depositPct = (Number(details.deposit_percentage) || 20) / 100;
+    const ratePct = (Number(details.mortgage_rate_pct) || 6.5) / 100;
+    const loanYears = Number(details.loan_term_years) || 0;
+    if (!price || !loanYears) return 0;
+    const loanPrincipal = Math.max(0, price * (1 - depositPct));
+    const r = ratePct / 12;
+    const n = loanYears * 12;
+    if (r <= 0) return Math.round(loanPrincipal / n);
+    const payment = loanPrincipal * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+    return Math.round(payment);
+  };
+
+  const buildEffectiveTargetAmount = (goal) => {
+    if (goal.category === 'home') {
+      const details = goal.goal_details || {};
+      const price = Number(details.property_price_estimate) || 0;
+      const depositPct = (Number(details.deposit_percentage) || 20) / 100;
+      if (price > 0) return Math.round(price * depositPct);
+    }
+    return Number(goal.target_amount || goal.goal_details?.target_amount) || 0;
+  };
+
+  const goalsWithTargets = mergedGoals.map(g => {
+    const goalId = g._id?.toString?.() || g.goal_id?.toString?.();
+    const goalName = g.goal_name;
+    
+    // Get current monthly allocation from planByGoal (which now includes CashFlows)
+    // Try matching by goal_id first, then by goal_name
+    let currentMonthly = goalId ? planByGoal[goalId]?.monthly_contribution : undefined;
+    if (!currentMonthly && goalName) {
+      currentMonthly = Math.round(allocationByGoalName[goalName] || 0);
+    }
+    
+    const isCurrent = currentGoalId && goalId && currentGoalId.toString() === goalId;
+    const optimizationTarget = isCurrent && currentGoalTarget ? Number(currentGoalTarget) : currentMonthly;
+    const mortgageMonthly = calcMortgageMonthly(g);
+    const baseMin = currentMonthly || 0;
+    const baseTarget = optimizationTarget || 0;
+    const useMortgageConstraint = algorithm === 'lp';
+    const optimizationMin = useMortgageConstraint
+      ? Math.max(baseMin, mortgageMonthly || 0)
+      : baseMin;
+    const effectiveTarget = useMortgageConstraint
+      ? Math.max(baseTarget, mortgageMonthly || 0)
+      : baseTarget;
+    const expectedReturnPct = g.goal_details?.expected_return_pct
+      ?? goalContext?.goal_details?.expected_return_pct
+      ?? 6;
+    const inflationPct = g.goal_details?.inflation_pct
+      ?? goalContext?.goal_details?.inflation_pct
+      ?? 2.5;
+    const effectiveTargetAmount = buildEffectiveTargetAmount(g);
+    return {
+      ...g,
+      goal_key: goalId || g.goal_name,
+      goal_label: g.goal_name,
+      optimization_target_monthly: effectiveTarget,
+      optimization_min_monthly: optimizationMin,
+      current_monthly_allocation: currentMonthly || 0,  // NEW: Pass current allocation
+      expected_return_pct: expectedReturnPct,
+      inflation_pct: inflationPct,
+      effective_target_amount: effectiveTargetAmount
+    };
+  });
+
+  const result = await runGoalOptimization({
+    goals: goalsWithTargets,
+    cashFlows: baseCashFlows,
+    existingFinancials: mergedFinancials,
+    liquidCapital,
+    reservePctDefault: options.reservePctDefault ?? 40,
+    minCashReserveMonths: options.minCashReserveMonths ?? 3,
+    algorithm,
+    incomeGrowthPct: options.incomeGrowthPct ?? 3,
+    inflationPct: options.inflationPct ?? 2.5,
+    debug: options.debug === true
+  });
+
+  const allocationsWithCurrent = result.allocations.map(a => {
+    // recommended_monthly from optimization is now the SHORTFALL (additional needed)
+    // current_monthly is what's already allocated
+    // Total recommended = current + shortfall
+    const currentMonthly = a.current_monthly ?? 0;
+    const shortfallMonthly = a.recommended_monthly ?? 0;
+    const totalRecommended = currentMonthly + shortfallMonthly;
+    
+    return {
+      ...a,
+      current_monthly: currentMonthly,
+      shortfall_monthly: shortfallMonthly,
+      recommended_monthly: totalRecommended  // Override with total
+    };
+  });
+
+  const debugAssets = options.debug === true ? {
+    liquid_capital: liquidCapital,
+    asset_count: assets.length,
+    liquid_asset_count: assets.filter(a => a.record_type === 'Asset' && a.is_liquid).length,
+    liquid_assets: assets
+      .filter(a => a.record_type === 'Asset' && a.is_liquid)
+      .map(a => ({ id: a._id, name: a.name, value: a.value }))
+  } : undefined;
+
+  res.json({
+    algorithm: result.algorithm,
+    financials: result.financials,
+    allocations: allocationsWithCurrent,
+    meta: {
+      algorithm_requested: algorithm,
+      algorithm_used: result.algorithm,
+      lp_status: result.lp_status ?? null,
+      lp_objective: result.lp_objective ?? null,
+      goals_count: mergedGoals.length,
+      available_monthly: result.financials?.monthly_surplus_allocatable,
+      debug_assets: debugAssets
+    }
+  });
 });

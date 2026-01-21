@@ -211,25 +211,56 @@ Analysis Logic:
 5. **Glide path**: If horizon > 15 years and goal is retirement, include glide_path to de-risk before goal date.
 6. **Implementation_notes**: Only hint wrappers (e.g., kiwisaver / managed_fund / cash) and product_count_hint; DO NOT list specific funds.
 
+CRITICAL CONSISTENCY RULES (apply to all outputs):
+- Use ONE surplus number only: monthly_surplus_allocatable if provided; otherwise compute from monthly_surplus_total after reserve_for_other_goals_pct and reserved_other_goals. Do NOT display multiple surplus variants.
+- **EXPECTED RETURN CALCULATION (CRITICAL for consistency)**:
+  Calculate portfolio expected return based on economic exposure:
+  - growth_return = 8% (equities, property)
+  - defensive_return = 4% (bonds, fixed income)
+  - liquidity_return = 2% (cash, money market)
+  
+  portfolio_expected_return = (growth% × 8% + defensive% × 4% + liquidity% × 2%) / 100
+  real_return = portfolio_expected_return - inflation_pct
+  
+  Example: 60/30/10 exposure with 2.5% inflation
+  - Portfolio return: (60×8 + 30×4 + 10×2)/100 = 6.2%
+  - Real return: 6.2% - 2.5% = 3.7%
+  
+- **HYBRID CONTRIBUTION CALCULATION (CRITICAL)**:
+  If you recommend "hybrid", you MUST apply Time Value of Money consistently:
+  1) Calculate expected portfolio return from exposure (see above)
+  2) Calculate lump_sum FV: lump_sum_amount × (1 + real_return)^years
+  3) Calculate remaining_gap: original_gap - lump_sum_FV
+  4) Compute monthly_amount using FV annuity formula based on remaining_gap
+  
+  Example: Gap=$130k, lump=$60k, years=6, 60/30/10 exposure, inflation=2.5%
+  - Real return: 3.7% (NOT 2.5% from expected_return_pct - inflation_pct)
+  - Lump FV: $60k × 1.037^6 = $73.6k
+  - Remaining: $130k - $73.6k = $56.4k
+  - Monthly: $710/mo (calculated at 3.7% real return)
+  
+- If lump_sum_amount >= gap (after considering FV), set monthly_amount = 0 and explain briefly.
+- **IMPORTANT**: Do NOT use user's expected_return_pct directly for contribution calculations. The portfolio_expected_return derived from economic exposure is more accurate because it reflects the actual investment strategy. The user's expected_return_pct is only a general assumption from Stage 1 before strategy was determined.
+- **EXPOSURE LANGUAGE ONLY**: Use ONLY economic exposure terms (growth/defensive/liquidity) in your rationale. DO NOT mention asset classes like stocks, bonds, cash, equities, or fixed income. These are implementation details handled later in product selection.
+
 What you must do:
 - Populate 'ai_decision':
    - target_amount: For retirement, output the CALCULATED total funding need. For others, carry forward user's target.
 - Populate 'ai_decision.strategy_recommendation':
-   - economic_exposure (growth/defensive/liquidity) - aligned with user's risk_attitude from goal_details
-   - allocation (stocks/bonds/cash) consistent with economic_exposure
+   - economic_exposure (growth/defensive/liquidity) - aligned with user's risk_attitude from goal_details. This is your PRIMARY output.
    - glide_path if applicable (for long-term goals)
    - contribution_strategy with CALCULATED amounts:
        * mode: lump_sum / recurring / hybrid (based on available surplus and lump sum capital)
-       * monthly_amount: MUST be calculated based on gap, expected_return_pct, and horizon. If calculation shows required amount > monthly_surplus, set to max affordable and note the shortfall.
-       * lump_sum_amount: Use liquid_assets if mode includes lump_sum
+      * monthly_amount: MUST be calculated based on remaining_gap, real_return_pct, and horizon. If calculation shows required amount > monthly_surplus_allocatable, set to max affordable and note the shortfall.
+      * lump_sum_amount: Use liquid_assets if mode includes lump_sum, but keep a prudent liquidity buffer.
        * income_linked: true if recurring/hybrid
        * escalation_rate_pct: Use inflation_pct from goal_details as baseline
        * reserve_for_other_goals_pct: if provided in simulation_data
    - implementation_notes and consistency_check (note if required contribution > available surplus, or if goal may be underfunded)
 - Explain WHY in 'rationale', referencing:
    - Specific numbers from goal_details (e.g., "Your target of $800k over 35 years...")
-   - Calculation logic (e.g., "With 6% expected return and 2.5% inflation...")
-   - Feasibility (e.g., "This requires $X/month, you have $Y surplus available")
+   - Calculation logic (e.g., "Using real return = 6% - 2.5%...")
+   - Feasibility (e.g., "This requires $X/month, you have $Y allocatable surplus available")
    - Risk alignment (e.g., "Your 'balanced' risk preference suggests...")
 `.trim();
 
@@ -531,34 +562,15 @@ function getStageResponseSchema(stage, substage = null) {
                 type: 'object',
                 properties: {
                     recommended_risk: { type: 'string', enum: ['conservative', 'balanced', 'growth', 'aggressive'] },
-                    allocation: {
-                        type: 'object',
-                        properties: {
-                            stocks: { type: 'number', description: "Percentage 0-100" },
-                            bonds: { type: 'number', description: "Percentage 0-100" },
-                            cash: { type: 'number', description: "Percentage 0-100" }
-                        },
-                        required: ['stocks', 'bonds', 'cash']
-                    },
-                    funding_structure: {
-                        type: 'array',
-                        items: {
-                            type: 'object',
-                            properties: {
-                                type: { type: 'string', enum: ['KiwiSaver', 'Managed Fund', 'Term Deposit', 'Savings Account', 'ETF', 'Shares'] },
-                                percentage: { type: 'number' },
-                                rationale: { type: 'string' }
-                            },
-                            required: ['type', 'percentage']
-                        }
-                    },
                     economic_exposure: {
                         type: 'object',
+                        description: 'PRIMARY OUTPUT: Economic exposure allocation (growth/defensive/liquidity). Do NOT use asset class terms (stocks/bonds/cash) in rationale.',
                         properties: {
-                            growth: { type: 'number' },
-                            defensive: { type: 'number' },
-                            liquidity: { type: 'number' }
-                        }
+                            growth: { type: 'number', description: 'Growth exposure percentage (0-100): equities, property, alternatives' },
+                            defensive: { type: 'number', description: 'Defensive exposure percentage (0-100): fixed income, bonds' },
+                            liquidity: { type: 'number', description: 'Liquidity exposure percentage (0-100): cash, money market' }
+                        },
+                        required: ['growth', 'defensive', 'liquidity']
                     },
                     glide_path: {
                         type: 'object',
@@ -595,7 +607,7 @@ function getStageResponseSchema(stage, substage = null) {
                         properties: { exposure_vs_products_ok: { type: 'boolean' }, notes: { type: 'string' } }
                     }
                 },
-                required: ['recommended_risk', 'allocation', 'economic_exposure']
+                required: ['recommended_risk', 'economic_exposure']
             }
           },
           required: ['thought_process', 'rationale', 'strategy_recommendation']

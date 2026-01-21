@@ -178,7 +178,7 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
   const hasStrategy = Boolean(goalContext.ai_decision?.strategy_recommendation);
 
   if (isLoadingAI && !hasStrategy) {
-    return <StageLoading text="AI is structuring your simulation..." />;
+    return <StageLoading text="AI is running simulations..." subtext="Projecting your goal's success probability using Monte Carlo analysis" />;
   }
 
   const { summaryData, expectedReturn, volatility } = useMemo(

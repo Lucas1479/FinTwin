@@ -244,7 +244,7 @@ const StageProduct = ({ goalContext, onSelect, isLoadingAI }) => {
   };
 
   if (isLoadingAI && portfolioOptions.length === 0 && !legacySelection.length) {
-    return <StageLoading text="AI is structuring your investment products..." />;
+    return <StageLoading text="AI is selecting investment products..." subtext="Curating portfolios that match your strategy and risk profile" />;
   }
 
   return (

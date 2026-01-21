@@ -328,7 +328,12 @@ const HomeVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
                         <label className="block text-sm font-bold text-slate-700 mb-2">Target Purchase Date</label>
                         <input 
                             type="date" 
-                            value={formData.due_date ? new Date(formData.due_date).toISOString().split('T')[0] : ''}
+                            value={(() => {
+                                if (!formData.due_date) return '';
+                                const d = new Date(formData.due_date);
+                                if (Number.isNaN(d.getTime())) return '';
+                                return d.toISOString().split('T')[0];
+                            })()}
                             onChange={(e) => setFormData(prev => ({ ...prev, due_date: e.target.value }))}
                             className="w-full input-base"
                         />
