@@ -13,6 +13,7 @@ import StageSimulation, { runMonteCarlo } from '../components/goals/StageSimulat
 import goalEngineService from '../services/goalEngineService';
 import { createGoalWithPlan, getGoals } from '../services/goalService';
 import { getCashFlows } from '../services/cashFlowService';
+import { computeFinancialsFromCashFlows, extractOtherGoalsMonthly } from '../utils/financialCalculations';
 import {
     Send,
     ChevronRight,
@@ -997,6 +998,34 @@ const GoalEnginePage = () => {
       if (!updates) return;
 
       const normalized = { ...updates };
+      const normalizeDueDate = (value) => {
+          if (!value) return value;
+          if (value instanceof Date) return value.toISOString();
+          if (typeof value === 'string') {
+              const trimmed = value.trim();
+              const iso = Date.parse(trimmed);
+              if (!Number.isNaN(iso)) return new Date(iso).toISOString();
+              const yearMatch = trimmed.match(/(\d+)\s*year/i);
+              if (yearMatch) {
+                  const years = Number(yearMatch[1]);
+                  if (Number.isFinite(years) && years > 0) {
+                      const d = new Date();
+                      d.setFullYear(d.getFullYear() + years);
+                      return d.toISOString();
+                  }
+              }
+              const monthMatch = trimmed.match(/(\d+)\s*month/i);
+              if (monthMatch) {
+                  const months = Number(monthMatch[1]);
+                  if (Number.isFinite(months) && months > 0) {
+                      const d = new Date();
+                      d.setMonth(d.getMonth() + months);
+                      return d.toISOString();
+                  }
+              }
+          }
+          return value;
+      };
       const isAiDecisionPayload = Boolean(
           normalized.strategy_recommendation ||
           normalized.thought_process ||
@@ -1011,6 +1040,9 @@ const GoalEnginePage = () => {
       
       if (normalized.category) {
           normalized.category = normalized.category.toLowerCase();
+      }
+      if (normalized.due_date) {
+          normalized.due_date = normalizeDueDate(normalized.due_date);
       }
 
       if (normalized.retirement_age || normalized.living_expense_pa) {
@@ -1495,7 +1527,53 @@ const GoalEnginePage = () => {
     fetchRealData();
   }, []);
 
+  // Derive monthly surplus from cashflows so Strategy UI uses real numbers
+  useEffect(() => {
+    if (!cashFlows || cashFlows.length === 0) return;
+
+    const TO_ANNUAL = { 'Weekly': 52, 'Fortnightly': 26, 'Monthly': 12, 'Yearly': 1, 'One-Off': 0 };
+    const toAnnual = (amount, freq) => (Number(amount) || 0) * (TO_ANNUAL[freq] || 0);
+
+    const incomes = cashFlows.filter(f => f.type === 'Income');
+    const outflows = cashFlows.filter(f => f.type === 'Expense' || f.type === 'Subscription');
+
+    const annualIncome = incomes.reduce((sum, f) => sum + toAnnual(f.amount, f.frequency), 0);
+    const annualOutflow = outflows.reduce((sum, f) => sum + toAnnual(f.amount, f.frequency), 0);
+
+    const monthlyIncome = annualIncome / 12;
+    const monthlyOutflow = annualOutflow / 12;
+    const monthlySurplus = Math.max(0, monthlyIncome - monthlyOutflow);
+
+    setGoalContext(prev => {
+      const existingFinancials = prev.simulation_data?.financials || {};
+      const reservePct = existingFinancials.reserve_for_other_goals_pct ?? 40;
+      const allocatable = Math.max(0, Math.round(monthlySurplus * (1 - reservePct / 100)));
+
+      return {
+        ...prev,
+        simulation_data: {
+          ...(prev.simulation_data || {}),
+          financials: {
+            ...existingFinancials,
+            monthly_income: Math.round(monthlyIncome),
+            monthly_outflow: Math.round(monthlyOutflow),
+            monthly_surplus_total: Math.round(monthlySurplus),
+            monthly_surplus_allocatable: Math.round(allocatable),
+            reserve_for_other_goals_pct: reservePct
+          },
+          user_profile: {
+            ...(prev.simulation_data?.user_profile || {}),
+            monthly_surplus: Math.round(monthlySurplus)
+          }
+        }
+      };
+    });
+  }, [cashFlows]);
+
+  const stageAnalysisRunningRef = useRef(false);
   const runStageAnalysis = async (stageId, context, stageIdx) => {
+      if (stageAnalysisRunningRef.current) return;
+      stageAnalysisRunningRef.current = true;
       setIsLoadingAI(true);
       
       // Atomic update: Set greeting AND analyzing message together to avoid race conditions
@@ -1540,18 +1618,20 @@ const GoalEnginePage = () => {
           const TO_ANNUAL = { 'Weekly': 52, 'Fortnightly': 26, 'Monthly': 12, 'Yearly': 1, 'One-Off': 0 };
           const toMonthly = (amount, freq) => (amount * (TO_ANNUAL[freq] || 0)) / 12;
 
-          const processedOtherGoals = realGoals
-            .filter(g => g._id !== currentGoalId)
-            .map(g => {
-                // Find matching cashflow to get real monthly allocation
-                const cf = cashFlows.find(f => f.type === 'Investment' && f.name.includes(`(${g.goal_name})`));
-                return {
-                    name: g.goal_name,
-                    monthly_allocation: cf ? Math.round(toMonthly(cf.amount, cf.frequency)) : 0,
-                    priority: g.priority || 'want'
-                };
-            })
-            .filter(g => g.monthly_allocation > 0);
+          const processedOtherGoals = stageId === 'simulation'
+            ? realGoals
+                .filter(g => g._id !== currentGoalId)
+                .map(g => {
+                    // Find matching cashflow to get real monthly allocation
+                    const cf = cashFlows.find(f => f.type === 'Investment' && f.name.includes(`(${g.goal_name})`));
+                    return {
+                        name: g.goal_name,
+                        monthly_allocation: cf ? Math.round(toMonthly(cf.amount, cf.frequency)) : 0,
+                        priority: g.priority || 'want'
+                    };
+                })
+                .filter(g => g.monthly_allocation > 0)
+            : [];
 
           // --- Optional: build a simulation summary using the same Monte Carlo helper as the UI ---
           let simulationSummary = {};
@@ -1626,23 +1706,43 @@ const GoalEnginePage = () => {
             }
           }
 
+          // === 前端主导：计算最新财务快照 ===
+          // currentGoalId 已在 line 1615 声明，直接使用
+          const otherGoalsData = extractOtherGoalsMonthly(realGoals, currentGoalId);
+          const otherGoalsMonthlyTotal = otherGoalsData.reduce((sum, g) => sum + (g.monthly_allocation || 0), 0);
+          
+          const financialsSnapshot = computeFinancialsFromCashFlows(cashFlows, {
+            reservePct: context?.simulation_data?.financials?.reserve_for_other_goals_pct ?? 40,
+            otherGoalsMonthly: otherGoalsMonthlyTotal
+          });
+
+          console.log('[runStageAnalysis] Frontend-calculated financials:', financialsSnapshot);
+          console.log('[runStageAnalysis] Other goals monthly total:', otherGoalsMonthlyTotal);
+
           const contextWithOthers = {
             ...context,
             simulation_data: {
               ...(context?.simulation_data || {}),
-              other_goals: processedOtherGoals.length > 0 ? processedOtherGoals : context?.simulation_data?.other_goals,
+              financials: {
+                ...financialsSnapshot,
+                // 保留前端可能有的额外字段（如 liquid_capital）
+                liquid_capital: context?.simulation_data?.financials?.liquid_capital
+              },
+              other_goals: processedOtherGoals.length > 0 ? processedOtherGoals : otherGoalsData,
               projection_summary: Object.keys(simulationSummary).length > 0 ? simulationSummary : context?.simulation_data?.projection_summary
             }
           };
 
-          // Ensure UI state also sees the other goals list for display
-          setGoalContext(prev => ({
-            ...prev,
-            simulation_data: {
-              ...(prev.simulation_data || {}),
-              other_goals: processedOtherGoals.length > 0 ? processedOtherGoals : prev.simulation_data?.other_goals
-            }
-          }));
+          // Ensure UI state also sees the other goals list for display (simulation only)
+          if (stageId === 'simulation') {
+            setGoalContext(prev => ({
+              ...prev,
+              simulation_data: {
+                ...(prev.simulation_data || {}),
+                other_goals: processedOtherGoals.length > 0 ? processedOtherGoals : prev.simulation_data?.other_goals
+              }
+            }));
+          }
 
           const data = await goalEngineService.generateDecisionStream({
               stage: stageId,
@@ -1720,6 +1820,7 @@ const GoalEnginePage = () => {
           setMessages(prev => [...prev, { role: 'system', text: "Strategy analysis failed. You can continue manually." }]);
       } finally {
           setIsLoadingAI(false);
+          stageAnalysisRunningRef.current = false;
       }
   };
 
@@ -2421,17 +2522,19 @@ const GoalEnginePage = () => {
                         </div>
                     )}
                     {currentStage === 1 && (
-                         <div className="max-w-3xl mx-auto py-2">
+                         <div className="max-w-3xl mx-auto py-2 animate-fade-in">
                             <h2 className="text-xl lg:text-2xl font-bold text-slate-900 mb-4 lg:mb-6">Choose your Strategy</h2>
                             <StageStrategy 
                                 goalContext={goalContext} 
                                 onChange={setGoalContext} 
                                 isLoadingAI={isLoadingAI}
+                                goalsSnapshot={realGoals}
+                                cashFlowsSnapshot={cashFlows}
                             />
                         </div>
                     )}
                     {currentStage === 2 && (
-                         <div className="max-w-3xl mx-auto py-2">
+                         <div className="max-w-3xl mx-auto py-2 animate-fade-in">
                             <h2 className="text-xl lg:text-2xl font-bold text-slate-900 mb-4 lg:mb-6">Select Investment Vehicle</h2>
                             <StageProduct 
                                 goalContext={goalContext} 
@@ -2446,7 +2549,7 @@ const GoalEnginePage = () => {
                         </div>
                     )}
                     {currentStage === 3 && (
-                         <div className="max-w-5xl mx-auto h-full py-2">
+                         <div className="max-w-5xl mx-auto h-full py-2 animate-fade-in">
                             <h2 className="text-xl lg:text-2xl font-bold text-slate-900 mb-4 lg:mb-6">Simulation & Impact</h2>
                             <StageSimulation goalContext={goalContext} isLoadingAI={isLoadingAI} />
                         </div>

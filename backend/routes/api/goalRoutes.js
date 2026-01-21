@@ -11,7 +11,7 @@ import {
   getDecisionLogsForGoal,
   getDecisionLogsForSession,
 } from '../../controllers/goalDecisionController.js';
-import { generateGoalDecision } from '../../controllers/goalEngineController.js';
+import { generateGoalDecision, optimizeGoalAllocations } from '../../controllers/goalEngineController.js';
 import { protect } from '../../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -28,6 +28,7 @@ router.route('/:id')
 
 // Goal engine LLM entrypoint
 router.post('/engine/generate', protect, generateGoalDecision);
+router.post('/engine/optimize', protect, optimizeGoalAllocations);
 
 // Goal decision logs
 router.route('/:id/decisions')

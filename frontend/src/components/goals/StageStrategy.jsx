@@ -1,57 +1,114 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { 
     Zap, 
     ShoppingBag, 
     PieChart, 
-    BarChart3 
+    BarChart3,
+    Brain
 } from 'lucide-react';
+import { computeFinancialsFromCashFlows, extractOtherGoalsMonthly } from '../../utils/financialCalculations';
 
-const StageStrategy = ({ goalContext, onChange, isLoadingAI }) => {
+const StageStrategy = ({ goalContext, onChange, isLoadingAI, goalsSnapshot, cashFlowsSnapshot }) => {
     const recommendation = goalContext.ai_decision?.strategy_recommendation;
-    const aiRationale = goalContext.ai_decision?.rationale; // Fallback to top-level rationale if needed
-    const aiStrategyRationale = recommendation?.rationale; // Specific strategy rationale
+    const aiRationale = goalContext.ai_decision?.rationale;
+    const aiStrategyRationale = recommendation?.rationale;
     const riskProfile = goalContext.ai_decision?.risk_profile || goalContext.simulation_data?.user_profile?.risk_profile;
     const economicExposure = recommendation?.economic_exposure || goalContext.simulation_data?.target_exposure;
     const glidePath = recommendation?.glide_path;
     const contributionHint = recommendation?.contribution_strategy || goalContext.simulation_data?.contribution_strategy_hint;
     const contributionMode = contributionHint?.mode || 'recurring';
-    const otherGoals = goalContext.simulation_data?.other_goals || [];
 
-    // Dynamic Data from Context (Real calculation from Stage 1 or User Profile)
-    // Priority: AI Decision extracted values > Simulation data > Global context fallback > hardcoded fallback
-    const surplusTotal = goalContext.simulation_data?.financials?.monthly_surplus_total;
-    const surplusReserved = otherGoals.reduce((sum, g) => sum + (g.monthly_allocation || 0), 0);
-    const surplusAllocatable = goalContext.simulation_data?.financials?.monthly_surplus_allocatable;
-    const reservePct = goalContext.simulation_data?.financials?.reserve_for_other_goals_pct ?? 40;
+    // === 前端主导：使用统一的财务计算工具 ===
+    const currentGoalId = goalContext?._id || goalContext?.goal_id;
+    
+    // 使用 useMemo 缓存计算结果，避免不必要的重算
+    const otherGoals = useMemo(() => 
+        extractOtherGoalsMonthly(goalsSnapshot || [], currentGoalId),
+        [goalsSnapshot, currentGoalId]
+    );
+    
+    const otherGoalsMonthlyTotal = useMemo(() => 
+        otherGoals.reduce((sum, g) => sum + (g.monthly_allocation || 0), 0),
+        [otherGoals]
+    );
+    
+    // 使用 useMemo 缓存财务计算，只在依赖项变化时重新计算
+    const financials = useMemo(() => {
+        if (!cashFlowsSnapshot) {
+            return goalContext.simulation_data?.financials || {};
+        }
+        return computeFinancialsFromCashFlows(cashFlowsSnapshot);
+    }, [cashFlowsSnapshot]);
+
+    // 计算"分配后盈余"（投资前盈余 - 其他goals的locked allocations）
+    const totalSurplus = financials.monthly_surplus_total ?? 0;  // 投资前盈余
+    const lockedAllocations = otherGoalsMonthlyTotal;  // 其他goals已锁定的投入
+    const availableForThisGoal = Math.max(0, totalSurplus - lockedAllocations);  // 分配后盈余
+    const effectiveAvailable = availableForThisGoal;
+
+    // AI 建议的月度金额（用于初始化滑块）
     const aiMonthly = contributionHint?.monthly_amount || contributionHint?.monthly_amount_hint;
-    const inferredAvailable = surplusTotal !== undefined ? Math.max(0, surplusTotal - surplusReserved) : undefined;
-    const derivedAvailableFromAi = aiMonthly && reservePct < 100 ? Math.round(aiMonthly / (1 - reservePct / 100)) : undefined;
-    const effectiveAvailable = surplusAllocatable
-        ?? inferredAvailable
-        ?? derivedAvailableFromAi
-        ?? goalContext.simulation_data?.user_profile?.monthly_surplus
-        ?? 0;
-
-    const monthlySurplus = aiMonthly
-        || goalContext.goal_details?.monthly_surplus
-        || effectiveAvailable
-        || 1200;
-    const maxAllocatable = effectiveAvailable || monthlySurplus || 0;
+    const maxAllocatable = effectiveAvailable;
 
     const initialAlloc = (() => {
-        const val = contributionHint?.monthly_amount_hint ?? contributionHint?.monthly_amount ?? monthlySurplus;
+        const val = aiMonthly ?? totalSurplus;
         if (maxAllocatable > 0) return Math.min(val, maxAllocatable);
         return val;
     })();
     const [allocSlider, setAllocSlider] = useState(initialAlloc);
 
     useEffect(() => {
-        const val = contributionHint?.monthly_amount_hint ?? contributionHint?.monthly_amount ?? monthlySurplus;
+        const val = aiMonthly ?? totalSurplus;
         const clamped = maxAllocatable > 0 ? Math.min(val, maxAllocatable) : val;
         setAllocSlider(clamped);
-    }, [contributionHint?.monthly_amount_hint, contributionHint?.monthly_amount, monthlySurplus, maxAllocatable]);
+    }, [aiMonthly, totalSurplus, maxAllocatable]);
+
+    // === 同步财务快照到 goalContext（前端主导的关键） ===
+    // 使用 useCallback 避免 onChange 依赖问题
+    const syncFinancials = useCallback(() => {
+        onChange(prev => {
+            // 检查是否真的需要更新
+            const prevFinancials = prev.simulation_data?.financials || {};
+            if (
+                prevFinancials.monthly_surplus_total === totalSurplus &&
+                prevFinancials.available_to_allocate === availableForThisGoal &&
+                prevFinancials.calculation_source === 'frontend_real_time'
+            ) {
+                return prev;
+            }
+
+            console.log('[StageStrategy] Syncing financials:', {
+                surplus: totalSurplus,
+                locked: lockedAllocations,
+                available: availableForThisGoal
+            });
+
+            return {
+                ...prev,
+                simulation_data: {
+                    ...(prev.simulation_data || {}),
+                    financials: {
+                        ...prevFinancials,
+                        ...financials,
+                        monthly_surplus_total: totalSurplus,
+                        locked_allocations: lockedAllocations,
+                        available_to_allocate: availableForThisGoal,
+                        calculation_source: 'frontend_real_time'
+                    },
+                    other_goals: otherGoals
+                }
+            };
+        });
+    }, [onChange, financials, totalSurplus, lockedAllocations, availableForThisGoal, otherGoals]);
+
+    useEffect(() => {
+        // 同步财务数据到goalContext
+        if (cashFlowsSnapshot) {
+            syncFinancials();
+        }
+    }, [cashFlowsSnapshot, syncFinancials]);
 
     // Economic exposure (growth/defensive/liquidity) is the primary surface
     const defaultExposure = economicExposure || { growth: 60, defensive: 30, liquidity: 10 };
@@ -68,13 +125,6 @@ const StageStrategy = ({ goalContext, onChange, isLoadingAI }) => {
     }, [economicExposure]);
 
     const totalExposure = (exposure.growth || 0) + (exposure.defensive || 0) + (exposure.liquidity || 0);
-
-    // Source of Truth for Allocation: economic exposure first, else allocation fallback
-    const effectiveAllocation = {
-        stocks: exposure.growth ?? 0,
-        bonds: exposure.defensive ?? 0,
-        cash: exposure.liquidity ?? 0
-    };
 
     // Use the raw rationale for markdown rendering
     const insightText = aiStrategyRationale || aiRationale;
@@ -103,8 +153,7 @@ const StageStrategy = ({ goalContext, onChange, isLoadingAI }) => {
                 ...prev.ai_decision,
                 strategy_recommendation: {
                     ...prev.ai_decision?.strategy_recommendation,
-                    economic_exposure: next,
-                    allocation: { stocks: next.growth, bonds: next.defensive, cash: next.liquidity }
+                    economic_exposure: next
                 }
             }
         }));
@@ -157,10 +206,24 @@ const StageStrategy = ({ goalContext, onChange, isLoadingAI }) => {
 
     if (isLoadingAI && !recommendation) {
         return (
-            <div className="flex flex-col items-center justify-center h-64 space-y-4 animate-pulse">
-                <div className="w-16 h-16 bg-slate-200 rounded-full"></div>
-                <div className="h-4 w-48 bg-slate-200 rounded"></div>
-                <p className="text-slate-400 text-sm">AI is structuring your investment plan...</p>
+            <div className="animate-fade-in">
+                <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+                    <div className="flex flex-col items-center justify-center gap-4 py-12">
+                        <div className="relative">
+                            <div className="w-16 h-16 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                            <Brain className="absolute inset-0 m-auto text-indigo-600" size={24} />
+                        </div>
+                        <div className="text-center">
+                            <div className="text-lg font-bold text-slate-900 mb-1">AI is crafting your Strategy...</div>
+                            <div className="text-sm text-slate-500">Analyzing risk profile, economic exposure, and contribution plan</div>
+                        </div>
+                        <div className="flex gap-2 mt-2">
+                            <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                            <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                            <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     }
@@ -230,26 +293,8 @@ const StageStrategy = ({ goalContext, onChange, isLoadingAI }) => {
                             <ShoppingBag size={18} className="text-slate-400" /> Contribution Strategy
                         </h4>
                         <p className="text-sm text-slate-500 mt-1">
-                            Allocating your estimated <strong>${effectiveAvailable || monthlySurplus}/mo</strong> surplus.
+                            Choose how to allocate your monthly surplus to this goal.
                         </p>
-                        {(surplusTotal || surplusAllocatable || surplusReserved) && (
-                          <div className="text-[12px] text-slate-500 mt-1 space-y-0.5">
-                            <div>
-                              {surplusTotal !== undefined && <span>Total surplus: ${surplusTotal} · </span>}
-                              {surplusReserved > 0 && <span>Other goals: ${surplusReserved} · </span>}
-                              {effectiveAvailable !== undefined && <span>Available: ${effectiveAvailable}</span>}
-                            </div>
-                            {otherGoals.length > 0 && (
-                              <div className="flex flex-wrap gap-2">
-                                {otherGoals.map((g, idx) => (
-                                  <span key={idx} className="px-2 py-0.5 bg-white border border-slate-200 rounded-full text-[11px] text-slate-600">
-                                    {g.name}: ${g.monthly_allocation || 0}/mo
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
                     </div>
                     <div className="text-sm font-bold px-3 py-1 rounded-full bg-green-100 text-green-700">
                         Exposure Total: {totalExposure}%
@@ -276,24 +321,63 @@ const StageStrategy = ({ goalContext, onChange, isLoadingAI }) => {
                         className="w-full accent-indigo-600 mt-2"
                     />
                     {maxAllocatable > 0 && (
-                        <div className="text-[11px] text-slate-500 flex justify-between mt-1">
-                            <span>Available after other goals: ${maxAllocatable}</span>
-                            <span>{Math.round((allocSlider / maxAllocatable) * 100)}% of available</span>
+                        <div className="mt-3 space-y-2">
+                            {/* Budget breakdown */}
+                            <div className="text-[11px] text-slate-600 space-y-1 bg-slate-50 rounded-lg p-3 border border-slate-200">
+                                <div className="flex justify-between">
+                                    <span className="text-slate-500">Monthly Surplus (before investment)</span>
+                                    <span className="font-semibold text-slate-900">${totalSurplus.toLocaleString()}</span>
+                                </div>
+                                
+                                {otherGoals.length > 0 && (
+                                    <div className="space-y-1 pl-2 border-l-2 border-slate-300">
+                                        <div className="text-slate-500 font-medium">Other Goals:</div>
+                                        {otherGoals.map((g, idx) => (
+                                            <div key={idx} className="flex justify-between pl-2">
+                                                <span className="text-slate-600">{g.name}</span>
+                                                <span className="font-medium text-amber-700">-${(g.monthly_allocation || 0).toLocaleString()}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                
+                                <div className="flex justify-between pt-2 border-t border-slate-300">
+                                    <span className="font-semibold text-indigo-700">Available for This Goal</span>
+                                    <span className="font-bold text-indigo-900">${maxAllocatable.toLocaleString()}</span>
+                                </div>
+                            </div>
+                            
+                            <div className="text-[11px] text-slate-500 flex justify-between">
+                                <span>Currently allocating: ${Math.round(allocSlider).toLocaleString()}</span>
+                                <span className="font-medium">{Math.round((allocSlider / maxAllocatable) * 100)}% of available</span>
+                            </div>
                         </div>
                     )}
                 </div>
 
+                {/* Economic Exposure Configuration */}
+                <div className="mt-6 mb-4">
+                    <h4 className="text-base font-bold text-slate-900 mb-1">Economic Exposure</h4>
+                    <p className="text-xs text-slate-500">
+                        Adjust your portfolio's exposure across different economic factors. Total should equal 100%.
+                    </p>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {[
-                        { key: 'growth', label: 'Growth', color: 'text-indigo-600', bg: 'accent-indigo-600' },
-                        { key: 'defensive', label: 'Defensive', color: 'text-purple-600', bg: 'accent-purple-500' },
-                        { key: 'liquidity', label: 'Liquidity', color: 'text-teal-600', bg: 'accent-teal-500' }
+                        { key: 'growth', label: 'Growth', sublabel: 'Growth Assets', color: 'text-indigo-600', bg: 'accent-indigo-600', desc: 'Equities, Property' },
+                        { key: 'defensive', label: 'Defensive', sublabel: 'Defensive Assets', color: 'text-purple-600', bg: 'accent-purple-500', desc: 'Bonds, Fixed Income' },
+                        { key: 'liquidity', label: 'Liquidity', sublabel: 'Liquid Assets', color: 'text-teal-600', bg: 'accent-teal-500', desc: 'Cash, Money Market' }
                     ].map(item => (
-                        <div key={item.key} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-                            <div className="flex justify-between items-center mb-3">
-                                <h5 className={`font-bold ${item.color}`}>{item.label}</h5>
+                        <div key={item.key} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                            <div className="flex justify-between items-center mb-1">
+                                <div>
+                                    <h5 className={`font-bold ${item.color}`}>{item.label}</h5>
+                                    <div className="text-[10px] text-slate-400">{item.sublabel}</div>
+                                </div>
                                 <div className="text-xl font-bold text-slate-900">{exposure[item.key]}%</div>
                             </div>
+                            <div className="text-[10px] text-slate-500 mb-3">{item.desc}</div>
                             <input
                                 type="range"
                                 min="0" max="100" step="5"
@@ -402,43 +486,42 @@ const StageStrategy = ({ goalContext, onChange, isLoadingAI }) => {
                     </div>
                 </div>
             </div>
-
-            {/* DYNAMIC: Effective Asset Allocation */}
+            {/* DYNAMIC: Effective Exposure Mix */}
             <div className="bg-slate-50 rounded-2xl border border-slate-200 p-6">
                 <div className="flex items-center justify-between mb-6">
                     <div>
                         <h4 className="font-bold text-slate-900 flex items-center gap-2">
-                            <PieChart size={18} className="text-slate-400" /> Resulting Asset Mix
+                            <PieChart size={18} className="text-slate-400" /> Economic Exposure
                         </h4>
                         <p className="text-xs text-slate-500 mt-1">
-                            Based on your product selection above.
+                            Your target risk exposure across different economic factors.
                         </p>
                     </div>
                 </div>
 
                 {/* Visual Bar */}
                 <div className="flex h-12 rounded-xl overflow-hidden mb-6 w-full shadow-inner ring-1 ring-slate-200 bg-white">
-                    {effectiveAllocation.stocks > 0 && (
-                        <div style={{ width: `${effectiveAllocation.stocks}%` }} className="bg-indigo-500 flex items-center justify-center text-white text-xs font-bold transition-all duration-500">
-                            {effectiveAllocation.stocks > 10 && `${effectiveAllocation.stocks}%`}
+                    {exposure.growth > 0 && (
+                        <div style={{ width: `${exposure.growth}%` }} className="bg-indigo-500 flex items-center justify-center text-white text-xs font-bold transition-all duration-500">
+                            {exposure.growth > 10 && `${exposure.growth}%`}
                         </div>
                     )}
-                    {effectiveAllocation.bonds > 0 && (
-                        <div style={{ width: `${effectiveAllocation.bonds}%` }} className="bg-purple-400 flex items-center justify-center text-white text-xs font-bold transition-all duration-500">
-                            {effectiveAllocation.bonds > 10 && `${effectiveAllocation.bonds}%`}
+                    {exposure.defensive > 0 && (
+                        <div style={{ width: `${exposure.defensive}%` }} className="bg-purple-400 flex items-center justify-center text-white text-xs font-bold transition-all duration-500">
+                            {exposure.defensive > 10 && `${exposure.defensive}%`}
                         </div>
                     )}
-                    {effectiveAllocation.cash > 0 && (
-                        <div style={{ width: `${effectiveAllocation.cash}%` }} className="bg-teal-400 flex items-center justify-center text-white text-xs font-bold transition-all duration-500">
-                            {effectiveAllocation.cash > 5 && `${effectiveAllocation.cash}%`}
+                    {exposure.liquidity > 0 && (
+                        <div style={{ width: `${exposure.liquidity}%` }} className="bg-teal-400 flex items-center justify-center text-white text-xs font-bold transition-all duration-500">
+                            {exposure.liquidity > 5 && `${exposure.liquidity}%`}
                         </div>
                     )}
                 </div>
 
                 <div className="flex justify-between text-xs text-slate-500 px-1">
-                    <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> Growth (Stocks/Property)</span>
-                    <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-400"></div> Income (Bonds)</span>
-                    <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-teal-400"></div> Cash</span>
+                    <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> Growth (Equities/Property)</span>
+                    <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-400"></div> Defensive (Fixed Income)</span>
+                    <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-teal-400"></div> Liquidity (Cash)</span>
                 </div>
             </div>
         </div>
