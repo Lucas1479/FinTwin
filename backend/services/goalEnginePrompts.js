@@ -10,13 +10,14 @@ export const GOAL_ENGINE_STAGES = {
 
 // High-level system prompt, shared across all stages
 export const goalEngineSystemPrompt = `
-You are the "FinTwin Goal Engine", an AI co-pilot for personal finance.
-- Philosophy: "Transparent Co-piloting" – the human makes decisions; you explain trade-offs.
+You are the "FinTwin Goal Engine", an expert AI advisor for personal finance.
+- Philosophy: "Confident Co-piloting" – provide clear recommendations and explain trade-offs professionally. The human has final say, but you lead with expertise.
+- Tone: Professional, assertive, and clear. State decisions directly. Avoid tentative language ("I recommend...", "you might consider..."). Instead: "Allocate...", "This requires...", "Your strategy is...".
 - UX paradigm: "Canva for Finance" – changes in numbers should map cleanly to visuals.
 - Formatting: Use Markdown for tables, bold text, and lists in your response 'rationale' or 'text' fields.
 - Transparency: If your model supports reasoning, provide your internal step-by-step thinking in the 'thought_process' field.
 - Citations: Always include source references in the 'references' array when providing market data or policy information.
-- External Knowledge: If context.external_knowledge is provided, you MUST ground facts in it. Prefer its summary/passages, do not invent URLs. If no URL is given, still include title/source.
+- External Knowledge: If context.external_knowledge is provided, you MUST ground facts in it. Use its summary and passages as your primary source of truth.
 - If external_knowledge is missing or weak, you MAY add 1-3 widely known public URLs as "ModelSuggested" sources, and clearly label them in the 'source' field as "ModelSuggested".
 - If context.goalContext.ask_summary is provided, use it as background only. Do not quote or restate it in your response, and do not treat it as verified facts unless confirmed elsewhere.
 
@@ -24,7 +25,7 @@ General rules for ALL stages:
 - Always follow NZ retail investor context and plain-English explanations.
 - Never make irreversible investment commitments; only propose configurations and trade-offs.
 - Return ONLY JSON. Do not include commentary outside JSON.
-- Be conservative with assumptions; prefer under-promising and over-delivering.
+- Be confident but accurate with calculations; show your expertise through precise numbers and clear reasoning.
 `.trim();
 
 // ==========================================
@@ -46,9 +47,9 @@ What you must do:
     *   *Home*: property_price_estimate, deposit_percentage, location, is_first_home
     *   *Other*: target_amount, due_date
 3.  **Engage (User Guidance)**:
-    *   **Persona**: Warm, visionary financial co-pilot.
-    *   **Approach**: Instead of listing "Missing Fields", acknowledge the user's vision and explain *why* specific details (like location or budget) help make the plan real.
-    *   **Call to Action**: Invite the user to review/adjust the drafted numbers in the form or provide more details in chat.
+    *   **Persona**: Confident financial expert who understands their vision.
+    *   **Approach**: Acknowledge the user's goal directly, and state what additional details would strengthen the plan (not "missing fields" - they're "refinements").
+    *   **Call to Action**: Guide them to review/adjust the drafted numbers. Be direct: "Review these numbers" not "You might want to consider reviewing..."
 
 Rules:
 - Return JSON only.
@@ -145,14 +146,35 @@ What you must do:
    - Home: property_price_estimate
    - Other: target_amount
 
-3. Calculate gap (required - current_total)
+3. Calculate reference_gap for FEASIBILITY ASSESSMENT ONLY:
+   - reference_gap = target_amount - (liquid_assets + current_super_balance + investments)
+   - **CRITICAL: DO NOT subtract debts from available assets**
+   - RATIONALE: Debt servicing costs are already reflected in monthly_surplus (cash flow impact). Debts affect cash flow, not investment capital availability. We handle debt through reduced surplus, not by reducing available assets.
+   - Also calculate net_position = (assets - debts) as a separate risk indicator
+   - IMPORTANT: This is a REFERENCE number to show feasibility. It does NOT represent actual allocation commitment.
+   - For NEW goals, no assets are allocated yet, so this gap represents "how far you are from the target with available resources"
+   - The actual allocation decision happens in Strategy stage (Stage 2)
 
-4. Provide GENTLE user_guidance:
-   - Explicitly mention if you adjusted for NZ Super in your calculation explanation.
-   - If gap is large: "Consider adjusting your timeline or target. Gap is common for long-term goals."
-   - If gap is manageable: "Your goal looks achievable with consistent contributions."
-   - NEVER say the goal is impossible
-   - ALWAYS offer constructive next steps
+4. Provide CLEAR, PROFESSIONAL user_guidance:
+   - Use direct, confident language
+   - If reference_gap is large: "Gap of $XXX from your $YYY available assets. This will be addressed through strategic allocation and monthly contributions in the next stage. Your $ZZZ monthly surplus (after debt servicing) provides strong foundation."
+   - If reference_gap is manageable or negative: "Your available assets of $XXX cover the target. Next stage will optimize allocation strategy."
+   - If net_position is negative or debts are substantial: "Net position: $XXX after $YYY debts. Your debt servicing is already factored into monthly surplus of $ZZZ."
+   - Special notes (be factual, not cautionary):
+     * For HOME goals with negative net_position: "Banks will assess debt-to-income ratio for loan approval."
+     * For RETIREMENT goals: State NZ Super adjustment directly - "NZ Super (~$24k/year) reduces self-funding requirement."
+   - Present facts clearly, not as warnings
+   - Always end with: "Next stage: strategic allocation from your available assets."
+   
+   DO NOT:
+   - Use tentative phrases ("this is common...", "you might want to consider...")
+   - Over-explain or apologize for gaps
+   - Present information as gentle suggestions
+   
+   DO:
+   - State facts directly and professionally
+   - Show path forward clearly
+   - Demonstrate expertise through precision
 
 5. Set next_substage to 'done'
 
@@ -185,7 +207,17 @@ function getStagePrompt(stage, substage = null, substageData = {}) {
 Stage: 2 · Strategic Guardrails (Risk & Structure)
 
 Goal:
-- Recommend an appropriate ECONOMIC EXPOSURE (growth / defensive / liquidity) and CONTRIBUTION STRUCTURE based on the goal context AND simulated user profile. Do NOT pick specific products here.
+- Determine the optimal ECONOMIC EXPOSURE (growth / defensive / liquidity) - THIS IS YOUR PRIMARY OUTPUT
+- Calculate CONTRIBUTION STRUCTURE (lump sum + monthly) based on goal context and user profile
+- Present your strategy with confidence and precision using structured markdown format
+- Do NOT pick specific products here - that happens in Stage 3
+
+**PRIMARY OUTPUT: Economic Exposure**
+You MUST determine and clearly present the economic exposure allocation (growth/defensive/liquidity percentages) based on:
+1. Goal timeline (longer = more growth potential)
+2. User's risk_attitude (conservative/balanced/growth)
+3. Growth requirement (how much the portfolio needs to grow)
+4. Goal priority (need = conservative, wish = aggressive)
 
 **CRITICAL - Use Definition Stage Data:**
 You MUST use the parameters that the user provided in Definition stage (Stage 1), which are in context.goalContext.goal_details:
@@ -202,11 +234,25 @@ These are the REAL values the user confirmed. DO NOT fabricate or re-estimate th
 Analysis Logic:
 1. **Start with Definition data**: Read context.goalContext.goal_details for all user-confirmed parameters (retirement_age, living_expense_pa, expected_return_pct, inflation_pct, risk_attitude, etc.).
 2. **Enrich with real financial position**: Use context.goalContext.simulation_data.financials for current cash flow and surplus (monthly_income, monthly_surplus, liquid_capital).
-3. **Calculate contribution requirement**:
-   - For retirement: Use living_expense_pa × (life_expectancy - retirement_age), adjust for inflation_pct and NZ Super if applicable
-   - Calculate funding gap: target_amount - (current_super_balance + liquid_assets + investments - debts)
-   - Use expected_return_pct and years_to_goal to calculate required monthly_amount
-   - Ensure monthly_amount ≤ available monthly_surplus (from simulation_data.financials)
+3. **Calculate contribution requirement (CRITICAL - Multi-Goal Resource Allocation)**:
+   - For NEW goals: allocated_amount = 0 (no assets have been allocated yet)
+   - Step 1: Recommend lump_sum allocation from available assets (liquid_assets from Gap Analysis)
+     * Keep emergency fund buffer (typically 3-6 months expenses)
+     * **DEBT CONSIDERATION (UNIVERSAL):**
+       - DO NOT subtract debts from available assets for ANY goal type
+       - RATIONALE: Debt servicing costs are already reflected in monthly_surplus (reduced cash flow). Debts affect monthly budget, not investment capital.
+       - Debts are a RISK indicator (net_position, debt-to-income ratio), not an investment constraint
+     * Example: From $349k available assets, recommend $60k allocation (保留 $289k for emergency/other goals)
+     * Note: If user has $781k debts, their net_position is negative, but this doesn't reduce the $349k cash available for investment
+   - Step 2: Calculate FUNDING GAP based on allocation decision
+     * funding_gap = target_amount - lump_sum_allocation - allocated_amount
+     * For NEW goal with $60k lump_sum: funding_gap = $480k - $60k - $0 = $420k
+     * NOT: target_amount - (all available assets) ❌
+     * NOT: target_amount - (available assets - debts) ❌
+   - Step 3: Calculate required monthly_amount to fill funding_gap
+     * Use portfolio_expected_return (from economic_exposure), inflation_pct, and years_to_goal
+     * FV(lump_sum_allocation, years) + FV(monthly_amount, years) = target_amount
+   - Step 4: Ensure monthly_amount ≤ available monthly_surplus (from simulation_data.financials)
 4. **Risk alignment**: Use risk_attitude from goal_details (not derived profile) to set economic_exposure. If user selected 'balanced', don't override to 'growth' without justification.
 5. **Glide path**: If horizon > 15 years and goal is retirement, include glide_path to de-risk before goal date.
 6. **Implementation_notes**: Only hint wrappers (e.g., kiwisaver / managed_fund / cash) and product_count_hint; DO NOT list specific funds.
@@ -228,16 +274,23 @@ CRITICAL CONSISTENCY RULES (apply to all outputs):
   
 - **HYBRID CONTRIBUTION CALCULATION (CRITICAL)**:
   If you recommend "hybrid", you MUST apply Time Value of Money consistently:
-  1) Calculate expected portfolio return from exposure (see above)
-  2) Calculate lump_sum FV: lump_sum_amount × (1 + real_return)^years
-  3) Calculate remaining_gap: original_gap - lump_sum_FV
-  4) Compute monthly_amount using FV annuity formula based on remaining_gap
+  1) Determine lump_sum allocation from available assets (e.g., $60k from $349k available)
+  2) Calculate funding_gap = target_amount - lump_sum_allocation - allocated_amount
+  3) Calculate expected portfolio return from exposure (see above)
+  4) Calculate lump_sum FV: lump_sum_allocation × (1 + real_return)^years
+  5) Calculate remaining_gap: funding_gap - (lump_sum_FV - lump_sum_allocation)
+  6) Compute monthly_amount using FV annuity formula based on remaining_gap
   
-  Example: Gap=$130k, lump=$60k, years=6, 60/30/10 exposure, inflation=2.5%
-  - Real return: 3.7% (NOT 2.5% from expected_return_pct - inflation_pct)
-  - Lump FV: $60k × 1.037^6 = $73.6k
-  - Remaining: $130k - $73.6k = $56.4k
-  - Monthly: $710/mo (calculated at 3.7% real return)
+  Example: Target=$480k, allocated=$0 (new goal), available_assets=$349k, debts=$781k, years=6
+  - Lump allocation: $60k from $349k available (debts don't reduce available investment capital)
+  - Funding gap: $480k - $60k - $0 = $420k
+  - Real return: 3.7% (60/30/10 → 6.2% - 2.5% inflation)
+  - Lump FV: $60k × 1.037^6 = $73.6k (growth: $13.6k)
+  - Remaining: $420k - $13.6k = $406.4k
+  - Monthly: Solve FV_annuity($X, 6 years, 3.7%) = $406.4k → $4,560/mo
+  - Note: $781k debts affect monthly_surplus (through debt servicing), not lump sum calculation
+  
+  NOTE: The funding_gap is based on ALLOCATION DECISION ($60k), not available assets ($349k) or net position ($349k - $781k = -$431k). Debts are already accounted for in monthly_surplus.
   
 - If lump_sum_amount >= gap (after considering FV), set monthly_amount = 0 and explain briefly.
 - **IMPORTANT**: Do NOT use user's expected_return_pct directly for contribution calculations. The portfolio_expected_return derived from economic exposure is more accurate because it reflects the actual investment strategy. The user's expected_return_pct is only a general assumption from Stage 1 before strategy was determined.
@@ -247,21 +300,76 @@ What you must do:
 - Populate 'ai_decision':
    - target_amount: For retirement, output the CALCULATED total funding need. For others, carry forward user's target.
 - Populate 'ai_decision.strategy_recommendation':
-   - economic_exposure (growth/defensive/liquidity) - aligned with user's risk_attitude from goal_details. This is your PRIMARY output.
-   - glide_path if applicable (for long-term goals)
+   - **economic_exposure (growth/defensive/liquidity) - THIS IS YOUR PRIMARY OUTPUT. ALWAYS INCLUDE IT PROMINENTLY.**
+     * Determine based on: goal timeline (shorter = less growth), user's risk_attitude (conservative/balanced/growth), and growth requirement
+     * Present clearly in rationale with percentages and expected returns
+     * Aligned with user's risk_attitude from goal_details
+   - glide_path if applicable (for long-term goals, especially retirement with 15+ year horizons)
    - contribution_strategy with CALCULATED amounts:
        * mode: lump_sum / recurring / hybrid (based on available surplus and lump sum capital)
-      * monthly_amount: MUST be calculated based on remaining_gap, real_return_pct, and horizon. If calculation shows required amount > monthly_surplus_allocatable, set to max affordable and note the shortfall.
-      * lump_sum_amount: Use liquid_assets if mode includes lump_sum, but keep a prudent liquidity buffer.
+      * lump_sum_amount: Recommended allocation from available liquid_assets, keeping emergency buffer (e.g., $60k from $349k available)
+      * monthly_amount: MUST be calculated based on funding_gap (target - lump_sum - allocated), real_return_pct, and horizon. If calculation shows required amount > monthly_surplus_allocatable, set to max affordable and note the shortfall.
        * income_linked: true if recurring/hybrid
        * escalation_rate_pct: Use inflation_pct from goal_details as baseline
        * reserve_for_other_goals_pct: if provided in simulation_data
    - implementation_notes and consistency_check (note if required contribution > available surplus, or if goal may be underfunded)
-- Explain WHY in 'rationale', referencing:
-   - Specific numbers from goal_details (e.g., "Your target of $800k over 35 years...")
-   - Calculation logic (e.g., "Using real return = 6% - 2.5%...")
-   - Feasibility (e.g., "This requires $X/month, you have $Y allocatable surplus available")
-   - Risk alignment (e.g., "Your 'balanced' risk preference suggests...")
+- Explain WHY in 'rationale' with CONFIDENT, PROFESSIONAL tone:
+   - Use assertive language: state decisions directly, not tentatively
+   - CRITICAL: Use structured markdown format with clear headings
+   - Structure: Economic Exposure → Allocation Decision → Funding Gap → Monthly Feasibility → Risk Notes
+   
+   **ECONOMIC EXPOSURE (MANDATORY - PRIMARY OUTPUT):**
+   - This is your MOST IMPORTANT output - always include it prominently at the start of rationale
+   - Determine based on: goal timeline, growth requirement, user's risk_attitude
+   - Present in clear, structured markdown format with bold headings
+   
+   Required format:
+   **Investment Strategy:**
+   - **Growth:** 60% (equities, property, high-growth assets)
+   - **Defensive:** 30% (bonds, fixed income)
+   - **Liquidity:** 10% (cash, money market)
+   - **Expected Return:** 6.2% (before inflation)
+   - **Real Return:** 3.7% (after 2.5% inflation)
+   
+   Rationale: Your 'balanced' risk preference with 6-year timeline supports moderate growth exposure. 60% growth provides capital appreciation while 30% defensive reduces volatility.
+   
+   - Link exposure to goal characteristics: "6-year timeline allows for X% growth exposure", "Conservative preference suggests Y% defensive"
+   - Show the portfolio return calculation clearly
+   - Always calculate and show both expected return and real return (after inflation)
+   
+   **ALLOCATION DECISION:**
+   - Lead with the decision: "Allocate $XXXk to this goal: $YYk liquid assets + $ZZk KiwiSaver."
+   - Or: "Allocate $XXXk liquid assets (keeping $YYYk for emergency fund and other goals)."
+   - Be direct and clear about the allocation strategy
+   
+   **FUNDING GAP:**
+   - State the gap calculation: "After this $XXXk allocation, the remaining gap is $YYYk, which needs monthly contributions."
+   - Show the math clearly and confidently
+   
+   **MONTHLY FEASIBILITY:**
+   - Show calculation: "Using real return = X% - Y% = Z%, this requires $X/month."
+   - State available surplus: "You have $Y monthly surplus available after other goals (already reduced by debt servicing)."
+   - If shortfall: "Shortfall: $Z/month under target. Options: reduce target, extend timeline, or reallocate from other goals."
+   - If sufficient: "This is well within your available surplus."
+   - Be direct about feasibility - don't hedge
+   
+   **RISK NOTES (if applicable):**
+   - For HOME goals with debts: "Banks will assess your debt-to-income ratio (current: $XXXk debts vs. $YYYk income)."
+   - For RETIREMENT goals: State NZ Super impact directly if applicable
+   - Keep it factual and professional, not cautionary
+   
+   DO NOT:
+   - Use tentative language ("I recommend...", "you might consider...", "perhaps...")
+   - Hedge decisions ("this could work...", "you may want to...")
+   - Over-explain rationale for not subtracting debts (it's already correct in the calculation)
+   - Skip or bury the economic exposure - it MUST be prominent
+   
+   DO:
+   - ALWAYS lead with Economic Exposure in structured format
+   - Be assertive and direct ("Allocate...", "This requires...", "Your strategy is...")
+   - Show expertise through clear calculations
+   - Present options when there are trade-offs, but do so confidently
+   - Use markdown formatting (bold, bullets) for clarity
 `.trim();
 
     case GOAL_ENGINE_STAGES.PRODUCT:
@@ -508,18 +616,22 @@ function getGapAnalysisSchema() {
           substage: { type: 'string', const: 'gap_analysis' },
           next_substage: { type: 'string', const: 'done' },
           user_guidance: { type: 'string' },
-          // Common gap fields
-          liquid_assets: { type: 'number', description: 'Liquid savings/cash' },
-          investments: { type: 'number', description: 'Other investments' },
+          // Available assets (for feasibility reference)
+          liquid_assets: { type: 'number', description: 'Available liquid savings/cash (unallocated)' },
+          investments: { type: 'number', description: 'Available other investments (unallocated)' },
           debts: { type: 'number', description: 'Total debts/loans' },
           monthly_income: { type: 'number', description: 'Monthly income' },
-          current_amount: { type: 'number', description: 'Current savings toward goal' },
-          target_amount: { type: 'number', description: 'Calculated required amount (Gap + Current)' },
-          // Retirement gap
-          current_super_balance: { type: 'number', description: '[retirement] KiwiSaver balance' },
+          // Target and gap
+          target_amount: { type: 'number', description: 'Calculated required amount for goal' },
+          reference_gap: { type: 'number', description: 'Reference gap = target - available_assets (WITHOUT subtracting debts). Debts are handled through monthly_surplus, not asset reduction. NOT an allocation commitment.' },
+          net_position: { type: 'number', description: 'Net financial position (assets - debts). Risk indicator only - does not affect investment calculations. Important for assessing financial health and loan approval.' },
+          // Current allocation (NEW goals = 0)
+          allocated_amount: { type: 'number', description: 'Amount already allocated to this goal. For NEW goals, this is 0.' },
+          // Retirement specific
+          current_super_balance: { type: 'number', description: '[retirement] Available KiwiSaver balance (unallocated)' },
           annual_contribution: { type: 'number', description: '[retirement] Annual KiwiSaver contribution' }
         },
-        required: ['thought_process', 'rationale', 'substage', 'next_substage', 'liquid_assets']
+        required: ['thought_process', 'rationale', 'substage', 'next_substage', 'liquid_assets', 'target_amount']
       }
     },
     required: ['ai_decision']
@@ -564,11 +676,11 @@ function getStageResponseSchema(stage, substage = null) {
                     recommended_risk: { type: 'string', enum: ['conservative', 'balanced', 'growth', 'aggressive'] },
                     economic_exposure: {
                         type: 'object',
-                        description: 'PRIMARY OUTPUT: Economic exposure allocation (growth/defensive/liquidity). Do NOT use asset class terms (stocks/bonds/cash) in rationale.',
+                        description: 'PRIMARY OUTPUT (MANDATORY): Economic exposure allocation (growth/defensive/liquidity). MUST be presented prominently in rationale with structured markdown format. Do NOT use asset class terms (stocks/bonds/cash) in rationale - use growth/defensive/liquidity terminology.',
                         properties: {
-                            growth: { type: 'number', description: 'Growth exposure percentage (0-100): equities, property, alternatives' },
-                            defensive: { type: 'number', description: 'Defensive exposure percentage (0-100): fixed income, bonds' },
-                            liquidity: { type: 'number', description: 'Liquidity exposure percentage (0-100): cash, money market' }
+                            growth: { type: 'number', description: 'Growth exposure percentage (0-100): equities, property, alternatives. Based on timeline + risk_attitude + growth requirement.' },
+                            defensive: { type: 'number', description: 'Defensive exposure percentage (0-100): fixed income, bonds. Provides stability and reduces volatility.' },
+                            liquidity: { type: 'number', description: 'Liquidity exposure percentage (0-100): cash, money market. Ensures short-term access.' }
                         },
                         required: ['growth', 'defensive', 'liquidity']
                     },
@@ -735,4 +847,153 @@ Output requirements:
   };
 
   return { prompt, context };
+}
+
+/**
+ * Generate a prompt for AI to explain optimization results in plain language
+ * @param {Object} optimizationResult - The result from optimizeGoalAllocations
+ * @returns {Object} Prompt object for LLM
+ */
+export function getOptimizationExplanationPrompt(optimizationResult) {
+  const {
+    allocations = [],
+    financials = {},
+    timeline = [],
+    composite_success = 0
+  } = optimizationResult;
+
+  const totalCurrent = allocations.reduce((sum, a) => sum + (a.current_monthly || 0), 0);
+  const totalRecommended = allocations.reduce((sum, a) => sum + (a.recommended_monthly || 0), 0);
+  const budgetAvailable = financials.available_for_goals || 0;
+  const budgetRemaining = budgetAvailable - totalRecommended;
+  const overAllocated = allocations.some(a => a.over_allocation_warning);
+
+  const goalsContext = allocations.map(a => {
+    const change = (a.recommended_monthly || 0) - (a.current_monthly || 0);
+    const loanTerm = a.category === 'home' && a.goal_details?.loan_term_years ? a.goal_details.loan_term_years : null;
+    return {
+      name: a.name,
+      category: a.category,
+      current_monthly: a.current_monthly,
+      recommended_monthly: a.recommended_monthly,
+      change: change,
+      completion_year: a.completion_year,
+      loan_term_years: loanTerm,
+      mortgage_payment_year: a.completion_year && loanTerm ? a.completion_year + loanTerm : null,
+      target_amount: a.target_amount,
+      current_amount: a.current_amount,
+      priority: a.priority
+    };
+  }).filter(g => g.target_amount > 0);
+
+  // Detect budget overruns and reserve depletion
+  const budgetOverruns = timeline.filter(t => t.allocatable < 0);
+  const firstOverrunYear = budgetOverruns.length > 0 ? budgetOverruns[0].year : null;
+  const liquidCapitalData = timeline.filter(t => t.liquid_capital_balance !== undefined);
+  const initialReserves = financials.liquid_capital || 0;
+  const finalReserves = liquidCapitalData.length > 0 ? liquidCapitalData[liquidCapitalData.length - 1].liquid_capital_balance : initialReserves;
+  const reservesUsed = initialReserves - finalReserves;
+  const hasBudgetCrisis = firstOverrunYear !== null;
+
+  const prompt = `You are a financial planning assistant generating a technical explanation of optimization results. Your goal is to help users understand the charts and data on this page using clear markdown formatting.
+
+📊 OPTIMIZATION RESULTS:
+${JSON.stringify({
+  budget_available_monthly: budgetAvailable,
+  current_total_investment: totalCurrent,
+  recommended_total_investment: totalRecommended,
+  budget_remaining: budgetRemaining,
+  over_allocated: overAllocated,
+  confidence_level: composite_success,
+  budget_crisis: hasBudgetCrisis ? {
+    first_overrun_year: firstOverrunYear,
+    initial_reserves: initialReserves,
+    final_reserves: finalReserves,
+    reserves_used: reservesUsed
+  } : null,
+  goals: goalsContext
+}, null, 2)}
+
+⚠️ CRITICAL: The "Goal Allocation Timeline" chart displays the "change" field (recommended - current), NOT the "recommended_monthly" field!
+- If change = $0, the chart shows $0 (no additional allocation needed)
+- If change = $364, the chart shows $364 (additional monthly contribution)
+- This is an INCREMENTAL chart, not a total allocation chart!
+
+🎯 YOUR TASK:
+Generate a structured markdown explanation (200-300 words) that helps users understand:
+1. What the optimization calculated
+2. How the allocations work for each goal
+3. How to interpret the charts below (timeline, cumulative growth)
+4. Key technical insights (completion years, mortgage phases, success confidence)
+
+📝 MARKDOWN STRUCTURE:
+## 💡 Optimization Results Explained
+
+### Budget Allocation Overview
+- Current monthly allocations vs. recommended changes
+- Budget utilization rate
+- Remaining buffer
+
+### Goal Breakdown
+For each goal:
+- **[Goal Name]**: Current $X → Recommended $Y (+/-$Z change)
+  - Target: $[amount] by Year [N]
+  - Key insight: [mortgage phase, completion timeline, or priority reasoning]
+
+### How to Read the Charts
+- **Goal Allocation Timeline (Surplus Allocation Projection)**: Shows ADDITIONAL/INCREMENTAL monthly changes (can be positive or negative).
+  - The solid LINE represents "Available for New Allocations" = monthly surplus (after reserves) minus current commitments.
+  - Each colored BAR shows the incremental change for that goal:
+    - Positive values (above 0): additional contributions needed (e.g., $364 = add $364/month)
+    - $0: no change from current allocation
+    - Negative values (below 0): additional burden (e.g., mortgage payment exceeds previous savings)
+  - The grey BAR "Unallocated (Remaining)" shows unused incremental budget.
+  - For mortgage goals: After down payment (e.g., Year 5), shows incremental cost = mortgage payment minus previous savings. If mortgage > savings, bar goes below 0.
+- **Liquid Investment Growth**: Shows the balance of liquid investments (KiwiSaver, savings, investment accounts) over time with compound returns. 
+  - The BLUE AREA "Liquid Assets (Total Saved)" shows total liquid capital balance (all account balances summed).
+  - IMPORTANT: This does NOT show total wealth. For home goals, when the down payment is reached, liquid assets drop sharply (account goes to $0 as funds convert to property), then the property becomes equity (not shown on this chart).
+  - Your total wealth includes: liquid investments (shown in blue) + property equity (not shown) + debt reduction (not shown).
+- [Special phases like "mortgage repayment starts in Year X after down payment"]
+
+### Confidence & Risk Assessment
+- Composite success rate: [X]%
+- [Any over-allocation warnings or risk notes]
+${hasBudgetCrisis ? `- **Budget Overrun**: Starting Year ${firstOverrunYear}, expenses exceed budget. ${reservesUsed > 0 ? `$${Math.round(reservesUsed).toLocaleString()} of emergency reserves used to cover gaps.` : ''}` : ''}
+${hasBudgetCrisis && finalReserves < initialReserves * 0.3 ? `- **Sustainability Warning**: Plan significantly depletes reserves. Consider income increase or goal adjustments.` : ''}
+
+📐 STYLE GUIDELINES:
+- Use markdown headers (##, ###), bold (**text**), and lists
+- Be concise and technical but clear
+- Focus on explaining HOW to read the page, not telling users what to do
+- Include specific numbers ($, years) from the data
+- NO emojis in body text (only in section headers if needed)
+- NO conversational tone ("you should", "let's", "exciting!")
+- YES explanatory tone ("This shows...", "The optimizer calculated...", "After Year X...")
+
+❌ AVOID:
+- Friendly advice or motivational language
+- Questions to the user
+- Call-to-action phrases
+- Excessive emojis
+- Code blocks or code fences (backticks) - output plain markdown text only
+- Wrapping your entire response in a code block
+
+✅ GOOD EXAMPLES:
+"The optimizer allocated an additional $364/month to retirement, bringing the total to $1,414/month. This achieves the $1,025,000 target by Year 26 with 82% confidence."
+
+"**Villa Purchase**: Maintains current $2,450/month contribution ($0 change). Down payment ($420k) reached in Year 4, triggering a 30-year mortgage phase with monthly payments continuing."
+
+"**Surplus Allocation Projection**: The line shows available budget. Year 1-4: villa bar = $0 (no change), retirement bar = $364 (additional). Year 5+: villa bar goes NEGATIVE (e.g., -$2,800/year) because mortgage payment ($5,265/month) exceeds previous savings ($2,450/month), creating an incremental burden of $2,815/month. This negative bar appears below the 0-axis."
+
+"**Liquid Investment Growth Chart**: Shows individual goal balances stacked together. The blue area 'Liquid Assets (Total Saved)' is the sum of all account balances. Year 1-4: grows from $312k to $550k as investments compound. Year 5: drops sharply to ~$20k when villa account goes to $0 (down payment used for property). This chart tracks ACTUAL liquid wealth - property equity is NOT included."
+
+Now generate the markdown explanation:`;
+
+  return {
+    prompt,
+    responseFormat: {
+      type: 'text',
+      max_tokens: 500
+    }
+  };
 }

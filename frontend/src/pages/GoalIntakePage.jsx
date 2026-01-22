@@ -1546,7 +1546,7 @@ const GoalEnginePage = () => {
 
     setGoalContext(prev => {
       const existingFinancials = prev.simulation_data?.financials || {};
-      const reservePct = existingFinancials.reserve_for_other_goals_pct ?? 40;
+      const reservePct = existingFinancials.reserve_for_other_goals_pct ?? 25;
       const allocatable = Math.max(0, Math.round(monthlySurplus * (1 - reservePct / 100)));
 
       return {
@@ -1712,7 +1712,7 @@ const GoalEnginePage = () => {
           const otherGoalsMonthlyTotal = otherGoalsData.reduce((sum, g) => sum + (g.monthly_allocation || 0), 0);
           
           const financialsSnapshot = computeFinancialsFromCashFlows(cashFlows, {
-            reservePct: context?.simulation_data?.financials?.reserve_for_other_goals_pct ?? 40,
+            reservePct: context?.simulation_data?.financials?.reserve_for_other_goals_pct ?? 25,
             otherGoalsMonthly: otherGoalsMonthlyTotal
           });
 
@@ -1989,13 +1989,21 @@ const GoalEnginePage = () => {
           
           setCurrentStage(nextStageIndex);
           
-          // Auto-trigger analysis for Strategy and Product stages
+          // Auto-trigger analysis for Strategy, Product, and Simulation stages
           if (nextStageId === 'strategy') {
               runStageAnalysis(nextStageId, goalContext, nextStageIndex);
           } else if (nextStageId === 'product') {
               runProductAnalysis(goalContext, nextStageIndex);
           } else if (nextStageId === 'simulation') {
-              // Trigger LLM explanation/analysis for the simulation stage (SSE streaming)
+              // Set loading state immediately for smooth transition
+              setIsLoadingAI(true);
+              
+              // Simulate Monte Carlo processing time (1-1.5s) before showing content
+              setTimeout(() => {
+                  setIsLoadingAI(false);
+              }, 1000 + Math.random() * 500);
+              
+              // Trigger LLM explanation/analysis for the simulation stage (SSE streaming) in background
               runStageAnalysis(nextStageId, goalContext, nextStageIndex);
           } else {
               setMessages([getGreeting(nextStageIndex)]);
