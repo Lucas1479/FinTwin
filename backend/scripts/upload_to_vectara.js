@@ -8,7 +8,10 @@ const API_KEY = process.env.VECTARA_API_KEY || 'YOUR_API_KEY_HERE';
 const CORPUS_KEY = process.env.VECTARA_CORPUS_KEY || 'YOUR_CORPUS_KEY_HERE';
 const CUSTOMER_ID = process.env.VECTARA_CUSTOMER_ID || 'YOUR_CUSTOMER_ID_HERE'; // Only needed for some legacy API calls, usually Corpus Key is enough for v2
 
-const PAYLOAD_FILE = path.join(__dirname, '../fintwin_vectara_payload.json');
+// Use smart payload if available, otherwise use regular payload
+const SMART_PAYLOAD_FILE = path.join(__dirname, '../fintwin_vectara_smart_payload.json');
+const REGULAR_PAYLOAD_FILE = path.join(__dirname, '../fintwin_vectara_payload.json');
+const PAYLOAD_FILE = fs.existsSync(SMART_PAYLOAD_FILE) ? SMART_PAYLOAD_FILE : REGULAR_PAYLOAD_FILE;
 
 const uploadToVectara = () => {
   if (!fs.existsSync(PAYLOAD_FILE)) {

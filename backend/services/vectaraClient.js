@@ -165,6 +165,43 @@ class VectaraClient {
         .trim();
     };
 
+    const cleanSummaryUrls = (text) => {
+      if (!text) return text;
+      
+      // 1. 移除完整的URL行（整行都是URL的情况）
+      let cleaned = text.replace(/^https?:\/\/[^\s]+$/gm, '');
+      
+      // 2. 移除句子中的URL，但保留上下文
+      // 例如："Visit https://example.com for details" → "Visit for details"
+      cleaned = cleaned.replace(/https?:\/\/[^\s)]+/g, '');
+      
+      // 3. 清理多余的空行和标点
+      cleaned = cleaned
+        .replace(/\n{3,}/g, '\n\n')  // 多个换行 → 双换行
+        .replace(/\s{2,}/g, ' ')      // 多个空格 → 单空格
+        .replace(/\s+([,.;])/g, '$1') // 标点前的空格
+        .trim();
+      
+      return cleaned;
+    };
+
+    const isValidUrl = (url) => {
+      if (!url || typeof url !== 'string') return false;
+      
+      // 检测常见的幻觉特征
+      if (url.includes('%EF%AC%81')) return false; // ligature编码
+      if (url.includes('ﬁ') || url.includes('ﬂ')) return false; // Unicode ligature
+      if (url.includes('%EF%AC%82')) return false; // fl ligature
+      
+      // 验证URL格式
+      try {
+        const parsed = new URL(url);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    };
+
     const isUnhelpfulSummary = (summary) => {
       if (!summary) return true;
       const normalized = summary.toLowerCase();
@@ -177,9 +214,53 @@ class VectaraClient {
       );
     };
 
+    const isLowQualityPassage = (text) => {
+      if (!text || typeof text !== 'string') return true;
+      
+      const normalized = text.toLowerCase();
+      const textLength = text.length;
+      
+      // 检测导航/索引页特征
+      if (normalized.includes('index of page links') || 
+          normalized.includes('index of links') ||
+          normalized.includes('table of contents') ||
+          normalized.includes('navigation menu')) {
+        return true;
+      }
+      
+      // 检测URL密度（如果超过30%是URL，认为是低质量内容）
+      const urlMatches = text.match(/https?:\/\/[^\s)]+/g) || [];
+      const urlLength = urlMatches.reduce((sum, url) => sum + url.length, 0);
+      const urlDensity = textLength > 0 ? urlLength / textLength : 0;
+      
+      if (urlDensity > 0.3) {
+        return true;
+      }
+      
+      // 检测是否几乎全是数字/标点（可能是编号列表）
+      const meaningfulText = text.replace(/[0-9\s.,;:\-()[\]]/g, '');
+      if (meaningfulText.length < textLength * 0.3) {
+        return true;
+      }
+      
+      return false;
+    };
+
     const buildFallbackSummary = (passages = []) => {
       if (!passages.length) return null;
-      const combined = passages
+      
+      // 过滤低质量passages后再构建summary
+      const qualityPassages = passages.filter((p) => {
+        const text = cleanSnippetText(p.text);
+        return text && !isLowQualityPassage(text);
+      });
+      
+      if (!qualityPassages.length) {
+        console.warn('[Vectara] All passages are low quality, cannot build fallback summary');
+        return null;
+      }
+      
+      const combined = qualityPassages
         .map((p) => cleanSnippetText(p.text))
         .filter(Boolean)
         .slice(0, 2)
@@ -189,41 +270,59 @@ class VectaraClient {
     };
 
     const mapV2Passages = (items = []) =>
-      items.map((item) => {
-        const rawUrl =
-          item?.metadata?.url ||
-          item?.metadata?.link ||
-          item?.metadata?.href ||
-          item?.metadata?.source_url ||
-          item?.document_metadata?.url ||
-          item?.document_metadata?.source_url ||
-          '';
-        let url = rawUrl && typeof rawUrl === 'string' ? rawUrl.trim() : '';
-        if (!url) url = extractUrlFromText(item?.text);
+      items
+        .map((item) => {
+          const rawUrl =
+            item?.metadata?.url ||
+            item?.metadata?.link ||
+            item?.metadata?.href ||
+            item?.metadata?.source_url ||
+            item?.document_metadata?.url ||
+            item?.document_metadata?.source_url ||
+            '';
+          let url = rawUrl && typeof rawUrl === 'string' ? rawUrl.trim() : '';
+          if (!url) url = extractUrlFromText(item?.text);
 
-        let host = '';
-        try {
-          if (url) host = new URL(url).hostname;
-        } catch (_) {}
+          // 验证和清理URL
+          if (url && !isValidUrl(url)) {
+            console.warn(`[Vectara] Invalid URL detected and removed: ${url.slice(0, 100)}`);
+            url = ''; // 移除无效URL
+          }
 
-        const title =
-          item?.metadata?.doc_title ||
-          item?.metadata?.title ||
-          item?.document_metadata?.title ||
-          item?.document_metadata?.Title ||
-          host ||
-          'Reference';
+          let host = '';
+          try {
+            if (url) host = new URL(url).hostname;
+          } catch (_) {}
 
-        return {
-          text: cleanSnippetText(item?.text),
-          score: item?.score,
-          corpusId: item?.corpusKey?.corpus_id || item?.corpusKey?.corpusId,
-          documentId: item?.document_id || item?.documentId,
-          source: host || item?.metadata?.source || item?.metadata?.doc_title || 'KnowledgeBase',
-          url,
-          title,
-        };
-      });
+          const title =
+            item?.metadata?.doc_title ||
+            item?.metadata?.title ||
+            item?.document_metadata?.title ||
+            item?.document_metadata?.Title ||
+            host ||
+            'Reference';
+
+          const cleanedText = cleanSnippetText(item?.text);
+
+          return {
+            text: cleanedText,
+            score: item?.score,
+            corpusId: item?.corpusKey?.corpus_id || item?.corpusKey?.corpusId,
+            documentId: item?.document_id || item?.documentId,
+            source: host || item?.metadata?.source || item?.metadata?.doc_title || 'KnowledgeBase',
+            url,
+            title,
+            isLowQuality: isLowQualityPassage(cleanedText), // 标记低质量内容
+          };
+        })
+        .filter((passage) => {
+          // 过滤掉低质量passages
+          if (passage.isLowQuality) {
+            console.warn(`[Vectara] Low quality passage filtered: ${passage.text.slice(0, 100)}...`);
+            return false;
+          }
+          return true;
+        });
 
     const parseV2Response = (data) => {
       const respObj = data?.responseSet?.[0] || {};
@@ -238,6 +337,11 @@ class VectaraClient {
         data?.generation?.summary?.text ||
         null;
 
+      // 清理summary中的URL（GPT-4o可能编造的URL）
+      if (summaryText) {
+        summaryText = cleanSummaryUrls(summaryText);
+      }
+
       const responseItems = Array.isArray(respObj?.response)
         ? respObj.response
         : Array.isArray(data?.search_results)
@@ -245,9 +349,17 @@ class VectaraClient {
         : [];
 
       const passages = mapV2Passages(responseItems);
+      
+      // 如果所有passages都被过滤了，记录警告
+      if (responseItems.length > 0 && passages.length === 0) {
+        console.warn(`[Vectara] All ${responseItems.length} passages were filtered as low quality`);
+      }
+      
+      // 如果summary不可用，从高质量passages重建
       if (isUnhelpfulSummary(summaryText)) {
         summaryText = buildFallbackSummary(passages);
       }
+      
       return { summaryText, passages };
     };
 
@@ -471,47 +583,69 @@ class VectaraClient {
       corpusIds: this.corpusIds,
     });
     const respObj = data?.responseSet?.[0] || {};
-    const summaryText = respObj?.summary?.[0]?.text || null;
-    const passages = (respObj?.response || []).map((item) => {
-      const rawUrl =
-        item.metadata?.url ||
-        item.metadata?.link ||
-        item.metadata?.href ||
-        item.metadata?.source_url ||
-        '';
-      let url = rawUrl && typeof rawUrl === 'string' ? rawUrl.trim() : '';
+    let summaryText = respObj?.summary?.[0]?.text || null;
+    
+    // 清理summary中的URL（v1也可能有这个问题）
+    if (summaryText) {
+      summaryText = cleanSummaryUrls(summaryText);
+    }
+    
+    const passages = (respObj?.response || [])
+      .map((item) => {
+        const rawUrl =
+          item.metadata?.url ||
+          item.metadata?.link ||
+          item.metadata?.href ||
+          item.metadata?.source_url ||
+          '';
+        let url = rawUrl && typeof rawUrl === 'string' ? rawUrl.trim() : '';
 
-      // Fallback: extract first http(s) URL from passage text if metadata missing
-      if (!url) {
-        const match = item.text?.match(/https?:\/\/\S+/);
-        if (match && match[0]) {
-          // Strip trailing punctuation
-          url = match[0].replace(/[),.;]+$/, '');
+        // Fallback: extract first http(s) URL from passage text if metadata missing
+        if (!url) {
+          const match = item.text?.match(/https?:\/\/\S+/);
+          if (match && match[0]) {
+            // Strip trailing punctuation
+            url = match[0].replace(/[),.;]+$/, '');
+          }
         }
-      }
 
-      let host = '';
-      try {
-        if (url) host = new URL(url).hostname;
-      } catch (_) {}
+        // 验证URL
+        if (url && !isValidUrl(url)) {
+          console.warn(`[Vectara v1] Invalid URL detected and removed: ${url.slice(0, 100)}`);
+          url = '';
+        }
 
-      const snippetText = item.text || '';
-      const resolvedTitle =
-        item.metadata?.doc_title ||
-        item.metadata?.title ||
-        host ||
-        (snippetText ? snippetText.slice(0, 80) : 'Reference');
+        let host = '';
+        try {
+          if (url) host = new URL(url).hostname;
+        } catch (_) {}
 
-      return {
-        text: snippetText,
-        score: item.score,
-        corpusId: item.corpusKey?.corpusId,
-        documentId: item.documentId,
-        source: host || item.metadata?.source || item.metadata?.doc_title || 'KnowledgeBase',
-        url,
-        title: resolvedTitle,
-      };
-    });
+        const snippetText = item.text || '';
+        const resolvedTitle =
+          item.metadata?.doc_title ||
+          item.metadata?.title ||
+          host ||
+          (snippetText ? snippetText.slice(0, 80) : 'Reference');
+
+        return {
+          text: snippetText,
+          score: item.score,
+          corpusId: item.corpusKey?.corpusId,
+          documentId: item.documentId,
+          source: host || item.metadata?.source || item.metadata?.doc_title || 'KnowledgeBase',
+          url,
+          title: resolvedTitle,
+          isLowQuality: isLowQualityPassage(snippetText),
+        };
+      })
+      .filter((passage) => {
+        // 过滤低质量passages
+        if (passage.isLowQuality) {
+          console.warn(`[Vectara v1] Low quality passage filtered: ${passage.text.slice(0, 100)}...`);
+          return false;
+        }
+        return true;
+      });
 
     return {
       summary: summaryText,

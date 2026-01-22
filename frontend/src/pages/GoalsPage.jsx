@@ -1,17 +1,13 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout';
-import { Plus } from 'lucide-react';
-import { getGoals, updateGoal, deleteGoal } from '../services/goalService';
-import GoalCard from '../components/goals/GoalCard';
-import GoalSummaryWidget from '../components/goals/GoalSummaryWidget';
-import SavingsOverviewWidget from '../components/goals/SavingsOverviewWidget';
-import GoalFilters from '../components/goals/GoalFilters';
-import GoalDetailModal from '../components/goals/GoalDetailModal';
+import { Plus, LayoutGrid, Sparkles, Zap } from 'lucide-react';
+import { getGoals } from '../services/goalService';
 import { useSimulatedData, useSimulation } from '../context/SimulationContext';
-import { Zap } from 'lucide-react';
 import InfoTooltip from '../components/common/InfoTooltip';
 import { HELP_ANCHORS } from '../constants/helpAnchors';
+import GoalsOverview from './goals/GoalsOverview';
+import GoalsOptimizer from './goals/GoalsOptimizer';
 
 // Mock data to match the design
 const MOCK_GOALS = [
@@ -54,30 +50,34 @@ const MOCK_GOALS = [
 ];
 
 const GoalsPage = () => {
+  const location = useLocation();
   const [goals, setGoals] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedGoal, setSelectedGoal] = useState(null);
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'optimizer'
   const { timeOffset, marketMode } = useSimulation();
 
   // --- Simulation Integration ---
   const simulatedData = useSimulatedData({
     goals: goals,
-    assets: [], // Add if GoalsPage needs asset info later
+    assets: [],
     cashFlows: []
   });
 
   const displayGoals = simulatedData?.goals || goals;
 
-  // Filter state
-  const [filters, setFilters] = useState({
-    dateRange: 'all',       // Default to 'all' so users see their data across years
-    sortBy: 'date_asc',     // Default to 'Soonest' to see what's due next or overdue
-    status: 'all',          // 'all', 'in_progress', 'not_started'
-  });
-
   useEffect(() => {
     fetchGoals();
   }, []);
+
+  useEffect(() => {
+    const stateTab = location.state?.tab;
+    const params = new URLSearchParams(location.search);
+    const queryTab = params.get('tab');
+    const nextTab = stateTab || queryTab;
+    if (nextTab && ['overview', 'optimizer'].includes(nextTab)) {
+      setActiveTab(nextTab);
+    }
+  }, [location.state, location.search]);
 
   const fetchGoals = async () => {
     setIsLoading(true);
@@ -93,238 +93,108 @@ const GoalsPage = () => {
     }
   };
 
-  const normalizeStatus = (status) => {
-    if (!status) return 'in_progress';
-    const raw = String(status).toLowerCase().replace(/\s+/g, '_');
-    if (raw === 'active') return 'in_progress';
-    if (raw === 'finished') return 'completed';
-    return raw;
-  };
-
-  const getGoalTimestamp = (goal) => {
-    const rawDate = goal.target_date || goal.due_date;
-    if (!rawDate) return null;
-    const parsed = new Date(rawDate);
-    const time = parsed.getTime();
-    return Number.isNaN(time) ? null : time;
-  };
-
-  // Derived state: Filtered and Sorted Goals
-  const processedGoals = useMemo(() => {
-    let result = [...displayGoals]; // Use simulated goals as base
-    const now = new Date();
-    const currentYear = now.getFullYear();
-
-    // 1. Filter by Date Range
-    if (filters.dateRange === 'this_year') {
-      result = result.filter(g => {
-        if (!g.target_date && !g.due_date) return false;
-        const d = new Date(g.target_date || g.due_date);
-        const isThisYear = d.getFullYear() === currentYear;
-        // Natural logic: Also include overdue goals that are not yet finished
-        const isOverdueActive = d.getTime() < now.getTime() && 
-                               (g.status !== 'Finished' && g.status !== 'completed');
-        return isThisYear || isOverdueActive;
-      });
-    } else if (filters.dateRange === 'next_year') {
-      result = result.filter(g => {
-        if (!g.target_date && !g.due_date) return false;
-        const d = new Date(g.target_date || g.due_date);
-        return d.getFullYear() === currentYear + 1;
-      });
-    }
-
-    // 2. Filter by Status
-    if (filters.status !== 'all') {
-      result = result.filter(g => normalizeStatus(g.status) === filters.status);
-    }
-
-    // 3. Sort
-    result.sort((a, b) => {
-      const nameA = (a.title || a.goal_name || '').toLowerCase();
-      const nameB = (b.title || b.goal_name || '').toLowerCase();
-      const dateA = getGoalTimestamp(a);
-      const dateB = getGoalTimestamp(b);
-      const amtA = a.target_amount || 0;
-      const amtB = b.target_amount || 0;
-
-      const statusPriority = normalizeStatus(a.status) === 'in_progress' ? 0 : 1;
-      const statusPriorityB = normalizeStatus(b.status) === 'in_progress' ? 0 : 1;
-
-      switch (filters.sortBy) {
-        case 'name_asc': return nameA.localeCompare(nameB);
-        case 'name_desc': return nameB.localeCompare(nameA);
-        case 'amount_desc': return amtB - amtA;
-        case 'date_asc':
-          if (statusPriority !== statusPriorityB) return statusPriority - statusPriorityB;
-          return (dateA ?? Number.POSITIVE_INFINITY) - (dateB ?? Number.POSITIVE_INFINITY);
-        default: return 0;
-      }
-    });
-
-    return result;
-  }, [displayGoals, filters]);
-
-  const handleReset = () => {
-    setFilters({ dateRange: 'all', sortBy: 'date_asc', status: 'all' });
-  };
-
-  const hasActiveFilters = filters.dateRange !== 'all' || filters.status !== 'all' || filters.sortBy !== 'date_asc';
-
-  const handleGoalClick = (goal) => {
-    setSelectedGoal(goal);
-  };
-
-  const handleCloseModal = () => {
-    setSelectedGoal(null);
-  };
-
-  const handleSaveGoal = async (updatedGoal) => {
-    try {
-      // If it's a mock goal (starts with 'mock-'), we can't save to backend. 
-      // Just update local state for demo purposes.
-      if (updatedGoal._id.startsWith('mock-')) {
-        setGoals(prev => prev.map(g => g._id === updatedGoal._id ? updatedGoal : g));
-        alert('Mock goal updated locally.');
-        handleCloseModal();
-        return;
-      }
-
-      await updateGoal(updatedGoal._id, updatedGoal);
-      // Refresh goals to get latest data
-      fetchGoals(); 
-      handleCloseModal();
-    } catch (error) {
-      console.error('Failed to update goal:', error);
-      alert('Failed to save goal changes.');
-    }
-  };
-
-  const handleDeleteGoal = async (goalId) => {
-    if (!window.confirm('Are you sure you want to delete this goal?')) return;
-
-    try {
-      if (goalId.startsWith('mock-')) {
-        setGoals(prev => prev.filter(g => g._id !== goalId));
-        handleCloseModal();
-        return;
-      }
-
-      await deleteGoal(goalId);
-      fetchGoals();
-      handleCloseModal();
-    } catch (error) {
-      console.error('Failed to delete goal:', error);
-      alert('Failed to delete goal.');
-    }
-  };
 
   return (
     <MainLayout>
-      <div className="max-w-[1600px] mx-auto p-4 md:p-6 animate-fade-in space-y-8">
-        
-        {/* Header Section */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pt-2">
-          <div>
-             <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                    <h1 className="text-3xl font-bold text-slate-900 tracking-tight">My Goals</h1>
-                    <InfoTooltip 
-                        content="Goal-Based Investing (GBI) focuses on funding your specific life aspirations rather than beating the market."
-                        anchor={HELP_ANCHORS.GOALS.INTRO} 
-                    />
-                </div>
-                {timeOffset > 0 && (
-                  <div className="bg-indigo-600 text-white text-[10px] font-black uppercase px-2 py-1 rounded flex items-center gap-1 shadow-sm animate-pulse">
-                    <Zap size={12} fill="currentColor" /> Simulation Mode
-                  </div>
-                )}
-             </div>
-             <p className="text-slate-500 mt-1 text-sm">
-                {timeOffset > 0 
-                  ? `Projecting ${timeOffset} years into the future (${marketMode} market conditions)` 
-                  : "Create financial goals and manage your savings"}
-             </p>
-          </div>
+      <div className="min-h-screen bg-slate-50/50 pb-20">
+        <div className="max-w-[1600px] mx-auto px-4 lg:px-6 py-8">
           
-          <Link 
-            to="/goals/new/ai" 
-            className="h-14 pl-6 pr-8 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-100 flex items-center gap-4 hover:bg-indigo-700 hover:shadow-indigo-200 transition-all active:scale-95 group border border-indigo-500/30"
-          >
-            <Plus size={22} strokeWidth={3} className="text-white" />
-            <div className="flex flex-col items-start text-left">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-200/80 leading-none mb-1.5">AI Engine</span>
-                <span className="text-sm font-bold tracking-wide leading-none text-white">Create New Goal</span>
+          {/* Level 1: Page Title */}
+          <div className="mb-8">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <h1 className="text-3xl font-bold text-slate-900 tracking-tight">My Goals</h1>
+                <InfoTooltip 
+                  content="Goal-Based Investing (GBI) focuses on funding your specific life aspirations rather than beating the market."
+                  anchor={HELP_ANCHORS.GOALS.INTRO} 
+                />
+              </div>
+              {timeOffset > 0 && (
+                <div className="bg-indigo-600 text-white text-[10px] font-black uppercase px-2 py-1 rounded flex items-center gap-1 shadow-sm animate-pulse">
+                  <Zap size={12} fill="currentColor" /> Simulation Mode
+                </div>
+              )}
             </div>
-          </Link>
+            <p className="text-slate-500 mt-1 text-sm">
+              {timeOffset > 0 
+                ? `Projecting ${timeOffset} years into the future (${marketMode} market conditions)` 
+                : "Create financial goals and manage your savings"}
+            </p>
+          </div>
+
+          {/* Level 2: Navigation Tabs & Global Toolbar */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b border-slate-200">
+            <div className="flex items-center gap-1">
+              <TabButton 
+                id="overview" 
+                label="Overview" 
+                icon={LayoutGrid} 
+                active={activeTab === 'overview'} 
+                onClick={setActiveTab} 
+              />
+              <TabButton 
+                id="optimizer" 
+                label="Optimizer" 
+                icon={Sparkles} 
+                active={activeTab === 'optimizer'} 
+                onClick={setActiveTab} 
+              />
+            </div>
+
+            {/* Global Actions Toolbar */}
+            {activeTab === 'overview' && (
+              <div className="flex items-center gap-3 pb-2 md:pb-0">
+                <Link 
+                  to="/goals/new/ai" 
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-500 transition-all shadow-md shadow-indigo-200 hover:shadow-indigo-300 transform hover:-translate-y-0.5"
+                >
+                  <Plus size={16} />
+                  <span>Create New Goal</span>
+                </Link>
+              </div>
+            )}
+          </div>
+
+          {/* Level 3: Content Area */}
+          <div className="min-h-[600px] animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {activeTab === 'overview' && (
+              <GoalsOverview 
+                displayGoals={displayGoals} 
+                isLoading={isLoading}
+                onRefresh={fetchGoals}
+              />
+            )}
+            {activeTab === 'optimizer' && (
+              <GoalsOptimizer 
+                goals={displayGoals} 
+                isLoading={isLoading}
+              />
+            )}
+          </div>
+
         </div>
-
-        {/* Filter Component */}
-        <GoalFilters 
-          filters={filters} 
-          onFilterChange={setFilters} 
-          onReset={handleReset}
-          hasActiveFilters={hasActiveFilters}
-        />
-
-        {/* Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-12">
-            {/* Left Side: Filtered Goal Cards (2 cols) */}
-            <div className="lg:col-span-3 xl:col-span-2">
-                {isLoading ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        {[1,2,3,4].map(i => (
-                            <div key={i} className="h-60 bg-slate-100 rounded-3xl animate-pulse"></div>
-                        ))}
-                    </div>
-                ) : (
-                    <>
-                      {processedGoals.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-60 bg-white rounded-3xl border border-dashed border-slate-200 text-slate-400">
-                          <p>No goals found matching filters.</p>
-                          <button onClick={handleReset} className="text-brand-600 font-bold text-sm mt-2 hover:underline">Clear filters</button>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                            {processedGoals.map((goal) => (
-                                <div key={goal._id} className="h-full">
-                                    <GoalCard 
-                                      goal={goal} 
-                                      onClick={handleGoalClick}
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                      )}
-                    </>
-                )}
-            </div>
-
-            {/* Right Side: Widgets (1 col) */}
-            <div className="lg:col-span-3 xl:col-span-1 flex flex-col gap-5">
-                 {/* Summary widget always shows TOTAL stats, ignoring filters for "big picture" context */}
-                 <div className="h-auto">
-                    <GoalSummaryWidget goals={displayGoals} />
-                 </div>
-                 <div className="flex-1 min-h-[240px]">
-                    <SavingsOverviewWidget />
-                 </div>
-            </div>
-        </div>
-
-        {/* Detail Modal */}
-        {selectedGoal && (
-          <GoalDetailModal 
-            goal={selectedGoal} 
-            onClose={handleCloseModal} 
-            onSave={handleSaveGoal}
-            onDelete={handleDeleteGoal}
-          />
-        )}
-
       </div>
     </MainLayout>
   );
 };
+
+// Helper components
+const TabButton = ({ id, label, icon: Icon, active, onClick, disabled }) => (
+  <button
+    onClick={() => !disabled && onClick(id)}
+    disabled={disabled}
+    className={`
+      relative flex items-center gap-2 px-5 py-3 text-sm font-bold transition-all border-b-2
+      ${active 
+        ? 'text-indigo-600 border-indigo-600 bg-indigo-50/50' 
+        : 'text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-50'
+      }
+      ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
+    `}
+  >
+    <Icon size={16} className={active ? 'text-indigo-600' : 'text-slate-400'} />
+    <span>{label}</span>
+  </button>
+);
 
 export default GoalsPage;

@@ -1,0 +1,440 @@
+{
+  "id": "fintwin-spec-smart-v1.3",
+  "type": "structured",
+  "title": "Tiny Test: First 30 Chunks",
+  "description": "Quick test with 30 chunks (~30 seconds)",
+  "metadata": {
+    "version": "2.0",
+    "scope": "Financial Knowledge",
+    "audience": "AI Agents",
+    "generated_at": "2026-01-21T13:07:27.481Z",
+    "source_directory": "docs",
+    "total_documents": 5,
+    "total_chunks": 432,
+    "improvements": [
+      "Smart heading detection",
+      "Content type classification",
+      "Context-aware chunking",
+      "TOC and header/footer detection"
+    ],
+    "global_content_type_stats": {
+      "paragraph": 357,
+      "table_of_contents": 19,
+      "list": 42,
+      "figure_caption": 10,
+      "table": 4
+    },
+    "test_mode": "tiny",
+    "test_document": "Housing-in-aotearoa-new-zealand-2025",
+    "original_chunks": 30,
+    "content_type_stats": {
+      "paragraph": 12,
+      "table_of_contents": 18
+    }
+  },
+  "sections": [
+    {
+      "title": "Housing-in-aotearoa-new-zealand-2025",
+      "text": "Document: Housing-in-aotearoa-new-zealand-2025 (106 pages, 367 sections)",
+      "sections": [
+        {
+          "title": "Seniors and their living situations\t175",
+          "text": "Housing in Aotearoa New Zealand: 2025 brings together a range of housing information – from official and government administrative statistics – to describe how housing intersects with people. How well does Aotearoa New Zealand’s housing stock provide suitable, affordable, warm, safe, and secure shelter for its citizens? Where are the gaps and inequalities? Housing can act as a visible manifestation of inequality but can also act as a medium to address it.\n\nThis report is an update of Housing in Aotearoa: 2020 (Stats NZ, 2020a). It includes updates to time series and new data sources, including some aspects of housing that were not covered previously. However, we have not updated all topics; for example, housing and the environment.\n\nSee Housing in Aotearoa: 2020 for topics which are not in this report.",
+          "metadata": {
+            "type": "document_chunk",
+            "source_file": "Housing-in-aotearoa-new-zealand-2025.docx",
+            "chunk_index": 19,
+            "total_chunks": 367,
+            "file_type": "docx",
+            "heading": "Seniors and their living situations\t175",
+            "heading_level": 1,
+            "heading_number": "7",
+            "content_type": "paragraph",
+            "has_heading": true,
+            "extracted_at": "2026-01-21T13:07:26.878Z",
+            "topic": "housing",
+            "audience": "general_public",
+            "keywords": [
+              "housing stock",
+              "housing affordability",
+              "Aotearoa New Zealand",
+              "housing statistics",
+              "inequality"
+            ],
+            "document_type": "reference",
+            "priority": "medium",
+            "content_quality": "high",
+            "has_tables": false,
+            "has_numbers": true,
+            "has_examples": false,
+            "auto_processed": true,
+            "processed_at": "2026-01-21T15:54:36.022Z"
+          },
+          "should_keep": true
+        },
+        {
+          "title": "Seniors and their living situations\t175",
+          "text": "Housing is a basic human need and is fundamental to our wellbeing. The International Bill of Human Rights describes a decent home as one that is safe, warm, dry, affordable, accessible, and culturally adequate. It needs to have infrastructure such as water, and accessibility to services and facilities such as education and health care. In 2018, Te Tūāpapa Kura Kāinga – Ministry of Housing and Urban Development (HUD) was established to deal with some of the challenges facing housing in New Zealand. Legislative changes resulted in the tightening of rental housing regulations, and the introduction of healthy housing standards. There has been a government focus on increasing both public and private housing stock.",
+          "metadata": {
+            "type": "document_chunk",
+            "source_file": "Housing-in-aotearoa-new-zealand-2025.docx",
+            "chunk_index": 20,
+            "total_chunks": 367,
+            "file_type": "docx",
+            "heading": "Seniors and their living situations\t175",
+            "heading_level": 1,
+            "heading_number": "7",
+            "content_type": "paragraph",
+            "has_heading": true,
+            "extracted_at": "2026-01-21T13:07:26.878Z",
+            "topic": "housing_policy",
+            "audience": "general_public",
+            "keywords": [
+              "human rights",
+              "healthy housing standards",
+              "HUD",
+              "housing regulations"
+            ],
+            "document_type": "policy",
+            "priority": "medium",
+            "content_quality": "high",
+            "has_tables": false,
+            "has_numbers": false,
+            "has_examples": false,
+            "auto_processed": true,
+            "processed_at": "2026-01-21T15:54:57.053Z"
+          },
+          "should_keep": true
+        },
+        {
+          "title": "Seniors and their living situations\t175",
+          "text": "In 2019, Housing New Zealand (Housing NZ) was merged with Homes, Land, Community, and the KiwiBuild unit from the Ministry of Housing, to become Kāinga Ora. Since 2019, there has been an increase in public housing stock. Other community housing providers also increased. Between 2021 and 2023, Te Kāhui Tika Tangata – Human Rights Commission undertook an inquiry on the right to a decent home in New Zealand. The purpose was to understand people’s housing experiences and identify human rights-based solutions to support everyone’s right to a decent home. Recommendations from this inquiry include integrating the right to a decent home into housing policymaking processes and implementing measures to protect and enforce this right.",
+          "metadata": {
+            "type": "document_chunk",
+            "source_file": "Housing-in-aotearoa-new-zealand-2025.docx",
+            "chunk_index": 21,
+            "total_chunks": 367,
+            "file_type": "docx",
+            "heading": "Seniors and their living situations\t175",
+            "heading_level": 1,
+            "heading_number": "7",
+            "content_type": "paragraph",
+            "has_heading": true,
+            "extracted_at": "2026-01-21T13:07:26.878Z",
+            "topic": "public_housing",
+            "audience": "general_public",
+            "keywords": [
+              "Kāinga Ora",
+              "KiwiBuild",
+              "Human Rights Commission",
+              "public housing stock"
+            ],
+            "document_type": "policy",
+            "priority": "medium",
+            "content_quality": "high",
+            "has_tables": false,
+            "has_numbers": true,
+            "has_examples": false,
+            "auto_processed": true,
+            "processed_at": "2026-01-21T15:54:57.053Z"
+          },
+          "should_keep": true
+        },
+        {
+          "title": "Seniors and their living situations\t175",
+          "text": "Section 1 of this report provides a general overview of New Zealand’s housing, including changes in dwelling density and type. The other sections focus on specific aspects of housing and cover home ownership and renting, housing affordability, housing quality, alternative housing and living situations, crowding and homelessness, and housing for older New Zealanders.\n\nAbout the data\n\nPopulations in the report\n\nMost of the information presented in this report is about dwellings, households, and the usually resident population living in dwellings (either private or non-private) and households. In the 2023 Census there were 4,657,116 people usually living in occupied dwellings in New Zealand.",
+          "metadata": {
+            "type": "document_chunk",
+            "source_file": "Housing-in-aotearoa-new-zealand-2025.docx",
+            "chunk_index": 22,
+            "total_chunks": 367,
+            "file_type": "docx",
+            "heading": "Seniors and their living situations\t175",
+            "heading_level": 1,
+            "heading_number": "7",
+            "content_type": "paragraph",
+            "has_heading": true,
+            "extracted_at": "2026-01-21T13:07:26.878Z",
+            "topic": "housing_data_overview",
+            "audience": "researchers",
+            "keywords": [
+              "2023 Census",
+              "dwelling density",
+              "housing affordability",
+              "population statistics"
+            ],
+            "document_type": "reference",
+            "priority": "low",
+            "content_quality": "medium",
+            "has_tables": false,
+            "has_numbers": true,
+            "has_examples": false,
+            "auto_processed": true,
+            "processed_at": "2026-01-21T15:54:57.053Z"
+          },
+          "should_keep": true
+        },
+        {
+          "title": "Seniors and their living situations\t175",
+          "text": "The report also uses data from Stats NZ’s 2023 Household Disability Survey (HDS). The HDS was a sample survey of people living in private dwellings or ‘residential and community care facilities’ – one type of non-private dwelling. The HDS sample included disabled and non-disabled people of all ages and therefore can be used to look at housing conditions for disabled people and non-disabled people.\n\nData sources\n\nThe main data sources for this report are the Census of Population and Dwellings, the General Social Survey (GSS), the Household Economic Survey (HES), building consents, and the HDS.",
+          "metadata": {
+            "type": "document_chunk",
+            "source_file": "Housing-in-aotearoa-new-zealand-2025.docx",
+            "chunk_index": 23,
+            "total_chunks": 367,
+            "file_type": "docx",
+            "heading": "Seniors and their living situations\t175",
+            "heading_level": 1,
+            "heading_number": "7",
+            "content_type": "paragraph",
+            "has_heading": true,
+            "extracted_at": "2026-01-21T13:07:26.878Z",
+            "topic": "housing_data_sources",
+            "audience": "researchers",
+            "keywords": [
+              "Household Disability Survey",
+              "Stats NZ",
+              "General Social Survey",
+              "Household Economic Survey"
+            ],
+            "document_type": "reference",
+            "priority": "low",
+            "content_quality": "medium",
+            "has_tables": false,
+            "has_numbers": true,
+            "has_examples": false,
+            "auto_processed": true,
+            "processed_at": "2026-01-21T15:54:57.053Z"
+          },
+          "should_keep": true
+        },
+        {
+          "title": "Seniors and their living situations\t175",
+          "text": "Additional data sources include statistics from the Building Research Association of New Zealand’s (BRANZ’s) Household Energy End-use Project 2 (HEEP2), HUD’s housing affordability indicators, Ministry of Social Development’s (MSD’s) Housing Register data, as well as CoreLogic data, Inland Revenue, and Reserve Bank of New Zealand – Te Pūtea Matua (RBNZ) information. Longer time series have been included where possible. Data quality ratings for 2023 Census variables has more information on census data.\n\nThe COVID-19 pandemic context\n\nThe COVID-19 pandemic had a major impact on societies worldwide (OECD, 2021). In New Zealand, public health measures resulted in economic disruptions to supply chains, disruptions to tourism from closed borders, financial strain on businesses, and employment issues.",
+          "metadata": {
+            "type": "document_chunk",
+            "source_file": "Housing-in-aotearoa-new-zealand-2025.docx",
+            "chunk_index": 24,
+            "total_chunks": 367,
+            "file_type": "docx",
+            "heading": "Seniors and their living situations\t175",
+            "heading_level": 1,
+            "heading_number": "7",
+            "content_type": "paragraph",
+            "has_heading": true,
+            "extracted_at": "2026-01-21T13:07:26.878Z",
+            "topic": "housing_data_sources",
+            "audience": "researchers",
+            "keywords": [
+              "BRANZ",
+              "MSD Housing Register",
+              "RBNZ",
+              "COVID-19 pandemic"
+            ],
+            "document_type": "reference",
+            "priority": "low",
+            "content_quality": "medium",
+            "has_tables": false,
+            "has_numbers": true,
+            "has_examples": false,
+            "auto_processed": true,
+            "processed_at": "2026-01-21T15:54:57.053Z"
+          },
+          "should_keep": true
+        },
+        {
+          "title": "Seniors and their living situations\t175",
+          "text": "Between March 2020 and March 2022, New Zealand largely closed its borders to non-citizens, severely restricting cross-border movement, in an unprecedented move to limit the spread of COVID-19. Net migration remained close to zero between the year ended March 2021 and the year ended October 2022. This figure contrasts with the long-term average for October years before COVID-19 (2002–2019) of 120,500 migrant arrivals, and 91,900 migrant departures (Stats NZ, 2023a). This was a time of great uncertainty. Commentators expected that the tightened border controls would result in a chance for housing supply to catch up with demand (ANZ Research, May 2021). In fact, the Reserve Bank of New Zealand expected that the border restrictions and economic effects of the pandemic could potentially lead to lower housing demand.",
+          "metadata": {
+            "type": "document_chunk",
+            "source_file": "Housing-in-aotearoa-new-zealand-2025.docx",
+            "chunk_index": 25,
+            "total_chunks": 367,
+            "file_type": "docx",
+            "heading": "Seniors and their living situations\t175",
+            "heading_level": 1,
+            "heading_number": "7",
+            "content_type": "paragraph",
+            "has_heading": true,
+            "extracted_at": "2026-01-21T13:07:26.878Z",
+            "topic": "migration_impact",
+            "audience": "general_public",
+            "keywords": [
+              "net migration",
+              "border closures",
+              "housing demand",
+              "COVID-19"
+            ],
+            "document_type": "reference",
+            "priority": "medium",
+            "content_quality": "high",
+            "has_tables": false,
+            "has_numbers": true,
+            "has_examples": false,
+            "auto_processed": true,
+            "processed_at": "2026-01-21T15:54:57.053Z"
+          },
+          "should_keep": true
+        },
+        {
+          "title": "Seniors and their living situations\t175",
+          "text": "However, when the RBNZ lowered the official cash rate (OCR) in response to the rapidly deteriorating economic situation, this led to a fall in mortgage interest rates and house prices peaked sharply (RBNZ, August 2021). In late 2021, the RBNZ started to raise the OCR in response to rising inflation (RBNZ, October 2021). This increased the cost of borrowing and also contributed to lower demand for housing and a fall in house prices. After the border opened up, migration rebounded before falling again. The RBNZ (Lilly, 2024) noted that the slowdown in New Zealand’s population growth, as net migration fell, reduced housing demand.",
+          "metadata": {
+            "type": "document_chunk",
+            "source_file": "Housing-in-aotearoa-new-zealand-2025.docx",
+            "chunk_index": 26,
+            "total_chunks": 367,
+            "file_type": "docx",
+            "heading": "Seniors and their living situations\t175",
+            "heading_level": 1,
+            "heading_number": "7",
+            "content_type": "paragraph",
+            "has_heading": true,
+            "extracted_at": "2026-01-21T13:07:26.878Z",
+            "topic": "monetary_policy_housing",
+            "audience": "investors",
+            "keywords": [
+              "OCR",
+              "mortgage interest rates",
+              "house prices",
+              "RBNZ"
+            ],
+            "document_type": "reference",
+            "priority": "high",
+            "content_quality": "high",
+            "has_tables": false,
+            "has_numbers": true,
+            "has_examples": false,
+            "auto_processed": true,
+            "processed_at": "2026-01-21T15:54:57.053Z"
+          },
+          "should_keep": true
+        },
+        {
+          "title": "Seniors and their living situations\t175",
+          "text": "A combination of factors associated with the pandemic resulted in a substantial rise in inflation. The consumers price index (CPI) showed annual inflation peaking in 2022 at over 7 percent. This, in turn, caused pressure on living costs. In housing, cost increases varied during this time. In 2020, the government introduced a temporary rent freeze, which resulted in a very low rise in rent. The rent price index rose 0.5 percent in the 2020 September quarter, the smallest quarterly rise in two years (Stats NZ, 2020b).",
+          "metadata": {
+            "type": "document_chunk",
+            "source_file": "Housing-in-aotearoa-new-zealand-2025.docx",
+            "chunk_index": 27,
+            "total_chunks": 367,
+            "file_type": "docx",
+            "heading": "Seniors and their living situations\t175",
+            "heading_level": 1,
+            "heading_number": "7",
+            "content_type": "paragraph",
+            "has_heading": true,
+            "extracted_at": "2026-01-21T13:07:26.878Z",
+            "topic": "inflation_housing_costs",
+            "audience": "general_public",
+            "keywords": [
+              "CPI",
+              "inflation",
+              "rent freeze",
+              "rent price index"
+            ],
+            "document_type": "reference",
+            "priority": "high",
+            "content_quality": "high",
+            "has_tables": false,
+            "has_numbers": true,
+            "has_examples": false,
+            "auto_processed": true,
+            "processed_at": "2026-01-21T15:54:57.053Z"
+          },
+          "should_keep": true
+        },
+        {
+          "title": "Overview of dwellings in Aotearoa New Zealand",
+          "text": "Costs associated with home ownership increased, such as insurance and rates. Construction costs also increased. The Ministry of Business, Innovation and Employment (MBIE) reported that according to the CPI, prices for the construction of new dwellings increased 18 percent in the March 2022 quarter (when compared with the March 2021 quarter). This was the largest increase recorded since the series began in 1985. There was also a shortage of building materials, and subsequently the government instituted a taskforce around the supply of GIB board, a key construction material. These issues may have contributed to an increase in the time taken to complete dwellings.",
+          "metadata": {
+            "type": "document_chunk",
+            "source_file": "Housing-in-aotearoa-new-zealand-2025.docx",
+            "chunk_index": 28,
+            "total_chunks": 367,
+            "file_type": "docx",
+            "heading": "Overview of dwellings in Aotearoa New Zealand",
+            "heading_level": 1,
+            "heading_number": "1",
+            "content_type": "paragraph",
+            "has_heading": true,
+            "extracted_at": "2026-01-21T13:07:26.878Z",
+            "topic": "construction_costs",
+            "audience": "investors",
+            "keywords": [
+              "construction costs",
+              "MBIE",
+              "GIB board shortage",
+              "home ownership costs"
+            ],
+            "document_type": "reference",
+            "priority": "medium",
+            "content_quality": "high",
+            "has_tables": false,
+            "has_numbers": true,
+            "has_examples": false,
+            "auto_processed": true,
+            "processed_at": "2026-01-21T15:54:57.053Z"
+          },
+          "should_keep": true
+        },
+        {
+          "title": "Overview of dwellings in Aotearoa New Zealand",
+          "text": "This section provides an overview of dwellings in Aotearoa New Zealand, and how these have changed over time. It uses data from the 2023 Census of Population and Dwellings and from earlier censuses, as well as other data sources such as building consents. It covers the number and types of dwellings counted in the census, including private dwellings (housing) and non-private dwellings. For private dwellings, it explores the changes in density, type, and size. Information on the age of New Zealand’s housing is also included.",
+          "metadata": {
+            "type": "document_chunk",
+            "source_file": "Housing-in-aotearoa-new-zealand-2025.docx",
+            "chunk_index": 29,
+            "total_chunks": 367,
+            "file_type": "docx",
+            "heading": "Overview of dwellings in Aotearoa New Zealand",
+            "heading_level": 1,
+            "heading_number": "1",
+            "content_type": "paragraph",
+            "has_heading": true,
+            "extracted_at": "2026-01-21T13:07:26.878Z",
+            "topic": "housing_stock_overview",
+            "audience": "general_public",
+            "keywords": [
+              "2023 Census",
+              "dwelling types",
+              "dwelling density",
+              "private dwellings"
+            ],
+            "document_type": "reference",
+            "priority": "low",
+            "content_quality": "medium",
+            "has_tables": false,
+            "has_numbers": true,
+            "has_examples": false,
+            "auto_processed": true,
+            "processed_at": "2026-01-21T15:54:57.053Z"
+          },
+          "should_keep": true
+        }
+      ],
+      "metadata": {
+        "type": "document",
+        "source_file": "Housing-in-aotearoa-new-zealand-2025.docx",
+        "file_type": "docx",
+        "pages": 106,
+        "chunks": 367,
+        "content_type_stats": {
+          "paragraph": 326,
+          "table_of_contents": 18,
+          "list": 13,
+          "figure_caption": 10
+        }
+      }
+    }
+  ],
+  "processing_info": {
+    "processed_at": "2026-01-21T15:54:57.054Z",
+    "model": "gemini-3-flash-preview",
+    "original_sections": 30,
+    "kept_sections": 11,
+    "filtered_sections": 19,
+    "api_calls": 3,
+    "processing_time_ms": 195677
+  }
+}

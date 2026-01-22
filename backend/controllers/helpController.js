@@ -60,12 +60,18 @@ const chatWithHelp = asyncHandler(async (req, res) => {
     }
 
     // Fetch RAG context first (non-stream), then stream LLM text using that knowledge.
-    const ragContext = await llmService.fetchRagContext({
+    let ragContext = await llmService.fetchRagContext({
       query: message,
       stage: 'help',
       goalContext: {},
       filter: filter // Pass the filter
     });
+
+    // 检查RAG质量
+    if (ragContext && (!ragContext.passages || ragContext.passages.length === 0)) {
+      log('rag_quality_check', { status: 'no_quality_passages' });
+      ragContext = null; // 不使用低质量RAG
+    }
 
     log('rag_lookup', {
       hasRag: !!ragContext,
@@ -81,7 +87,7 @@ ${HELP_SYSTEM_PROMPT}
 You will receive external_knowledge (summary + passages). When citing facts from it:
 - Use inline markers like [1], [2] that correspond to passages order.
 - You must not use more markers than available passages (available: ${availableRefs}).
-- Do NOT invent URLs; keep citations grounded in provided passages.
+- Keep citations grounded in provided passages.
 - Keep Markdown concise, Kiwi-friendly tone.
 
 CONVERSATION HISTORY:

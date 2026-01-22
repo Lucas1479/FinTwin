@@ -3,6 +3,7 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  Legend,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -132,6 +133,7 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
   const simulationSeed = seedRef.current;
   const [activeTab, setActiveTab] = useState('projection');
   const [isCompactScreen, setIsCompactScreen] = useState(false);
+  const [showContent, setShowContent] = useState(false);
 
   // 14" 高分屏（200% 缩放）常见可用高度在 850-950px，触发紧凑布局
   useEffect(() => {
@@ -144,6 +146,17 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
+
+  // 渐进式显示内容 - 模拟AI流式输出的过渡效果
+  useEffect(() => {
+    if (!isLoadingAI) {
+      // AI分析完成或本地计算完成后，延迟显示内容（模拟流式完成）
+      const timer = setTimeout(() => setShowContent(true), 300);
+      return () => clearTimeout(timer);
+    } else {
+      setShowContent(false);
+    }
+  }, [isLoadingAI]);
 
   const strategy = goalContext.ai_decision?.strategy_recommendation || {};
   const exposure = strategy.economic_exposure || { growth: 60, defensive: 30, liquidity: 10 };
@@ -177,10 +190,7 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
 
   const hasStrategy = Boolean(goalContext.ai_decision?.strategy_recommendation);
 
-  if (isLoadingAI && !hasStrategy) {
-    return <StageLoading text="AI is running simulations..." subtext="Projecting your goal's success probability using Monte Carlo analysis" />;
-  }
-
+  // 所有hooks必须在条件return之前调用（React Hooks规则）
   const { summaryData, expectedReturn, volatility } = useMemo(
     () => runMonteCarlo(simParams, exposure, horizonYears, glidePath, simulationSeed),
     [simParams, exposure, horizonYears, glidePath, simulationSeed],
@@ -203,9 +213,19 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
 
   const portfolioExposure = selectedPortfolio?.calculated_exposure || exposure;
 
+  // 显示loading状态：正在运行蒙特卡洛模拟或等待AI分析
+  if (isLoadingAI || !showContent) {
+    return (
+      <StageLoading 
+        text="Running Monte Carlo Simulation..." 
+        subtext="Analyzing 100 possible scenarios to project your goal's success probability" 
+      />
+    );
+  }
+
   return (
-    <div className="space-y-4 lg:space-y-6 flex flex-col min-h-0">
-      <div className="flex gap-1 bg-slate-100/80 p-1 rounded-xl lg:rounded-2xl w-fit">
+    <div className="space-y-4 lg:space-y-6 flex flex-col min-h-0 animate-fade-in">
+      <div className="flex gap-1 bg-slate-100/80 p-1 rounded-xl lg:rounded-2xl w-fit" style={{ animationDelay: '100ms' }}>
         {[
           { id: 'projection', label: 'Projection', icon: TrendingUp },
           { id: 'breakdown', label: 'Breakdown', icon: BarChart3 },
@@ -226,10 +246,10 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
         ))}
       </div>
 
-      <div className="bg-white rounded-xl lg:rounded-[2.5rem] p-3 lg:p-8 border border-slate-100 shadow-sm min-h-[280px] lg:min-h-[400px] flex flex-col">
+      <div className="bg-white rounded-xl lg:rounded-[2.5rem] p-3 lg:p-8 border border-slate-100 shadow-sm min-h-[280px] lg:min-h-[400px] flex flex-col animate-fade-in" style={{ animationDelay: '200ms' }}>
         {activeTab === 'projection' && (
           <div className="flex flex-col gap-2 lg:gap-6">
-            <div className="flex flex-col gap-2 mb-2 lg:mb-8 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-2 mb-2 lg:mb-8 lg:flex-row lg:items-center lg:justify-between animate-fade-in" style={{ animationDelay: '300ms' }}>
               <div className="flex items-center gap-3 lg:gap-4">
                 <div className="w-10 h-10 lg:w-12 lg:h-12 bg-indigo-50 text-indigo-600 rounded-xl lg:rounded-2xl flex items-center justify-center">
                   <BarChart3 size={20} strokeWidth={2.5} />
@@ -245,6 +265,7 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
                 <MetricBadge label="Volatility" value={`${volatility.toFixed(1)}%`} color="text-rose-500" />
               </div>
             </div>
+            
             <div className="h-[360px] w-full">
               <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <AreaChart data={summaryData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -281,8 +302,34 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
                     formatter={(value) => [`$${value.toLocaleString()}`, '']}
                     labelFormatter={(y) => `Year ${y}`}
                   />
-                  <Area type="monotone" dataKey="high" stroke="none" fill="#6366f1" fillOpacity={0.05} />
-                  <Area type="monotone" dataKey="low" stroke="none" fill="#6366f1" fillOpacity={0.1} />
+                  <Legend 
+                    wrapperStyle={{ paddingTop: '20px', fontSize: '11px', fontWeight: 600 }}
+                    iconType="line"
+                  />
+                  {/* 波动范围区域 - 增强可见性 */}
+                  <Area 
+                    type="monotone" 
+                    dataKey="high" 
+                    stroke="#a5b4fc" 
+                    strokeWidth={1.5}
+                    strokeDasharray="3 3"
+                    fill="#6366f1" 
+                    fillOpacity={0.12}
+                    animationDuration={1500}
+                    name="Upside (90th %ile)"
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="low" 
+                    stroke="#c7d2fe" 
+                    strokeWidth={1.5}
+                    strokeDasharray="3 3"
+                    fill="#6366f1" 
+                    fillOpacity={0.18}
+                    animationDuration={1500}
+                    name="Downside (10th %ile)"
+                  />
+                  {/* 中位数曲线 - 主要显示 */}
                   <Area
                     type="monotone"
                     dataKey="median"
@@ -290,6 +337,7 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
                     strokeWidth={4}
                     fill="url(#colorMC)"
                     animationDuration={1500}
+                    name="Median Projection (50th %ile)"
                   />
                   <ReferenceLine
                     y={targetAmount}
@@ -300,6 +348,19 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
                   />
                 </AreaChart>
               </ResponsiveContainer>
+            </div>
+            
+            {/* Monte Carlo Simulation Explanation - Below Chart */}
+            <div className="mt-4 px-4 py-3 bg-indigo-50/50 rounded-xl border border-indigo-100">
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                <span className="font-bold text-indigo-600">Monte Carlo Simulation:</span>
+                100 random scenarios considering {volatility.toFixed(1)}% market volatility.
+                <span className="font-semibold text-slate-700"> Chart shows:</span>
+                <span className="text-indigo-600 font-medium"> Median curve (50% probability)</span>,
+                <span className="text-indigo-400"> upside boundary (10% probability)</span>, and
+                <span className="text-slate-500"> downside boundary (90% protection)</span>.
+                The median appears smooth, but boundary ranges reveal investment uncertainty.
+              </p>
             </div>
           </div>
         )}

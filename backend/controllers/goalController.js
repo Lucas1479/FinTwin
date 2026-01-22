@@ -7,6 +7,22 @@ import CashFlow from '../models/cashFlowModel.js';
 import Product from '../models/productModel.js';
 import { BadRequestError, NotFoundError } from '../utils/errors.js';
 
+const normalizeStrategyProfile = (value) => {
+  if (!value) return 'balanced';
+  const normalized = String(value).trim().toLowerCase();
+  if (['aggressive', 'growth', 'high', 'high-risk', 'high_risk'].includes(normalized)) {
+    return 'aggressive';
+  }
+  if (['conservative', 'defensive', 'low', 'low-risk', 'low_risk'].includes(normalized)) {
+    return 'conservative';
+  }
+  if (['balanced', 'moderate', 'medium', 'mid'].includes(normalized)) {
+    return 'balanced';
+  }
+  if (normalized === 'custom') return 'custom';
+  return 'balanced';
+};
+
 /**
  * Handle Linkage between Goal/Plan and Wealth Center (Assets & CashFlow)
  * This function handles:
@@ -238,7 +254,7 @@ export const createGoal = asyncHandler(async (req, res) => {
   const plan = await Plan.create({
     goal_id: goal._id,
     user_id: req.user._id,
-    strategy_profile: strategyType || 'balanced',
+    strategy_profile: normalizeStrategyProfile(strategyType),
     
     // Target exposure (from AI strategy recommendation)
     target_exposure: target_exposure || { growth: 60, defensive: 30, liquidity: 10 },
@@ -404,7 +420,9 @@ export const updateGoal = asyncHandler(async (req, res) => {
           plan = new Plan({ goal_id: goal._id, user_id: req.user._id });
       }
 
-      if (req.body.strategyType) plan.strategy_profile = req.body.strategyType;
+      if (req.body.strategyType) {
+          plan.strategy_profile = normalizeStrategyProfile(req.body.strategyType);
+      }
       
       if (req.body.granularSettings) {
           if (req.body.granularSettings.inflationAdjust !== undefined) plan.settings.inflation_adjusted = req.body.granularSettings.inflationAdjust;

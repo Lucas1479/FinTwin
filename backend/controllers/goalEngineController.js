@@ -283,11 +283,18 @@ const handleAskMode = async ({
                 goalContext
             });
             if (ragContext) {
-                askContext = {
-                    ...askContext,
-                    external_knowledge: ragContext
-                };
-                console.log(`[Goal Engine] RAG attached for ask mode: summary=${!!ragContext.summary}, passages=${ragContext.passages?.length || 0}`);
+                // 检查RAG质量
+                const hasQualityContent = ragContext.passages && ragContext.passages.length > 0;
+                if (!hasQualityContent) {
+                    console.warn('[Goal Engine Ask Mode] RAG returned no quality passages, skipping RAG enrichment');
+                    ragContext = null;
+                } else {
+                    askContext = {
+                        ...askContext,
+                        external_knowledge: ragContext
+                    };
+                    console.log(`[Goal Engine] RAG attached for ask mode: summary=${!!ragContext.summary}, passages=${ragContext.passages?.length || 0}`);
+                }
             }
         } catch (err) {
             console.warn('[Goal Engine] RAG fetch failed for ask mode:', err.message);
@@ -560,7 +567,8 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
           const monthlyIncome = Math.round(annualIncome / 12);
           
           // Inject AVAILABLE (unallocated) assets for AI to reference
-          // These are assets NOT already bound to other goals
+          // IMPORTANT: These are AVAILABLE assets for feasibility check, NOT allocated amounts
+          // For NEW goals: allocated_amount = 0, but available_assets > 0 (for allocation decision in Strategy stage)
           enrichedContext.real_financial_snapshot = {
               liquid_assets: Math.round(liquidAssets),
               investments: Math.round(investments),
@@ -571,7 +579,7 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
               data_source: 'wealth_centre',
               has_data: availableAssets.length > 0,
               asset_count: availableAssets.filter(a => a.record_type === 'Asset').length,
-              note: 'These amounts exclude assets already allocated to other goals'
+              note: 'These amounts exclude assets already allocated to other goals. For NEW goals, use these for feasibility check and allocation decision, not as current_amount.'
           };
           
           console.log(`[Gap Analysis] Real financial snapshot (available only):`, enrichedContext.real_financial_snapshot);
@@ -778,7 +786,7 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
               monthly_outflow: Math.round(monthlyOutflow),
               monthly_surplus_total: Math.round(monthlySurplus),
               monthly_surplus_allocatable: Math.round(maxAllocatableSurplus),
-              reserve_for_other_goals_pct: 40,
+              reserve_for_other_goals_pct: 25,
               liquid_capital: liquidCapital,
               calculation_source: 'backend_fallback'
           };
@@ -831,7 +839,7 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
           monthly_amount_hint: Math.round(allocatable),
           lump_sum_hint: Math.round(liquidCapital * 0.2),
           income_linked: true,
-          reserve_for_other_goals_pct: financials.reserve_for_other_goals_pct || 40,
+          reserve_for_other_goals_pct: financials.reserve_for_other_goals_pct || 25,
           rationale: 'Calculated based on current surplus and other goal commitments.'
       };
 
@@ -934,8 +942,15 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
               goalContext: enrichedContext
           });
           if (ragContext) {
-              enrichedContext.external_knowledge = ragContext;
-              console.log(`[Goal Engine] RAG attached from Vectara: summary=${!!ragContext.summary}, passages=${ragContext.passages?.length || 0}`);
+              // 检查RAG质量：如果passages为空，说明内容被过滤了
+              const hasQualityContent = ragContext.passages && ragContext.passages.length > 0;
+              if (!hasQualityContent) {
+                  console.warn('[Goal Engine] RAG returned no quality passages, skipping RAG enrichment');
+                  ragContext = null; // 不使用低质量RAG
+              } else {
+                  enrichedContext.external_knowledge = ragContext;
+                  console.log(`[Goal Engine] RAG attached from Vectara: summary=${!!ragContext.summary}, passages=${ragContext.passages?.length || 0}`);
+              }
           }
       } catch (err) {
           console.warn('[Goal Engine] RAG fetch failed, continue without RAG:', err.message);
@@ -1520,7 +1535,10 @@ export const optimizeGoalAllocations = asyncHandler(async (req, res) => {
     const isCurrent = currentGoalId && goalId && currentGoalId.toString() === goalId;
     const optimizationTarget = isCurrent && currentGoalTarget ? Number(currentGoalTarget) : currentMonthly;
     const mortgageMonthly = calcMortgageMonthly(g);
-    const baseMin = currentMonthly || 0;
+    
+    // FIXED: Don't set min=current. Optimizer should only allocate shortfall.
+    // If shortfall=0, optimizer will allocate 0 (no additional funding needed)
+    const baseMin = 0;  // Allow optimizer to suggest 0 if goal doesn't need more
     const baseTarget = optimizationTarget || 0;
     const useMortgageConstraint = algorithm === 'lp';
     const optimizationMin = useMortgageConstraint
@@ -1554,7 +1572,7 @@ export const optimizeGoalAllocations = asyncHandler(async (req, res) => {
     cashFlows: baseCashFlows,
     existingFinancials: mergedFinancials,
     liquidCapital,
-    reservePctDefault: options.reservePctDefault ?? 40,
+    reservePctDefault: options.reservePctDefault ?? 25,
     minCashReserveMonths: options.minCashReserveMonths ?? 3,
     algorithm,
     incomeGrowthPct: options.incomeGrowthPct ?? 3,
@@ -1563,18 +1581,23 @@ export const optimizeGoalAllocations = asyncHandler(async (req, res) => {
   });
 
   const allocationsWithCurrent = result.allocations.map(a => {
-    // recommended_monthly from optimization is now the SHORTFALL (additional needed)
-    // current_monthly is what's already allocated
-    // Total recommended = current + shortfall
+    // CORRECTED LOGIC:
+    // - Optimizer sets ideal_monthly = shortfall (additional needed beyond current)
+    // - allocateByWeights allocates budget to cover shortfall
+    // - recommended_monthly from optimizer = allocated additional amount
+    // - Frontend needs: current + allocated additional = total recommended
+    // - Timeline needs: just the additional for cash flow projection
     const currentMonthly = a.current_monthly ?? 0;
-    const shortfallMonthly = a.recommended_monthly ?? 0;
-    const totalRecommended = currentMonthly + shortfallMonthly;
+    const allocatedAdditional = a.recommended_monthly ?? 0;
+    const totalRecommended = currentMonthly + allocatedAdditional;
+    
+    console.log(`[Optimize] Goal: ${a.name}, Current: $${currentMonthly}, Additional Allocated: $${allocatedAdditional}, Total: $${totalRecommended}`);
     
     return {
       ...a,
       current_monthly: currentMonthly,
-      shortfall_monthly: shortfallMonthly,
-      recommended_monthly: totalRecommended  // Override with total
+      additional_monthly: allocatedAdditional,  // For timeline (cash flow change)
+      recommended_monthly: totalRecommended  // For UI display (total suggested)
     };
   });
 
@@ -1587,10 +1610,60 @@ export const optimizeGoalAllocations = asyncHandler(async (req, res) => {
       .map(a => ({ id: a._id, name: a.name, value: a.value }))
   } : undefined;
 
+  // Generate AI explanation if requested
+  let ai_explanation = null;
+  if (options.generate_explanation) {
+    try {
+      const { getOptimizationExplanationPrompt } = await import('../services/goalEnginePrompts.js');
+      const llmServiceModule = await import('../services/llmService.js');
+      const llmService = llmServiceModule.default;
+      
+      const explanationData = getOptimizationExplanationPrompt({
+        allocations: allocationsWithCurrent,
+        financials: result.financials,
+        timeline: result.timeline,
+        composite_success: result.composite_success
+      });
+      
+      const llmResponse = await llmService.generate(
+        explanationData.prompt,
+        {
+          temperature: 0.7,
+          max_tokens: 500,
+          stage: 'optimization_explanation'
+        }
+      );
+      
+      // Extract text from response (llmService.generate returns { text, json })
+      ai_explanation = llmResponse?.text || llmResponse?.json?.text || String(llmResponse || '');
+      
+      // Clean up: Remove markdown code fence if AI wrapped response in ```markdown ... ```
+      if (ai_explanation && typeof ai_explanation === 'string') {
+        ai_explanation = ai_explanation.trim();
+        // Remove opening code fence (```markdown or ``` or ```text)
+        ai_explanation = ai_explanation.replace(/^```(?:markdown|text)?\s*\n?/i, '');
+        // Remove closing code fence
+        ai_explanation = ai_explanation.replace(/\n?```\s*$/i, '');
+        ai_explanation = ai_explanation.trim();
+        
+        console.log('[AI Explanation Generated]', ai_explanation.substring(0, 100) + '...');
+      } else {
+        console.warn('[AI Explanation] Response format unexpected:', typeof llmResponse, Object.keys(llmResponse || {}));
+      }
+    } catch (err) {
+      console.warn('[AI Explanation] Failed to generate:', err.message);
+      // Don't fail the whole request if explanation fails
+    }
+  }
+
   res.json({
     algorithm: result.algorithm,
     financials: result.financials,
     allocations: allocationsWithCurrent,
+    timeline: result.timeline || [],
+    cumulative_timeline: result.cumulative_timeline || [],
+    composite_success: result.composite_success || 0,
+    ai_explanation,
     meta: {
       algorithm_requested: algorithm,
       algorithm_used: result.algorithm,
@@ -1599,6 +1672,7 @@ export const optimizeGoalAllocations = asyncHandler(async (req, res) => {
       goals_count: mergedGoals.length,
       available_monthly: result.financials?.monthly_surplus_allocatable,
       debug_assets: debugAssets
-    }
+    },
+    debug: result.debug
   });
 });
