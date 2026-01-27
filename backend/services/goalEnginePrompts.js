@@ -39,13 +39,22 @@ Stage: 1.1 · Goal Discovery
 Goal: Understand the user's lifestyle vision, categorize it, and draft initial parameters for their review.
 
 What you must do:
-1.  **Analyze & Categorize**: Determine goal category (retirement/home/education/wealth/travel/vehicle/emergency/custom), 'goal_name', and priority.
+1.  **Analyze & Categorize**: Determine goal category (retirement/home/education/wealth/travel/vehicle/emergency/big_purchase/custom), 'goal_name', and priority. Use 'big_purchase' for major purchases/events (wedding, luxury item, etc.), 'custom' only for truly undefined goals.
 2.  **Draft Parameters (Auto-Fill)**:
     *   Extract explicit values (e.g., "$50k/year").
     *   **Intelligent Estimation**: If exact numbers aren't given but context exists (e.g., "comfortable lifestyle"), PROPOSE realistic starting values in the JSON fields rather than leaving them empty.
-    *   *Retirement*: living_expense_pa, location
+    *   *Retirement*: living_expense_pa (MUST include ALL annual costs: base living + regular travel/car/lumpy expenses), location
+        - **CRITICAL**: For "annual travel" or frequent expenses, ADD them directly to living_expense_pa (e.g., 50k base + 10k travel = 60k total)
+        - **lumpy_expenses**: ONLY use ['travel_biannual'] if user explicitly mentions "travel every 2 years" (adds 5k/year), or ['new_car_5y'] for car replacement (adds 4k/year). For annual travel, DO NOT use lumpy_expenses, include cost directly in living_expense_pa.
+        - **Example**: "retirement with annual overseas travel" → living_expense_pa: 60000, explain "50k base living + 10k annual travel" in rationale
     *   *Home*: property_price_estimate, deposit_percentage, location, is_first_home
-    *   *Other*: target_amount, due_date
+    *   *Education*: study_country (NZ/AU/UK/US), institution_tier (public/private), tuition_fees_pa, living_costs_pa
+    *   *Vehicle*: tier (economy/family/luxury/performance/utility), brand (toyota/tesla/ford/mazda/byd/bmw/mercedes/other - lowercase only), condition (new/used), fuel_type (ev/hybrid/petrol/diesel)
+    *   *Travel*: destination, adults, children, duration_days
+    *   *Emergency*: monthly_spend_est, target_months_rough (3-6 months typical)
+    *   *Wealth*: target_amount (portfolio size), target_passive_income (monthly), time_horizon_years
+    *   *Big Purchase* (wedding/luxury item/event): target_amount, due_date, purchase_category, description
+    *   *Custom/Other*: target_amount, due_date
 3.  **Engage (User Guidance)**:
     *   **Persona**: Confident financial expert who understands their vision.
     *   **Approach**: Acknowledge the user's goal directly, and state what additional details would strengthen the plan (not "missing fields" - they're "refinements").
@@ -539,16 +548,54 @@ function getGoalDiscoverySchema() {
           user_guidance: { type: 'string' },
           // Core fields
           goal_name: { type: 'string', description: 'REQUIRED: Extracted goal name' },
-          category: { type: 'string', enum: ['retirement', 'home', 'education', 'wealth', 'travel', 'vehicle', 'emergency', 'custom'], description: 'REQUIRED' },
+          category: { type: 'string', enum: ['retirement', 'home', 'education', 'wealth', 'travel', 'vehicle', 'emergency', 'big_purchase', 'custom'], description: 'REQUIRED. Use big_purchase for Major Purchase/Event, custom for truly custom goals' },
           priority: { type: 'string', enum: ['need', 'want', 'wish'] },
           // Category-specific discovery
-          living_expense_pa: { type: 'number', description: '[retirement] Annual living expense' },
+          // Retirement
+          living_expense_pa: { type: 'number', description: '[retirement] TOTAL annual living expense. MUST include ALL regular annual costs: base living + annual travel (if mentioned) + other recurring costs. Example: 50k base + 10k annual travel = 60k total' },
+          lumpy_expenses: { type: 'array', items: { type: 'string', enum: ['travel_biannual', 'new_car_5y'] }, description: '[retirement] Optional: ONLY use if user explicitly says "travel every 2 years" (travel_biannual adds 5k/year) or "replace car every 5 years" (new_car_5y adds 4k/year). For ANNUAL travel, DO NOT use this, add to living_expense_pa instead' },
           location: { type: 'string', description: '[retirement/home] Location' },
+          // Home
           property_price_estimate: { type: 'number', description: '[home] Property price' },
           deposit_percentage: { type: 'number', description: '[home] Deposit %' },
           is_first_home: { type: 'boolean', description: '[home] First home buyer' },
-          target_amount: { type: 'number', description: '[other] Target amount' },
-          due_date: { type: 'string', description: '[other] Target date' }
+          // Education
+          study_country: { type: 'string', enum: ['NZ', 'AU', 'UK', 'US'], description: '[education] Study destination country' },
+          institution_tier: { type: 'string', enum: ['public', 'private'], description: '[education] Public/state vs private institution' },
+          living_situation: { type: 'string', enum: ['home', 'flat'], description: '[education] Living at home vs independent accommodation' },
+          tuition_fees_pa: { type: 'number', description: '[education] Annual tuition fees estimate' },
+          living_costs_pa: { type: 'number', description: '[education] Annual living costs estimate (accommodation, food, transport)' },
+          // Vehicle
+          tier: { type: 'string', enum: ['economy', 'family', 'utility', 'luxury', 'performance'], description: '[vehicle] Vehicle tier/segment' },
+          brand: { type: 'string', enum: ['toyota', 'tesla', 'ford', 'mazda', 'byd', 'bmw', 'mercedes', 'other'], description: '[vehicle] Vehicle brand (lowercase)' },
+          model_id: { type: 'string', description: '[vehicle] Specific model identifier' },
+          model_name: { type: 'string', description: '[vehicle] Model name for display' },
+          condition: { type: 'string', enum: ['new', 'used'], description: '[vehicle] New or used vehicle' },
+          fuel_type: { type: 'string', enum: ['ev', 'hybrid', 'petrol', 'diesel'], description: '[vehicle] Fuel/power type' },
+          // Travel
+          destination: { type: 'string', description: '[travel] Travel destination' },
+          flight_class: { type: 'string', enum: ['economy', 'premium_economy', 'business', 'first'], description: '[travel] Flight class preference' },
+          accommodation_style: { type: 'string', enum: ['hotel', 'hostel', 'airbnb', 'friend'], description: '[travel] Accommodation type' },
+          lifestyle_level: { type: 'string', enum: ['budget', 'moderate', 'comfort', 'luxury'], description: '[travel] Travel lifestyle level' },
+          adults: { type: 'number', description: '[travel] Number of adults' },
+          children: { type: 'number', description: '[travel] Number of children' },
+          duration_days: { type: 'number', description: '[travel] Trip duration in days' },
+          // Emergency
+          primary_motivation: { type: 'string', enum: ['job_loss', 'medical', 'unexpected_bills', 'peace_of_mind'], description: '[emergency] Primary reason for emergency fund' },
+          monthly_spend_est: { type: 'number', description: '[emergency] Estimated monthly essential expenses' },
+          target_months_rough: { type: 'number', description: '[emergency] Target months of coverage (typically 3-6)' },
+          // Wealth
+          target_passive_income: { type: 'number', description: '[wealth] Target monthly passive income (if income-focused)' },
+          time_horizon_years: { type: 'number', description: '[wealth] Investment time horizon in years' },
+          current_net_worth: { type: 'number', description: '[wealth] Current net worth / portfolio value' },
+          growth_objective: { type: 'string', enum: ['capital_appreciation', 'passive_income', 'balanced', 'financial_freedom'], description: '[wealth] Primary growth objective' },
+          // Big Purchase (Major Purchase / Event)
+          purchase_category: { type: 'string', enum: ['wedding', 'luxury_item', 'instrument', 'art', 'watch', 'event', 'other'], description: '[big_purchase] Purchase category' },
+          estimated_amount: { type: 'number', description: '[big_purchase] Estimated purchase amount' },
+          description: { type: 'string', description: '[big_purchase/wealth/custom] Description or motivation' },
+          // Generic fallback
+          target_amount: { type: 'number', description: '[all] Target amount' },
+          due_date: { type: 'string', description: '[all] Target date' }
         },
         required: ['thought_process', 'rationale', 'substage', 'next_substage', 'goal_name', 'category']
       }

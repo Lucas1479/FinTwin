@@ -46,12 +46,10 @@ const HomeVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
 
     const [isMapOpen, setIsMapOpen] = useState(false);
 
-    // Sync with initialValues
+    // Sync with initialValues from AI/Parent
     useEffect(() => {
-        if (initialValues.goal_details || initialValues.goal_name) {
+        if (initialValues.goal_details || initialValues.goal_name || initialValues.due_date) {
             setFormData(prev => {
-                // Only update if external values are different from current state
-                // This prevents the slider loop issue
                 const newVal = {
                     goal_name: initialValues.goal_name || prev.goal_name,
                     location: initialValues.goal_details?.location || prev.location,
@@ -64,7 +62,7 @@ const HomeVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
                     due_date: initialValues.due_date || prev.due_date
                 };
 
-                // Simple shallow comparison for primitives to avoid loop
+                // Avoid unnecessary updates if data is consistent
                 if (
                     newVal.goal_name === prev.goal_name &&
                     newVal.location === prev.location &&
@@ -73,7 +71,8 @@ const HomeVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
                     newVal.is_first_home === prev.is_first_home &&
                     newVal.property_type === prev.property_type &&
                     newVal.property_condition === prev.property_condition &&
-                    newVal.due_date === prev.due_date
+                    newVal.due_date === prev.due_date &&
+                    JSON.stringify(newVal.coordinates) === JSON.stringify(prev.coordinates)
                 ) {
                     return prev;
                 }
@@ -83,23 +82,11 @@ const HomeVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
         }
     }, [initialValues]);
 
-    // Derived State
+    // Derived State - 派生值自动计算（房价 × 首付比例 = 首付金额）
     const targetDeposit = Math.round(formData.property_price_estimate * (formData.deposit_percentage / 100));
 
-    // Propagate changes
+    // Propagate changes to parent immediately
     useEffect(() => {
-        // --- FIX: Don't overwrite if we just synced from AI/InitialValues ---
-        const isInitialSync = 
-            formData.property_price_estimate === (initialValues.goal_details?.property_price_estimate || 800000) &&
-            formData.deposit_percentage === (initialValues.goal_details?.deposit_percentage || 20) &&
-            formData.location === (initialValues.goal_details?.location || 'Auckland') &&
-            formData.property_type === (initialValues.goal_details?.property_type || 'house') &&
-            formData.property_condition === (initialValues.goal_details?.property_condition || 'turn_key');
-
-        if (isInitialSync && initialValues.target_amount) {
-            return;
-        }
-
         onChange?.({
             goal_name: formData.goal_name,
             target_amount: targetDeposit,
@@ -114,7 +101,19 @@ const HomeVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
                 property_condition: formData.property_condition
             }
         });
-    }, [formData]);
+    }, [
+        formData.goal_name,
+        formData.location,
+        formData.coordinates,
+        formData.property_price_estimate,
+        formData.deposit_percentage,
+        formData.is_first_home,
+        formData.property_type,
+        formData.property_condition,
+        formData.due_date,
+        targetDeposit
+        // Note: onChange is intentionally NOT in deps (should be stable)
+    ]);
 
     const handleLocationSelect = (loc) => {
         setFormData(prev => ({ 
@@ -251,9 +250,15 @@ const HomeVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
                                 <input 
                                     type="number" 
                                     step={10000}
-                                    value={formData.property_price_estimate}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, property_price_estimate: Number(e.target.value) }))}
+                                    value={formData.property_price_estimate || ''}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        // 如果是空字符串，设为0；否则转换为数字
+                                        const numVal = val === '' ? 0 : Number(val);
+                                        setFormData(prev => ({ ...prev, property_price_estimate: numVal }));
+                                    }}
                                     className="w-full input-base pl-10 text-lg font-bold text-slate-900"
+                                    placeholder="800000"
                                 />
                             </div>
                         </div>
@@ -407,10 +412,11 @@ const HomePlanningParametersForm = ({ initialValues, onChange, onSubstageSubmit 
             });
         }
     }, [initialValues]);
+
+    // 自动联动：当贷款利率变化时，压力测试利率自动跟随（+2%）
     useEffect(() => {
         setFormData(prev => {
-            // Only update stress test if it wasn't manually overridden drastically
-            // Or just enforce the rule: Stress Test = Rate + 2%
+            // 只在合理范围内自动更新 Stress Test Rate
             const ruleBasedStress = prev.mortgage_rate_pct + 2.0;
             if (Math.abs(prev.stress_test_rate_pct - ruleBasedStress) < 0.5) {
                 return { ...prev, stress_test_rate_pct: ruleBasedStress };
@@ -419,7 +425,7 @@ const HomePlanningParametersForm = ({ initialValues, onChange, onSubstageSubmit 
         });
     }, [formData.mortgage_rate_pct]);
 
-    // Propagate changes
+    // Propagate changes to parent immediately
     useEffect(() => {
         onChange?.({
             goal_details: {
@@ -427,11 +433,7 @@ const HomePlanningParametersForm = ({ initialValues, onChange, onSubstageSubmit 
                 ...formData
             }
         });
-    }, [formData]);
-
-    const handleRiskSelect = (attitude) => {
-        setFormData(prev => ({ ...prev, risk_attitude: attitude }));
-    };
+    }, [formData, onChange]);
 
     const handleSubmit = () => {
         onSubstageSubmit(formData);
@@ -534,7 +536,7 @@ const HomePlanningParametersForm = ({ initialValues, onChange, onSubstageSubmit 
                             ].map((risk) => (
                                 <div 
                                     key={risk.id}
-                                    onClick={() => handleRiskSelect(risk.id)}
+                                    onClick={() => setFormData(prev => ({ ...prev, risk_attitude: risk.id }))}
                                     className={`cursor-pointer border rounded-xl p-3 text-center transition-all ${
                                         formData.risk_attitude === risk.id 
                                         ? `border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500 text-indigo-700` 
@@ -606,19 +608,38 @@ const HomeGapFeasibilityForm = ({ initialValues, onSubstageSubmit }) => {
     // 1. Read-Only Context from Previous Stages
     const vision = initialValues.goal_details || {};
     const assumptions = initialValues.goal_details || {}; // Merged in same object
-    const realAssets = {
-        liquid_assets: initialValues.goal_details?.liquid_assets || 0,
-        investments: initialValues.goal_details?.investments || 0,
-        kiwisaver: initialValues.goal_details?.current_super_balance || 0,
-        monthly_income: initialValues.goal_details?.monthly_income || 0,
-        debts: initialValues.goal_details?.debts || 0,
-        hasData: (initialValues.goal_details?.liquid_assets !== undefined)
+    
+    // Try to get financial data from multiple sources (AI decision > goal_details > direct props)
+    const getFinancialValue = (key, aiKey = key) => {
+        return initialValues.ai_decision?.[aiKey] 
+            ?? initialValues.goal_details?.[key] 
+            ?? initialValues[key] 
+            ?? 0;
     };
 
-    // 2. Constants & Helpers
-    const PROPERTY_PRICE = vision.property_price_estimate || 800000;
-    const DEPOSIT_PCT = vision.deposit_percentage || 20;
-    const FIRST_HOME_GRANT = vision.is_first_home ? 10000 : 0; // Simplified
+    const realAssets = {
+        liquid_assets: getFinancialValue('liquid_assets'),
+        investments: getFinancialValue('investments'),
+        kiwisaver: getFinancialValue('current_super_balance'),
+        monthly_income: getFinancialValue('monthly_income'),
+        debts: getFinancialValue('debts'),
+        hasData: (
+            initialValues.ai_decision?.liquid_assets !== undefined || 
+            initialValues.goal_details?.liquid_assets !== undefined ||
+            initialValues.liquid_assets !== undefined
+        )
+    };
+
+    // 2. Constants & Helpers - Try multiple sources
+    const PROPERTY_PRICE = vision.property_price_estimate 
+        || initialValues.property_price_estimate 
+        || initialValues.ai_decision?.property_price_estimate 
+        || 800000;
+    const DEPOSIT_PCT = vision.deposit_percentage 
+        || initialValues.deposit_percentage 
+        || initialValues.ai_decision?.deposit_percentage 
+        || 20;
+    const FIRST_HOME_GRANT = (vision.is_first_home ?? initialValues.is_first_home ?? initialValues.ai_decision?.is_first_home) ? 10000 : 0;
     const MORTGAGE_RATE = assumptions.mortgage_rate_pct || 6.5;
     const TERM_YEARS = assumptions.loan_term_years || 30;
 
@@ -755,7 +776,10 @@ const HomeGapFeasibilityForm = ({ initialValues, onSubstageSubmit }) => {
                              <div className="flex justify-between mt-1 text-[10px] font-bold">
                                  <span className="text-slate-400">0</span>
                                  <span className={isServiceable ? 'text-emerald-600' : 'text-rose-600'}>
-                                     {Math.round((monthlyMortgagePayment / (realAssets.monthly_income || 1)) * 100)}% of Income
+                                     {realAssets.monthly_income > 0 
+                                         ? `${Math.round((monthlyMortgagePayment / realAssets.monthly_income) * 100)}% of Income`
+                                         : 'Income data needed'
+                                     }
                                  </span>
                              </div>
                         </div>

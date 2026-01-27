@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AppError } from '../utils/errors.js';
 import vectaraClient from './vectaraClient.js';
+import { sanitizeContextForLLM } from '../utils/llmDataSanitizer.js';
 
 // LLMService: thin abstraction over different LLM providers (Gemini, Bedrock, DeepSeek, etc.)
 // Uses structured output when possible and always returns a unified shape.

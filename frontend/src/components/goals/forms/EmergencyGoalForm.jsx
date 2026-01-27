@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { 
@@ -33,11 +33,29 @@ const EmergencyVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
         monthly_spend_est: initialValues.goal_details?.monthly_spend_est || 3000 // Rough estimate
     });
 
-    const isInternalUpdate = useRef(false);
-
-    // Sync
+    // Sync from parent
     useEffect(() => {
-        isInternalUpdate.current = true;
+        if (initialValues?.goal_name || initialValues?.goal_details) {
+            setFormData(prev => {
+                const newData = {
+                    goal_name: initialValues.goal_name || prev.goal_name,
+                    primary_motivation: initialValues.goal_details?.primary_motivation || prev.primary_motivation,
+                    target_months_rough: initialValues.goal_details?.target_months_rough || prev.target_months_rough,
+                    monthly_spend_est: initialValues.goal_details?.monthly_spend_est || prev.monthly_spend_est
+                };
+                
+                // Avoid unnecessary updates
+                if (JSON.stringify(newData) === JSON.stringify(prev)) {
+                    return prev;
+                }
+                
+                return newData;
+            });
+        }
+    }, [initialValues]);
+
+    // Sync to parent
+    useEffect(() => {
         onChange?.({
             goal_name: formData.goal_name,
             goal_details: {
@@ -45,22 +63,13 @@ const EmergencyVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
                 ...formData
             }
         });
-    }, [formData]);
-
-    // Parent -> Internal
-    useEffect(() => {
-        if (!initialValues) return;
-        if (isInternalUpdate.current) {
-            isInternalUpdate.current = false;
-            return;
-        }
-        if (initialValues.goal_details) {
-            setFormData(prev => ({
-                ...prev,
-                ...initialValues.goal_details,
-            }));
-        }
-    }, [initialValues]);
+    }, [
+        formData.goal_name,
+        formData.primary_motivation,
+        formData.target_months_rough,
+        formData.monthly_spend_est
+        // Note: onChange is intentionally NOT in deps (should be stable)
+    ]);
 
     const MOTIVATIONS = [
         { id: 'job_loss', label: 'Job Security', icon: Briefcase, desc: 'Cover expenses if I lose income.' },
@@ -155,9 +164,13 @@ const EmergencyVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
                                 <input 
                                     type="number" 
-                                    value={formData.monthly_spend_est}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, monthly_spend_est: Number(e.target.value) }))}
+                                    value={formData.monthly_spend_est || ''}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setFormData(prev => ({ ...prev, monthly_spend_est: val === '' ? 0 : Number(val) }));
+                                    }}
                                     className="w-full input-base pl-8 font-bold"
+                                    placeholder="0"
                                 />
                             </div>
                             <p className="text-[10px] text-slate-400 mt-2">
@@ -234,10 +247,33 @@ const EmergencyPlanningParametersForm = ({ initialValues, onChange, onSubstageSu
     // Final Calculation
     const totalTarget = (formData.final_months_target * standardBurnRate) + formData.shock_buffer_amount;
 
-    const isInternalUpdate = useRef(false);
-
+    // Sync from parent
     useEffect(() => {
-        isInternalUpdate.current = true;
+        if (initialValues?.goal_details || initialValues?.due_date) {
+            setFormData(prev => {
+                const newData = {
+                    fixed_expenses: initialValues.goal_details?.fixed_expenses ?? prev.fixed_expenses,
+                    variable_expenses: initialValues.goal_details?.variable_expenses ?? prev.variable_expenses,
+                    income_source_volatility: initialValues.goal_details?.income_source_volatility ?? prev.income_source_volatility,
+                    has_income_protection: initialValues.goal_details?.has_income_protection ?? prev.has_income_protection,
+                    ip_wait_period_weeks: initialValues.goal_details?.ip_wait_period_weeks ?? prev.ip_wait_period_weeks,
+                    final_months_target: initialValues.goal_details?.final_months_target ?? prev.final_months_target,
+                    shock_buffer_amount: initialValues.goal_details?.shock_buffer_amount ?? prev.shock_buffer_amount,
+                    target_date: initialValues.due_date ? new Date(initialValues.due_date).toISOString().split('T')[0] : prev.target_date
+                };
+                
+                // Avoid unnecessary updates
+                if (JSON.stringify(newData) === JSON.stringify(prev)) {
+                    return prev;
+                }
+                
+                return newData;
+            });
+        }
+    }, [initialValues]);
+
+    // Sync to parent
+    useEffect(() => {
         onChange?.({
             target_amount: totalTarget,
             due_date: formData.target_date,
@@ -249,7 +285,21 @@ const EmergencyPlanningParametersForm = ({ initialValues, onChange, onSubstageSu
                 recommended_months: recommendedMonths
             }
         });
-    }, [formData, totalTarget, survivalBurnRate, recommendedMonths]);
+    }, [
+        formData.fixed_expenses,
+        formData.variable_expenses,
+        formData.income_source_volatility,
+        formData.has_income_protection,
+        formData.ip_wait_period_weeks,
+        formData.final_months_target,
+        formData.shock_buffer_amount,
+        formData.target_date,
+        totalTarget,
+        survivalBurnRate,
+        standardBurnRate,
+        recommendedMonths
+        // Note: onChange is intentionally NOT in deps (should be stable)
+    ]);
 
     return (
         <div className="space-y-8 animate-fade-in">

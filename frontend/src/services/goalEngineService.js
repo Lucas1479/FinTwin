@@ -15,9 +15,10 @@ const goalEngineService = {
    * @param {string} [params.substage] - Current substage (for multi-step stages)
    * @param {Object} [params.substageData] - Data from completed substages
    * @param {boolean} [params.useRag] - Whether to use RAG enrichment
+   * @param {boolean} [params.allowAIDataSharing] - 🔒 Privacy: Allow AI to use personal financial data
    * @returns {Promise<{ text: string, json: { ai_decision: Object, form_schema: Object } }>}
    */
-  generateDecision: async ({ stage, goalContext, userInput, previousDecisions = [], substage, substageData, useRag, mode, askHistory }) => {
+  generateDecision: async ({ stage, goalContext, userInput, previousDecisions = [], substage, substageData, useRag, mode, askHistory, allowAIDataSharing }) => {
     try {
       const response = await api.post('/goals/engine/generate', {
         stage,
@@ -28,7 +29,8 @@ const goalEngineService = {
         substageData,
         useRag,
         mode,
-        askHistory
+        askHistory,
+        allowAIDataSharing // 🔒 Privacy control
       });
       
       // Ensure we return a consistent structure even if backend varies
@@ -44,10 +46,11 @@ const goalEngineService = {
    * @param {Object} params
    * @param {string} params.substage - Current substage (for multi-step stages)
    * @param {Object} params.substageData - Data from completed substages
+   * @param {boolean} [params.allowAIDataSharing] - 🔒 Privacy: Allow AI to use personal financial data
    * @param {Function} onChunk - Callback for each text chunk (for reasoning)
    * @returns {Promise<Object>} - The final complete JSON data
    */
-  generateDecisionStream: async ({ stage, goalContext, userInput, previousDecisions = [], substage, substageData, useRag, mode, askHistory }, onChunk) => {
+  generateDecisionStream: async ({ stage, goalContext, userInput, previousDecisions = [], substage, substageData, useRag, mode, askHistory, allowAIDataSharing }, onChunk) => {
     try {
       const response = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/goals/engine/generate`, {
         method: 'POST',
@@ -68,6 +71,7 @@ const goalEngineService = {
           useRag,
           mode,
           askHistory,
+          allowAIDataSharing, // 🔒 Privacy control
           stream: true
         })
       });

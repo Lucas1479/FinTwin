@@ -445,7 +445,17 @@ const PlanningParametersForm = ({ initialValues, onChange, onSubstageSubmit, nee
             },
             due_date: computedDueDate // Push top-level due_date for API
         });
-    }, [formData]);
+    }, [
+        formData.current_age,
+        formData.retirement_age,
+        formData.life_expectancy,
+        formData.transition_phase,
+        formData.include_superannuation,
+        formData.risk_attitude,
+        formData.expected_return_pct,
+        formData.inflation_pct
+        // Note: onChange is intentionally NOT in deps (should be stable)
+    ]);
 
     const yearsToSave = Math.max(0, formData.retirement_age - formData.current_age);
     const yearsInRetirement = Math.max(0, formData.life_expectancy - formData.retirement_age);

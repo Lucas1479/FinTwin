@@ -6,6 +6,8 @@ import EmergencyGoalForm from './forms/EmergencyGoalForm';
 import VehicleGoalForm from './forms/VehicleGoalForm';
 import TravelGoalForm from './forms/TravelGoalForm';
 import EducationGoalForm from './forms/EducationGoalForm';
+import MajorPurchaseGoalForm from './forms/MajorPurchaseGoalForm';
+import WealthGrowthGoalForm from './forms/WealthGrowthGoalForm';
 import DynamicFormRenderer from './forms/DynamicFormRenderer';
 import goalEngineService from '../../services/goalEngineService';
 import api from '../../utils/api'; // Keep for other API calls if needed
@@ -96,8 +98,10 @@ const GoalDefinitionForm = ({
             const category = goalContext.category;
 
             // Known hardcoded types don't need a schema fetch (frontend handles UI)
-            if (['retirement', 'home', 'emergency', 'vehicle', 'travel', 'education'].includes(category)) {
+            if (['retirement', 'home', 'emergency', 'vehicle', 'travel', 'education', 'wealth', 'big_purchase'].includes(category)) {
                 setFormSchema(null);
+                setLoadingSchema(false);
+                setAiError('');
                 return;
             }
 
@@ -218,6 +222,20 @@ const GoalDefinitionForm = ({
             case 'education':
                 return (
                     <EducationGoalForm 
+                        initialValues={goalContext} 
+                        onChange={handleFormChange} 
+                    />
+                );
+            case 'wealth':
+                return (
+                    <WealthGrowthGoalForm 
+                        initialValues={goalContext} 
+                        onChange={handleFormChange} 
+                    />
+                );
+            case 'big_purchase':
+                return (
+                    <MajorPurchaseGoalForm 
                         initialValues={goalContext} 
                         onChange={handleFormChange} 
                     />

@@ -26,9 +26,10 @@ router.route('/:id')
   .put(protect, updateGoal)
   .delete(protect, deleteGoal);
 
-// Goal engine LLM entrypoint
-router.post('/engine/generate', protect, generateGoalDecision);
-router.post('/engine/optimize', protect, optimizeGoalAllocations);
+// Goal engine LLM entrypoint (with privacy middleware)
+import { attachPrivacyContext } from '../../middleware/privacyMiddleware.js';
+router.post('/engine/generate', protect, attachPrivacyContext, generateGoalDecision);
+router.post('/engine/optimize', protect, attachPrivacyContext, optimizeGoalAllocations);
 
 // Goal decision logs
 router.route('/:id/decisions')

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { 
@@ -154,7 +154,6 @@ const TravelVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
 
     const [showMap, setShowMap] = useState(false);
     const [isLoadingName, setIsLoadingName] = useState(false);
-    const isInternalUpdate = useRef(false);
 
     // Map Center Logic
     const currentRegion = REGIONAL_DATA[formData.destination] || REGIONAL_DATA.Europe;
@@ -239,24 +238,64 @@ const TravelVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
 
     }, [formData.destination, formData.adults, formData.children, formData.start_date, formData.end_date, formData.flight_class, formData.accommodation_style, formData.lifestyle_level]);
 
-    // --- SYNC ---
+    // Serialize relevant initialValues fields to avoid triggering on irrelevant parent updates
+    const initialValuesKey = useMemo(
+        () => JSON.stringify({
+            goal_name: initialValues?.goal_name,
+            destination: initialValues?.goal_details?.destination,
+            adults: initialValues?.goal_details?.adults,
+            children: initialValues?.goal_details?.children,
+            start_date: initialValues?.goal_details?.start_date,
+            end_date: initialValues?.goal_details?.end_date,
+            flight_class: initialValues?.goal_details?.flight_class,
+            accommodation_style: initialValues?.goal_details?.accommodation_style,
+            lifestyle_level: initialValues?.goal_details?.lifestyle_level,
+            estimated_cost: initialValues?.goal_details?.estimated_cost,
+            duration_days: initialValues?.goal_details?.duration_days,
+            notes: initialValues?.goal_details?.notes,
+            itinerary_pins: initialValues?.goal_details?.itinerary_pins
+        }),
+        [initialValues] // Let useMemo handle the caching based on object identity
+    );
+
+    // Sync from parent
     useEffect(() => {
-        // --- FIX: Don't overwrite if we just synced from AI/InitialValues ---
-        const isInitialSync = 
-            formData.destination === (initialValues.goal_details?.destination || 'Europe') &&
-            formData.adults === (initialValues.goal_details?.adults || 2) &&
-            formData.children === (initialValues.goal_details?.children || 0) &&
-            formData.flight_class === (initialValues.goal_details?.flight_class || 'economy') &&
-            formData.accommodation_style === (initialValues.goal_details?.accommodation_style || 'hotel') &&
-            formData.lifestyle_level === (initialValues.goal_details?.lifestyle_level || 'moderate') &&
-            formData.start_date === (initialValues.goal_details?.start_date || '') &&
-            formData.end_date === (initialValues.goal_details?.end_date || '');
-
-        if (isInitialSync && initialValues.target_amount) {
-            return;
+        if (initialValues?.goal_name || initialValues?.goal_details) {
+            setFormData(prev => {
+                const newData = {
+                    goal_name: initialValues.goal_name || prev.goal_name,
+                    destination: initialValues.goal_details?.destination || prev.destination,
+                    adults: initialValues.goal_details?.adults || prev.adults,
+                    children: initialValues.goal_details?.children || prev.children,
+                    start_date: initialValues.goal_details?.start_date || prev.start_date,
+                    end_date: initialValues.goal_details?.end_date || prev.end_date,
+                    flight_class: initialValues.goal_details?.flight_class || prev.flight_class,
+                    accommodation_style: initialValues.goal_details?.accommodation_style || prev.accommodation_style,
+                    lifestyle_level: initialValues.goal_details?.lifestyle_level || prev.lifestyle_level,
+                    estimated_cost: initialValues.goal_details?.estimated_cost || prev.estimated_cost,
+                    duration_days: initialValues.goal_details?.duration_days || prev.duration_days,
+                    notes: initialValues.goal_details?.notes || prev.notes,
+                    itinerary_pins: initialValues.goal_details?.itinerary_pins || prev.itinerary_pins
+                };
+                
+                // Avoid unnecessary updates
+                if (JSON.stringify(newData) === JSON.stringify(prev)) {
+                    return prev;
+                }
+                
+                return newData;
+            });
         }
+    }, [initialValuesKey]);
 
-        isInternalUpdate.current = true;
+    // Serialize itinerary_pins to avoid reference changes causing re-renders
+    const itineraryPinsKey = useMemo(
+        () => JSON.stringify(formData.itinerary_pins),
+        [formData.itinerary_pins]
+    );
+
+    // Sync to parent
+    useEffect(() => {
         onChange?.({
             goal_name: formData.goal_name,
             target_amount: costBreakdown.total,
@@ -268,21 +307,24 @@ const TravelVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
                 cost_breakdown: costBreakdown
             }
         });
-    }, [formData, costBreakdown.total]);
-
-    useEffect(() => {
-        if (!initialValues) return;
-        if (isInternalUpdate.current) {
-            isInternalUpdate.current = false;
-            return;
-        }
-        if (initialValues.goal_details) {
-            setFormData(prev => ({
-                ...prev,
-                ...initialValues.goal_details,
-            }));
-        }
-    }, [initialValues]);
+    }, [
+        formData.goal_name,
+        formData.destination,
+        formData.adults,
+        formData.children,
+        formData.start_date,
+        formData.end_date,
+        formData.flight_class,
+        formData.accommodation_style,
+        formData.lifestyle_level,
+        formData.estimated_cost,
+        formData.duration_days,
+        formData.notes,
+        itineraryPinsKey, // Use serialized key instead of array
+        costBreakdown.total,
+        costBreakdown.days
+        // Note: onChange is intentionally NOT in deps (should be stable)
+    ]);
 
     return (
         <div className="space-y-6 animate-fade-in">
@@ -434,17 +476,27 @@ const TravelVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
                                 <div className="flex-1">
                                     <label className="text-[10px] text-slate-400 block mb-1">Adults</label>
                                     <input 
-                                        type="number" min={1} value={formData.adults}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, adults: Number(e.target.value) }))}
+                                        type="number" min={1} 
+                                        value={formData.adults || ''}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setFormData(prev => ({ ...prev, adults: val === '' ? 1 : Number(val) }));
+                                        }}
                                         className="w-full input-base text-sm"
+                                        placeholder="1"
                                     />
                                 </div>
                                 <div className="flex-1">
                                     <label className="text-[10px] text-slate-400 block mb-1">Children</label>
                                     <input 
-                                        type="number" min={0} value={formData.children}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, children: Number(e.target.value) }))}
+                                        type="number" min={0} 
+                                        value={formData.children || ''}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setFormData(prev => ({ ...prev, children: val === '' ? 0 : Number(val) }));
+                                        }}
                                         className="w-full input-base text-sm"
+                                        placeholder="0"
                                     />
                                 </div>
                             </div>
@@ -629,30 +681,40 @@ const TravelPlanningParametersForm = ({ initialValues, onChange, onSubstageSubmi
         prepayment_required_pct: 40 // New field: How much needs to be paid upfront (flights/hotels)
     });
 
-    const isInternalUpdate = useRef(false);
-
+    // Sync from parent
     useEffect(() => {
-        if (!initialValues) return;
-        if (isInternalUpdate.current) {
-            isInternalUpdate.current = false;
-            return;
+        if (initialValues?.goal_details) {
+            setFormData(prev => {
+                const newData = {
+                    fx_buffer_pct: initialValues.goal_details.fx_buffer_pct ?? prev.fx_buffer_pct,
+                    inflation_pct: initialValues.goal_details.inflation_pct ?? prev.inflation_pct,
+                    prepayment_required_pct: initialValues.goal_details.prepayment_required_pct ?? prev.prepayment_required_pct
+                };
+                
+                // Avoid unnecessary updates
+                if (JSON.stringify(newData) === JSON.stringify(prev)) {
+                    return prev;
+                }
+                
+                return newData;
+            });
         }
-        setFormData(prev => ({
-            ...prev,
-            fx_buffer_pct: initialValues.goal_details?.fx_buffer_pct ?? prev.fx_buffer_pct,
-            inflation_pct: initialValues.goal_details?.inflation_pct ?? prev.inflation_pct
-        }));
     }, [initialValues]);
 
+    // Sync to parent
     useEffect(() => {
-        isInternalUpdate.current = true;
         onChange?.({
             goal_details: {
                 ...initialValues.goal_details,
                 ...formData
             }
         });
-    }, [formData]);
+    }, [
+        formData.fx_buffer_pct,
+        formData.inflation_pct,
+        formData.prepayment_required_pct
+        // Note: onChange is intentionally NOT in deps (should be stable)
+    ]);
 
     return (
         <div className="space-y-8 animate-fade-in">
