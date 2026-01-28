@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Send, Bot, User, Sparkles, GripHorizontal, ExternalLink, Maximize2, Minimize2 } from 'lucide-react';
+import { X, Send, Bot, User, Sparkles, GripHorizontal, ExternalLink, Maximize2, Minimize2, ShieldCheck, ShieldOff } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css'; // Import KaTeX styles
 import { useHelp } from '../../context/HelpContext';
+import { getUserProfile } from '../../services/userService';
 
 const HelpChatBox = () => {
   const { isHelpOpen, closeHelp, externalMessage, setExternalMessage } = useHelp();
@@ -24,12 +25,34 @@ const HelpChatBox = () => {
   const inputRef = useRef(null);
   const chatBoxRef = useRef(null);
 
+  // 🔒 Privacy Control State
+  const [userPrivacySettings, setUserPrivacySettings] = useState({ shareWithAI: true });
+  const [allowAIDataSharing, setAllowAIDataSharing] = useState(true);
+
   // Resize State
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Draggable State
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  // 🔒 Fetch user privacy settings on mount
+  useEffect(() => {
+    const fetchPrivacySettings = async () => {
+      try {
+        const profile = await getUserProfile();
+        const shareWithAI = profile?.privacy?.shareWithAI !== false;
+        setUserPrivacySettings({ shareWithAI });
+        setAllowAIDataSharing(shareWithAI);
+        console.log('[Privacy][HelpChat] Loaded privacy settings:', { shareWithAI });
+      } catch (error) {
+        console.error('[Privacy][HelpChat] Failed to load privacy settings:', error);
+        setUserPrivacySettings({ shareWithAI: true });
+        setAllowAIDataSharing(true);
+      }
+    };
+    fetchPrivacySettings();
+  }, []);
 
   // Handle External Messages (e.g. from Tooltips)
   useEffect(() => {
@@ -340,7 +363,34 @@ const HelpChatBox = () => {
 
       {/* Input Area */}
       <div className="p-4 bg-white border-t border-slate-100 rounded-b-2xl" onMouseDown={(e) => e.stopPropagation()}>
-        <form onSubmit={handleSubmit} className="relative">
+        {/* Privacy Control (Compact) */}
+        <div className="flex items-center justify-end gap-1.5 mb-2 group"
+          title={allowAIDataSharing 
+            ? 'AI can access your financial data for personalized advice. Click to disable.' 
+            : 'Privacy mode: AI will provide generic advice only. Click to enable data sharing.'}
+        >
+          <span className="text-[10px] text-slate-500 font-medium cursor-help">
+            Privacy
+          </span>
+          {allowAIDataSharing ? (
+            <ShieldCheck size={14} className="text-green-600" />
+          ) : (
+            <ShieldOff size={14} className="text-amber-600" />
+          )}
+          <button
+            type="button"
+            onClick={() => setAllowAIDataSharing(prev => !prev)}
+            className={`
+              w-7 h-3.5 rounded-full transition-all relative flex items-center px-0.5
+              ${allowAIDataSharing ? 'bg-green-500' : 'bg-amber-500'}
+            `}
+            aria-label={allowAIDataSharing ? 'Disable AI data sharing' : 'Enable AI data sharing'}
+          >
+            <div className={`w-2.5 h-2.5 bg-white rounded-full shadow-sm transition-all ${allowAIDataSharing ? 'translate-x-3.5' : 'translate-x-0'}`} />
+          </button>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="relative flex items-center">
           <input
             ref={inputRef}
             type="text"
@@ -352,7 +402,7 @@ const HelpChatBox = () => {
           <button 
             type="submit"
             disabled={!input.trim() || isTyping}
-            className="absolute right-2 top-2 p-1.5 bg-indigo-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 transition-colors shadow-sm"
+            className="absolute right-2 p-1.5 bg-indigo-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-700 transition-colors shadow-sm"
           >
             <Send size={16} />
           </button>

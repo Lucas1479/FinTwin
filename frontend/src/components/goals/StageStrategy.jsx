@@ -49,11 +49,16 @@ const StageStrategy = ({ goalContext, onChange, isLoadingAI, goalsSnapshot, cash
     const effectiveAvailable = availableForThisGoal;
 
     // AI 建议的月度金额（用于初始化滑块）
-    const aiMonthly = contributionHint?.monthly_amount || contributionHint?.monthly_amount_hint;
+    // 使用 ?? 而不是 || 来正确处理 0 值
+    const aiMonthly = contributionHint?.monthly_amount ?? contributionHint?.monthly_amount_hint;
     const maxAllocatable = effectiveAvailable;
 
     const initialAlloc = (() => {
-        const val = aiMonthly ?? totalSurplus;
+        // 如果AI明确建议了monthly_amount（包括0），使用AI的值
+        // 只有当AI没有提供任何建议时才fallback到totalSurplus
+        const val = (contributionHint?.monthly_amount !== undefined) 
+            ? contributionHint.monthly_amount 
+            : (aiMonthly ?? totalSurplus);
         if (maxAllocatable > 0) return Math.min(val, maxAllocatable);
         return val;
     })();
@@ -301,26 +306,47 @@ const StageStrategy = ({ goalContext, onChange, isLoadingAI, goalsSnapshot, cash
                     </div>
                 </div>
 
-                {/* Global surplus allocation slider */}
-                <div className="mb-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-                    <div className="flex items-center justify-between text-sm text-slate-600">
-                        <span>Allocate surplus to this goal</span>
-                        <span className="font-bold text-slate-900">${Math.round(allocSlider)}</span>
+                {/* Lump Sum Display - Only show for lump_sum mode */}
+                {contributionMode === 'lump_sum' && (
+                    <div className="mb-4 bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-200 rounded-2xl p-5 shadow-sm">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <div className="text-sm font-bold text-emerald-900">Lump Sum Investment</div>
+                                <div className="text-xs text-emerald-700 mt-1">
+                                    One-time allocation to fully fund this goal
+                                </div>
+                            </div>
+                            <div className="text-2xl font-black text-emerald-700">
+                                ${(contributionHint?.lump_sum_amount ?? 0).toLocaleString()}
+                            </div>
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-emerald-200 text-xs text-emerald-700">
+                            ✓ No monthly contributions required
+                        </div>
                     </div>
-                    <input
-                        type="range"
-                        min="0"
-                        max={maxAllocatable || 0}
-                        step="50"
-                        value={allocSlider}
-                        onChange={(e) => {
-                            const val = Number(e.target.value);
-                            setAllocSlider(val);
-                            setContributionValue('monthly_amount_hint', val);
-                        }}
-                        className="w-full accent-indigo-600 mt-2"
-                    />
-                    {maxAllocatable > 0 && (
+                )}
+
+                {/* Global surplus allocation slider - Only show for recurring/hybrid modes */}
+                {(contributionMode === 'recurring' || contributionMode === 'hybrid') && (
+                    <div className="mb-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                        <div className="flex items-center justify-between text-sm text-slate-600">
+                            <span>Allocate surplus to this goal</span>
+                            <span className="font-bold text-slate-900">${Math.round(allocSlider)}</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0"
+                            max={maxAllocatable || 0}
+                            step="50"
+                            value={allocSlider}
+                            onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setAllocSlider(val);
+                                setContributionValue('monthly_amount_hint', val);
+                            }}
+                            className="w-full accent-indigo-600 mt-2"
+                        />
+                        {maxAllocatable > 0 && (
                         <div className="mt-3 space-y-2">
                             {/* Budget breakdown */}
                             <div className="text-[11px] text-slate-600 space-y-1 bg-slate-50 rounded-lg p-3 border border-slate-200">
@@ -352,8 +378,9 @@ const StageStrategy = ({ goalContext, onChange, isLoadingAI, goalsSnapshot, cash
                                 <span className="font-medium">{Math.round((allocSlider / maxAllocatable) * 100)}% of available</span>
                             </div>
                         </div>
-                    )}
-                </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Economic Exposure Configuration */}
                 <div className="mt-6 mb-4">

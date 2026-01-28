@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
     Car, 
     Truck, 
@@ -98,34 +98,39 @@ const VehicleVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
         due_date: initialValues?.due_date || ''
     });
 
-    const isInternalUpdate = useRef(false);
-
     // Sync from parent
     useEffect(() => {
-        if (isInternalUpdate.current) {
-            isInternalUpdate.current = false;
-            return;
-        }
-        const newData = {
-            tier: initialValues?.goal_details?.tier || 'family',
-            brand: initialValues?.goal_details?.brand || '',
-            model_id: initialValues?.goal_details?.model_id || '',
-            model_name: initialValues?.goal_details?.model_name || '',
-            condition: initialValues?.goal_details?.condition || 'new',
-            fuel_type: initialValues?.goal_details?.fuel_type || 'petrol',
-            goal_name: initialValues?.goal_name || 'My New Ride',
-            estimated_price: initialValues?.target_amount || 0,
-            due_date: initialValues?.due_date || ''
-        };
-        // Simple dirty check to avoid loops
-        if (JSON.stringify(newData) !== JSON.stringify(data)) {
-            setData(newData);
+        if (initialValues?.goal_details || initialValues?.goal_name || initialValues?.target_amount || initialValues?.due_date) {
+            setData(prev => {
+                // Normalize brand to lowercase to match CAR_DATABASE keys
+                const brandValue = initialValues?.goal_details?.brand;
+                const normalizedBrand = brandValue ? brandValue.toLowerCase() : prev.brand;
+                
+                const newData = {
+                    tier: initialValues?.goal_details?.tier || prev.tier,
+                    brand: normalizedBrand,
+                    model_id: initialValues?.goal_details?.model_id || prev.model_id,
+                    model_name: initialValues?.goal_details?.model_name || prev.model_name,
+                    condition: initialValues?.goal_details?.condition || prev.condition,
+                    fuel_type: initialValues?.goal_details?.fuel_type || prev.fuel_type,
+                    goal_name: initialValues?.goal_name || prev.goal_name,
+                    estimated_price: initialValues?.target_amount || prev.estimated_price,
+                    due_date: initialValues?.due_date || prev.due_date
+                };
+                
+                // Avoid unnecessary updates if data is consistent
+                if (JSON.stringify(newData) === JSON.stringify(prev)) {
+                    return prev;
+                }
+                
+                return newData;
+            });
         }
     }, [initialValues]);
 
-    // Sync to parent
+    // Sync to parent (only when relevant fields change)
     useEffect(() => {
-        const payload = {
+        onChange?.({
             goal_name: data.goal_name,
             target_amount: data.estimated_price,
             due_date: data.due_date,
@@ -137,10 +142,19 @@ const VehicleVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
                 condition: data.condition,
                 fuel_type: data.fuel_type
             }
-        };
-        isInternalUpdate.current = true;
-        onChange(payload);
-    }, [data, onChange]);
+        });
+    }, [
+        data.goal_name, 
+        data.estimated_price, 
+        data.due_date, 
+        data.tier, 
+        data.brand, 
+        data.model_id, 
+        data.model_name, 
+        data.condition, 
+        data.fuel_type
+        // Note: onChange is intentionally NOT in deps (should be stable)
+    ]);
 
     // Handlers
     const handleModelSelect = (model) => {
@@ -171,7 +185,7 @@ const VehicleVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
     };
 
     // Filter logic
-    const availableModels = data.brand && data.brand !== 'other' 
+    const availableModels = data.brand && data.brand !== 'other' && CAR_DATABASE.models[data.brand]
         ? CAR_DATABASE.models[data.brand].filter(m => {
             return m.tier === data.tier;
         })
@@ -322,9 +336,13 @@ const VehicleVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
                                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
                                     <input 
                                         type="number" 
-                                        value={data.estimated_price}
-                                        onChange={(e) => setData(prev => ({ ...prev, estimated_price: Number(e.target.value) }))}
+                                        value={data.estimated_price || ''}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setData(prev => ({ ...prev, estimated_price: val === '' ? 0 : Number(val) }));
+                                        }}
                                         className="w-full input-base pl-8"
+                                        placeholder="0"
                                     />
                                 </div>
                             </div>
@@ -448,15 +466,31 @@ const VehiclePlanningParametersForm = ({ initialValues, onChange, onSubstageSubm
         depreciation_rate: initialValues?.goal_details?.depreciation_rate || defaultDepreciation
     });
 
-    const isInternalUpdate = useRef(false);
-
     // Sync from parent
     useEffect(() => {
-        if (isInternalUpdate.current) {
-            isInternalUpdate.current = false;
-            return;
+        if (initialValues?.target_amount !== undefined || initialValues?.goal_details) {
+            setData(prev => {
+                const newData = {
+                    target_amount: initialValues?.target_amount ?? prev.target_amount,
+                    on_road_costs: initialValues?.goal_details?.on_road_costs ?? prev.on_road_costs,
+                    trade_in_value: initialValues?.goal_details?.trade_in_value ?? prev.trade_in_value,
+                    deposit_cash: initialValues?.goal_details?.deposit_cash ?? prev.deposit_cash,
+                    finance_method: initialValues?.goal_details?.finance_method ?? prev.finance_method,
+                    loan_interest_rate: initialValues?.goal_details?.loan_interest_rate ?? prev.loan_interest_rate,
+                    loan_term_years: initialValues?.goal_details?.loan_term_years ?? prev.loan_term_years,
+                    running_costs_annual: initialValues?.goal_details?.running_costs_annual ?? prev.running_costs_annual,
+                    insurance_annual: initialValues?.goal_details?.insurance_annual ?? prev.insurance_annual,
+                    depreciation_rate: initialValues?.goal_details?.depreciation_rate ?? prev.depreciation_rate
+                };
+                
+                // Avoid unnecessary updates
+                if (JSON.stringify(newData) === JSON.stringify(prev)) {
+                    return prev;
+                }
+                
+                return newData;
+            });
         }
-        // Sync logic if needed
     }, [initialValues]);
 
     // Sync to parent
@@ -473,7 +507,7 @@ const VehiclePlanningParametersForm = ({ initialValues, onChange, onSubstageSubm
             monthlyRepayment = (loanAmount * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
         }
 
-        const payload = {
+        onChange?.({
             target_amount: data.target_amount,
             goal_details: {
                 ...data,
@@ -481,10 +515,7 @@ const VehiclePlanningParametersForm = ({ initialValues, onChange, onSubstageSubm
                 monthly_repayment: monthlyRepayment,
                 net_upfront_cost: data.finance_method === 'cash' ? Math.max(0, totalCost - data.trade_in_value) : data.deposit_cash
             }
-        };
-        
-        isInternalUpdate.current = true;
-        onChange(payload);
+        });
     }, [data, onChange]);
 
     // Helpers
@@ -544,9 +575,13 @@ const VehiclePlanningParametersForm = ({ initialValues, onChange, onSubstageSubm
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
                                 <input 
                                     type="number" 
-                                    value={data.target_amount}
-                                    onChange={(e) => setData(p => ({ ...p, target_amount: Number(e.target.value) }))}
+                                    value={data.target_amount || ''}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setData(p => ({ ...p, target_amount: val === '' ? 0 : Number(val) }));
+                                    }}
                                     className="w-full bg-slate-50 rounded-xl px-8 py-3 font-bold text-slate-800"
+                                    placeholder="0"
                                 />
                             </div>
                         </div>
@@ -560,9 +595,13 @@ const VehiclePlanningParametersForm = ({ initialValues, onChange, onSubstageSubm
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
                                 <input 
                                     type="number" 
-                                    value={data.on_road_costs}
-                                    onChange={(e) => setData(p => ({ ...p, on_road_costs: Number(e.target.value) }))}
+                                    value={data.on_road_costs || ''}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setData(p => ({ ...p, on_road_costs: val === '' ? 0 : Number(val) }));
+                                    }}
                                     className="w-full bg-slate-50 rounded-xl px-8 py-3 font-bold text-slate-800"
+                                    placeholder="0"
                                 />
                             </div>
                         </div>
@@ -580,9 +619,13 @@ const VehiclePlanningParametersForm = ({ initialValues, onChange, onSubstageSubm
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500 font-bold">$</span>
                                 <input 
                                     type="number" 
-                                    value={data.trade_in_value}
-                                    onChange={(e) => setData(p => ({ ...p, trade_in_value: Number(e.target.value) }))}
+                                    value={data.trade_in_value || ''}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setData(p => ({ ...p, trade_in_value: val === '' ? 0 : Number(val) }));
+                                    }}
                                     className="w-full bg-green-50 rounded-xl px-8 py-3 font-bold text-green-700 focus:ring-green-500"
+                                    placeholder="0"
                                 />
                             </div>
                         </div>
@@ -723,7 +766,17 @@ const VehicleGapFeasibilityForm = ({ initialValues, onChange, onSubstageSubmit }
         due_date: initialValues?.due_date || '',
     });
 
-    const isInternalUpdate = useRef(false);
+    // Sync from parent
+    useEffect(() => {
+        if (initialValues?.due_date) {
+            setData(prev => {
+                if (prev.due_date === initialValues.due_date) {
+                    return prev;
+                }
+                return { due_date: initialValues.due_date };
+            });
+        }
+    }, [initialValues]);
 
     // Derived from Context
     const details = initialValues?.goal_details || {};
@@ -740,11 +793,9 @@ const VehicleGapFeasibilityForm = ({ initialValues, onChange, onSubstageSubmit }
 
     // Sync to parent
     useEffect(() => {
-        const payload = {
+        onChange?.({
             due_date: data.due_date
-        };
-        isInternalUpdate.current = true;
-        onChange(payload);
+        });
     }, [data, onChange]);
 
     // Calculate Savings Plan (if Cash)

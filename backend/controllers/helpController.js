@@ -136,8 +136,13 @@ ANSWER:
   }
 });
 
+import { protect } from '../middleware/authMiddleware.js';
+import { attachPrivacyContext } from '../middleware/privacyMiddleware.js';
+
 const router = express.Router();
-router.post('/chat', chatWithHelp);
+
+// Apply auth + privacy middleware to help chat
+router.post('/chat', protect, attachPrivacyContext, chatWithHelp);
 
 export default router;
 

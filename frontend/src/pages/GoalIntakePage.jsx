@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -14,6 +14,8 @@ import goalEngineService from '../services/goalEngineService';
 import { createGoalWithPlan, getGoals } from '../services/goalService';
 import { getCashFlows } from '../services/cashFlowService';
 import { computeFinancialsFromCashFlows, extractOtherGoalsMonthly } from '../utils/financialCalculations';
+import { getUserProfile } from '../services/userService';
+import { getRequiredDataTypes, getDataTypeLabels, shouldShowPermissionCard } from '../constants/privacyDataTypes';
 import {
     Send,
     ChevronRight,
@@ -30,7 +32,9 @@ import {
     Search,
     Edit2,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    ShieldCheck,
+    ShieldOff
 } from 'lucide-react';
 
 // Typewriter Effect Component - NOW SUPPORTS MARKDOWN
@@ -353,7 +357,18 @@ const Copilot = ({
     useRag,
     setUseRag,
     mode,
-    setMode
+    setMode,
+    allowAIDataSharing,
+    setAllowAIDataSharing,
+    pendingQuery,
+    setPendingQuery,
+    showPermissionCard,
+    setShowPermissionCard,
+    requestedDataTypes,
+    setRequestedDataTypes,
+    selectedAllowlist,
+    setSelectedAllowlist,
+    onExecuteSubstageWithPermission // 🆕 Callback to execute substage after permission granted
 }) => {
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -362,6 +377,7 @@ const Copilot = ({
     const [expandedRef, setExpandedRef] = useState(null);
     const [showSources, setShowSources] = useState(false);
     const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+    // 🔒 Privacy states are now passed as props from parent (GoalEnginePage)
     
     const scrollRef = useRef(null);
     const textareaRef = useRef(null); 
@@ -399,6 +415,203 @@ const Copilot = ({
         setTimeout(() => setCopiedId(null), 2000);
     };
 
+    // Handle permission response (Accept/Deny) - NOTE: Callback to parent needed for executeSubstageWithPermission
+    const handlePermissionResponse = async (granted) => {
+        setShowPermissionCard(false);
+        
+        if (!granted) {
+            // User denied permission - show feedback message
+            setMessages(prev => [...prev, { 
+                role: 'system', 
+                text: '🔒 Access denied. AI will provide generic advice without your financial data.' 
+            }]);
+            setPendingQuery(null);
+            return;
+        }
+        
+        if (!pendingQuery) {
+            setPendingQuery(null);
+            return;
+        }
+
+        // 🆕 检查是否是自动substage请求
+        if (pendingQuery.startsWith('auto_substage:')) {
+            const nextSubId = pendingQuery.replace('auto_substage:', '');
+            setPendingQuery(null);
+            
+            // 用户授权了，现在执行substage（调用父组件的回调）
+            console.log('[Privacy] User authorized auto-substage:', nextSubId, 'with allowlist:', selectedAllowlist);
+            
+            // 调用父组件提供的执行函数
+            if (onExecuteSubstageWithPermission) {
+                onExecuteSubstageWithPermission(nextSubId, selectedAllowlist);
+            }
+            return;
+        }
+
+        // 🔑 普通聊天消息的处理
+        const queryText = pendingQuery;
+        const oneTimePermission = granted; // true = Allow, false already handled above
+        setPendingQuery(null);
+        
+        setIsLoading(true);
+
+        // Calculate AI message index using functional update to get latest state
+        let aiMsgIndex = 0;
+        setMessages(prev => {
+            aiMsgIndex = prev.length; // AI message will be at this index after adding
+            console.log('[Permission] AI message will be at index:', aiMsgIndex, 'Current messages:', prev.length);
+            return [...prev, { 
+                role: 'assistant', 
+                text: '', 
+                isTyping: true,
+                isStreaming: true,
+                mode
+            }];
+        });
+
+        try {
+            let accumulatedRaw = '';
+            console.log('[Permission] Starting AI request for query:', queryText);
+            
+            // Helper to extract field content from incomplete JSON stream
+            const extractField = (field, jsonStr) => {
+                const marker = `"${field}": "`;
+                const startIdx = jsonStr.indexOf(marker);
+                if (startIdx === -1) return '';
+                
+                const contentStart = startIdx + marker.length;
+                let contentEnd = jsonStr.length;
+                
+                // Track if we are inside an escaped sequence
+                let escaped = false;
+                for (let i = contentStart; i < jsonStr.length; i++) {
+                    if (escaped) {
+                        escaped = false;
+                        continue;
+                    }
+                    if (jsonStr[i] === '\\') {
+                        escaped = true;
+                        continue;
+                    }
+                    if (jsonStr[i] === '"') {
+                        contentEnd = i;
+                        break;
+                    }
+                }
+                
+                return jsonStr.slice(contentStart, contentEnd)
+                    .replace(/\\n/g, '\n')
+                    .replace(/\\"/g, '"')
+                    .replace(/\\r/g, '')
+                    .replace(/\\t/g, '\t');
+            };
+
+            const askHistory = messages
+                .filter(m => m.mode === 'ask' && (m.role === 'user' || m.role === 'assistant') && m.text)
+                .slice(-8)
+                .map(m => ({ role: m.role, text: m.text }));
+
+            console.log('[Permission] Calling AI with aiMsgIndex:', aiMsgIndex);
+
+            const finalData = await goalEngineService.generateDecisionStream({
+                stage: currentStageLabel,
+                goalContext,
+                userInput: { text: queryText },
+                previousDecisions: [],
+                useRag,
+                allowAIDataSharing: oneTimePermission, // 🔑 Use one-time permission from card
+                dataAllowlist: selectedAllowlist, // 🆕 Send user-selected data types
+                mode,
+                askHistory
+            }, (chunk) => {
+                accumulatedRaw += chunk;
+                
+                const streamingThought = extractField('thought_process', accumulatedRaw);
+                const streamingRationale = extractField('rationale', accumulatedRaw);
+
+                setMessages(prev => {
+                    const newMessages = [...prev];
+                    if (newMessages[aiMsgIndex]) {
+                        // Priority: Rationale > Thought Process > Loading State
+                        let displayText = streamingRationale || streamingThought || "Thinking...";
+
+                        newMessages[aiMsgIndex] = {
+                            ...newMessages[aiMsgIndex],
+                            text: displayText,
+                            thought_process: streamingThought,
+                            isStreaming: true
+                        };
+                    } else {
+                        console.warn('[Permission] Stream update: aiMsgIndex', aiMsgIndex, 'not found in', newMessages.length, 'messages');
+                    }
+                    return newMessages;
+                });
+            });
+            
+            console.log('[Permission] ✅ Stream completed. finalData:', finalData);
+            
+            if (finalData) {
+                // finalData is the json field from SSE (ai_decision + form_schema)
+                const aiDecision = finalData.ai_decision;
+                console.log('[Permission] AI Decision:', aiDecision?.rationale?.substring(0, 100));
+                
+                // --- FAULT TOLERANCE: Try to extract fields manually if aiDecision is missing ---
+                let fallbackDecision = {};
+                if (!aiDecision) {
+                    console.warn('[Goal Engine] AI Decision object missing, attempting manual extraction from raw text');
+                    fallbackDecision = {
+                        goal_name: extractField('goal_name', accumulatedRaw),
+                        category: extractField('category', accumulatedRaw),
+                        priority: extractField('priority', accumulatedRaw),
+                        target_amount: Number(extractField('target_amount', accumulatedRaw)) || undefined,
+                        due_date: extractField('due_date', accumulatedRaw)
+                    };
+                    
+                    // Filter out undefined
+                    Object.keys(fallbackDecision).forEach(key => 
+                        fallbackDecision[key] === undefined && delete fallbackDecision[key]
+                    );
+                }
+
+                const aiText = aiDecision?.rationale || extractField('rationale', accumulatedRaw) || "I've updated the plan based on your request.";
+
+                console.log('[Permission] Final update - aiMsgIndex:', aiMsgIndex, 'aiText length:', aiText?.length);
+
+                setMessages(prev => {
+                    const newMessages = [...prev];
+                    console.log('[Permission] Message array has', newMessages.length, 'messages, updating index', aiMsgIndex);
+                    if (newMessages[aiMsgIndex]) {
+                        newMessages[aiMsgIndex] = {
+                            ...newMessages[aiMsgIndex],
+                            text: aiText,
+                            isTyping: false,
+                            isStreaming: false,
+                            thought_process: aiDecision?.thought_process || extractField('thought_process', accumulatedRaw),
+                            references: aiDecision?.references,
+                            rag_summary: aiDecision?.rag_summary
+                        };
+                        console.log('[Permission] ✅ Message updated successfully');
+                    } else {
+                        console.error('[Permission] ❌ ERROR: No message at index', aiMsgIndex, '! Array length:', newMessages.length);
+                    }
+                    return newMessages;
+                });
+
+                const effectiveDecision = aiDecision || (Object.keys(fallbackDecision).length > 0 ? fallbackDecision : null);
+                
+                if (mode !== 'ask' && effectiveDecision && onUpdateContext) {
+                    onUpdateContext(effectiveDecision);
+                }
+            }
+        } catch (err) {
+            console.error('[Permission] ❌ Error:', err);
+            setMessages(prev => [...prev, { role: 'system', text: "Sorry, I'm having trouble connecting to the brain." }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     // Helper to format text with clickable citations
     const formatMessage = (text, references = []) => {
         if (!text) return '';
@@ -430,6 +643,46 @@ const Copilot = ({
     const handleSend = async (overrideText) => {
         const textToSend = typeof overrideText === 'string' ? overrideText : inputText;
         if (!textToSend.trim()) return;
+        
+        // 🆕 智能检测：判断当前请求是否需要隐私数据
+        const requiredTypes = getRequiredDataTypes(
+            currentStageLabel, 
+            goalContext?.substage, 
+            goalContext?.category
+        );
+        
+        const needsPermission = shouldShowPermissionCard(
+            currentStageLabel,
+            goalContext?.substage,
+            goalContext?.category,
+            allowAIDataSharing
+        );
+        
+        // 🐛 Debug日志
+        console.log('[Privacy Card] Debug:', {
+            stage: currentStageLabel,
+            substage: goalContext?.substage,
+            category: goalContext?.category,
+            currentPrivacy: allowAIDataSharing,
+            requiredTypes,
+            needsPermission,
+            mode
+        });
+        
+        // 🔒 只在需要敏感数据时显示权限卡片
+        if (needsPermission && mode !== 'ask') {
+            // Show user message first
+            const userMsg = { role: 'user', text: textToSend, mode };
+            setMessages(prev => [...prev, userMsg]);
+            
+            setPendingQuery(textToSend);
+            setRequestedDataTypes(requiredTypes); // 存储需要的数据类型
+            setSelectedAllowlist(requiredTypes); // 默认全选所需数据
+            setShowPermissionCard(true);
+            setInputText(''); // Clear input
+            if (textareaRef.current) textareaRef.current.style.height = 'auto';
+            return; // Wait for user response
+        }
         
         const userMsg = { role: 'user', text: textToSend, mode };
         setMessages(prev => [...prev, userMsg]);
@@ -495,6 +748,7 @@ const Copilot = ({
                 userInput: { text: userMsg.text },
                 previousDecisions: [],
                 useRag,
+                allowAIDataSharing, // 🔒 Pass chatbox privacy toggle
                 mode,
                 askHistory
             }, (chunk) => {
@@ -617,6 +871,105 @@ const Copilot = ({
             </div>
             
             <div className="relative flex-1 min-h-0">
+                {/* Permission Request - Smart & Context-Aware */}
+                {showPermissionCard && (() => {
+                    const dataTypeLabels = getDataTypeLabels(requestedDataTypes);
+                    const allSelected = selectedAllowlist.length === requestedDataTypes.length;
+                    
+                    return (
+                        <div className="absolute bottom-3 left-3 right-3 z-50 animate-in slide-in-from-bottom-2 duration-300">
+                            <div className="bg-white/95 backdrop-blur border border-indigo-100/80 rounded-xl shadow-lg shadow-indigo-500/10 ring-1 ring-indigo-50/50 p-3">
+                                
+                                {/* Header */}
+                                <div className="flex items-center gap-2.5 mb-2">
+                                    <div className="p-1.5 rounded-full bg-indigo-50 text-indigo-600 flex-shrink-0">
+                                        <Shield size={16} />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-slate-800">
+                                            AI needs access to your data
+                                        </p>
+                                        <p className="text-[10px] text-slate-500">
+                                            For personalized financial advice
+                                        </p>
+                                    </div>
+                                </div>
+                                
+                                {/* Data Types List (MVP: Simple display) */}
+                                <div className="bg-slate-50 rounded-lg p-2.5 mb-3 space-y-1.5">
+                                    {dataTypeLabels.map((dt, idx) => {
+                                        const isSelected = selectedAllowlist.includes(dt.value);
+                                        return (
+                                            <label 
+                                                key={dt.value}
+                                                className="flex items-center gap-2 p-1.5 hover:bg-white rounded-md cursor-pointer transition-colors"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => {
+                                                        setSelectedAllowlist(prev => 
+                                                            isSelected 
+                                                                ? prev.filter(v => v !== dt.value)
+                                                                : [...prev, dt.value]
+                                                        );
+                                                    }}
+                                                    className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300"
+                                                />
+                                                <span className="text-xs mr-1">{dt.icon}</span>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-medium text-slate-700 truncate">
+                                                        {dt.label}
+                                                    </p>
+                                                    <p className="text-[10px] text-slate-500 truncate">
+                                                        {dt.description}
+                                                    </p>
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                                
+                                {/* Quick Actions */}
+                                <div className="flex items-center justify-between gap-2 mb-3">
+                                    <button
+                                        onClick={() => {
+                                            if (allSelected) {
+                                                setSelectedAllowlist([]);
+                                            } else {
+                                                setSelectedAllowlist(requestedDataTypes);
+                                            }
+                                        }}
+                                        className="text-[10px] text-indigo-600 hover:text-indigo-700 font-medium"
+                                    >
+                                        {allSelected ? 'Deselect All' : 'Select All'}
+                                    </button>
+                                    <p className="text-[10px] text-slate-400">
+                                        {selectedAllowlist.length} of {requestedDataTypes.length} selected
+                                    </p>
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => handlePermissionResponse(false)}
+                                        className="flex-1 px-3 py-2 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 transition-colors"
+                                    >
+                                        Deny All
+                                    </button>
+                                    <button
+                                        onClick={() => handlePermissionResponse(true)}
+                                        disabled={selectedAllowlist.length === 0}
+                                        className="flex-1 px-3 py-2 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 shadow-sm shadow-indigo-200 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        Allow ({selectedAllowlist.length})
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
+                
                 <div 
                     ref={scrollRef}
                     onScroll={handleChatScroll}
@@ -858,7 +1211,7 @@ const Copilot = ({
             </div>
 
             {/* Quick Options */}
-            {currentStageLabel === 'definition' && !hasUserMessages && (
+            {currentStageLabel === 'definition' && !hasUserMessages && !showPermissionCard && (
                 <div className="flex flex-wrap justify-end gap-2 mb-3">
                     {[
                         "I want a retirement plan that lets me travel overseas once a year.",
@@ -868,7 +1221,8 @@ const Copilot = ({
                         <button
                             key={idx}
                             onClick={() => handleSend(opt)}
-                            className="px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-full text-[11px] text-indigo-700 font-bold hover:bg-indigo-100 transition-all active:scale-95 shadow-sm text-left"
+                            disabled={showPermissionCard}
+                            className="px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-full text-[11px] text-indigo-700 font-bold hover:bg-indigo-100 transition-all active:scale-95 shadow-sm text-left disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {opt}
                         </button>
@@ -877,54 +1231,89 @@ const Copilot = ({
             )}
             {/* Input Area */}
             <div className="relative shrink-0">
-                {/* Mode Switch */}
-                <div className="flex items-center justify-end gap-2 mb-2">
-                    <span className="text-[10px] lg:text-[11px] text-slate-400">
-                        {mode === 'auto' && 'Auto-fill goals'}
-                        {mode === 'ask' && 'Q&A only'}
-                        {mode === 'agent' && 'Smart route'}
-                    </span>
-                    <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-full">
-                        {['auto', 'ask', 'agent'].map((opt) => (
-                            <button
-                                key={opt}
-                                onClick={() => setMode(opt)}
-                                className={`px-2 py-0.5 rounded-full text-[9px] lg:text-[10px] font-bold transition-all ${
-                                    mode === opt ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'
-                                }`}
-                                title={`Mode: ${opt}`}
-                                type="button"
-                            >
-                                {opt.toUpperCase()}
-                            </button>
-                        ))}
+                {/* Mode Switch + Privacy Control (Compact) */}
+                <div className="flex items-center justify-between gap-3 mb-2">
+                    {/* Left: Mode Switch */}
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] lg:text-[11px] text-slate-400">
+                            {mode === 'auto' && 'Auto-fill'}
+                            {mode === 'ask' && 'Q&A'}
+                            {mode === 'agent' && 'Smart'}
+                        </span>
+                        <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-full">
+                            {['auto', 'ask', 'agent'].map((opt) => (
+                                <button
+                                    key={opt}
+                                    onClick={() => setMode(opt)}
+                                    className={`px-2 py-0.5 rounded-full text-[9px] lg:text-[10px] font-bold transition-all ${
+                                        mode === opt ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'
+                                    }`}
+                                    title={`Mode: ${opt}`}
+                                    type="button"
+                                >
+                                    {opt.toUpperCase()}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    
+                    {/* Right: Privacy Control (Compact) */}
+                    <div 
+                        className="flex items-center gap-1.5 group"
+                        title={allowAIDataSharing 
+                            ? 'AI can access your financial data for personalized advice. Click to disable.' 
+                            : 'Privacy mode: AI will provide generic advice only. Click to enable data sharing.'}
+                    >
+                        <span className="text-[10px] text-slate-500 font-medium cursor-help">
+                            Privacy
+                        </span>
+                        {allowAIDataSharing ? (
+                            <ShieldCheck size={14} className="text-green-600" />
+                        ) : (
+                            <ShieldOff size={14} className="text-amber-600" />
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => setAllowAIDataSharing(prev => !prev)}
+                            className={`
+                                w-8 h-4 rounded-full transition-all relative flex items-center px-0.5
+                                ${allowAIDataSharing ? 'bg-green-500' : 'bg-amber-500'}
+                            `}
+                            aria-label={allowAIDataSharing ? 'Disable AI data sharing' : 'Enable AI data sharing'}
+                        >
+                            <div className={`w-3 h-3 bg-white rounded-full shadow-sm transition-all ${allowAIDataSharing ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </button>
                     </div>
                 </div>
-                <textarea 
-                    ref={textareaRef}
-                    value={inputText}
-                    onChange={(e) => {
-                        setInputText(e.target.value);
-                        e.target.style.height = 'auto';
-                        e.target.style.height = `${e.target.scrollHeight}px`;
-                    }}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSend();
-                        }
-                    }}
-                    placeholder="Ask Copilot..." 
-                    rows={1}
-                    className="w-full bg-white border border-slate-200 rounded-xl py-3 pl-4 pr-12 text-sm focus:outline-none focus:border-brand-500 transition-colors resize-none overflow-hidden min-h-[46px] max-h-[150px]"
-                />
-                <button 
-                    onClick={handleSend}
-                    disabled={isLoading || !inputText.trim()}
-                    className="absolute right-2 bottom-2 p-1.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors disabled:opacity-50"
-                >
-                    <Send size={14} />
-                </button>
+                
+                <div className="relative flex items-center">
+                    <textarea 
+                        ref={textareaRef}
+                        value={inputText}
+                        onChange={(e) => {
+                            setInputText(e.target.value);
+                            e.target.style.height = 'auto';
+                            e.target.style.height = `${e.target.scrollHeight}px`;
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSend();
+                            }
+                        }}
+                        placeholder={showPermissionCard ? "Waiting for permission..." : "Ask Copilot..."} 
+                        rows={1}
+                        disabled={showPermissionCard}
+                        className="w-full bg-white border border-slate-200 rounded-xl py-3 pl-4 pr-12 text-sm focus:outline-none focus:border-brand-500 transition-colors resize-none overflow-hidden min-h-[46px] max-h-[150px] disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <button 
+                        onClick={handleSend}
+                        disabled={isLoading || !inputText.trim() || showPermissionCard}
+                        className="absolute right-2 p-1.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors disabled:opacity-50"
+                    >
+                        <Send size={14} />
+                    </button>
+                </div>
             </div>
             <div className="text-[10px] text-slate-400 mt-1">
                 For reference only. Not investment advice. AI responses may be inaccurate—please verify.
@@ -947,9 +1336,20 @@ const GoalEnginePage = () => {
   const [useRag, setUseRag] = useState(true); // Default to RAG enabled
   const [chatMode, setChatMode] = useState('agent');
   
+  // 🔒 Privacy Control State
+  const [userPrivacySettings, setUserPrivacySettings] = useState({ shareWithAI: true }); // Global setting from profile
+  const [allowAIDataSharing, setAllowAIDataSharing] = useState(true); // Chatbox override (temporary)
+  
+  // 🔒 Privacy Permission Card State
+  const [pendingQuery, setPendingQuery] = useState(null); // Store query waiting for permission
+  const [showPermissionCard, setShowPermissionCard] = useState(false);
+  const [requestedDataTypes, setRequestedDataTypes] = useState([]); // 🆕 Store what data this request needs
+  const [selectedAllowlist, setSelectedAllowlist] = useState([]); // 🆕 User's selection
+  
   // Resizable Sidebar State (Pixels instead of percentage for better precision)
   const [leftWidth, setLeftWidth] = useState(window.innerWidth > 1440 ? 450 : 340); 
   const [isResizing, setIsResizing] = useState(false);
+  const [collapsed, setCollapsed] = useState('none'); // 'none' | 'left' | 'right'
   
   const containerRef = useRef(null);
 
@@ -966,6 +1366,25 @@ const GoalEnginePage = () => {
   const activeSubstages = {
       definition: getSubstagesForCategory(goalContext.category)
   };
+
+  // 🔒 Fetch user privacy settings on mount
+  useEffect(() => {
+    const fetchPrivacySettings = async () => {
+      try {
+        const profile = await getUserProfile();
+        const shareWithAI = profile?.privacy?.shareWithAI !== false; // Default to true
+        setUserPrivacySettings({ shareWithAI });
+        setAllowAIDataSharing(shareWithAI); // Initialize chatbox toggle with global setting
+        console.log('[Privacy] Loaded user privacy settings:', { shareWithAI });
+      } catch (error) {
+        console.error('[Privacy] Failed to load privacy settings:', error);
+        // Fail open: default to enabled
+        setUserPrivacySettings({ shareWithAI: true });
+        setAllowAIDataSharing(true);
+      }
+    };
+    fetchPrivacySettings();
+  }, []);
 
   // Rebuild substages if category changes
   useEffect(() => {
@@ -994,7 +1413,7 @@ const GoalEnginePage = () => {
   ];
 
   // Allow Copilot or substages to update context while preserving AI payload
-  const handleContextUpdate = (updates) => {
+  const handleContextUpdate = useCallback((updates) => {
       if (!updates) return;
 
       const normalized = { ...updates };
@@ -1050,11 +1469,22 @@ const GoalEnginePage = () => {
       }
       
       const detailFields = [
-          // Goal discovery fields
-          'retirement_age', 'life_expectancy', 'living_expense_pa', 'include_superannuation',
+          // Goal discovery fields - Retirement
+          'retirement_age', 'life_expectancy', 'living_expense_pa', 'lumpy_expenses', 'include_superannuation',
+          // Goal discovery fields - Home
           'location', 'property_price_estimate', 'deposit_percentage', 'is_first_home',
-          'vehicle_type', 'trade_in_value', 
-          'destination', 'travelers_count', 'duration_days',
+          // Goal discovery fields - Education
+          'study_country', 'institution_tier', 'living_situation', 'tuition_fees_pa', 'living_costs_pa',
+          // Goal discovery fields - Vehicle
+          'tier', 'brand', 'model_id', 'model_name', 'condition', 'fuel_type', 'vehicle_type', 'trade_in_value',
+          // Goal discovery fields - Travel
+          'destination', 'flight_class', 'accommodation_style', 'lifestyle_level', 'adults', 'children', 'duration_days', 'travelers_count',
+          // Goal discovery fields - Emergency
+          'primary_motivation', 'monthly_spend_est', 'target_months_rough',
+          // Goal discovery fields - Wealth
+          'target_passive_income', 'time_horizon_years', 'current_net_worth', 'growth_objective',
+          // Goal discovery fields - Big Purchase (Major Purchase / Event)
+          'purchase_category', 'estimated_amount', 'description',
           // Assumptions fields
           'expected_return_pct', 'inflation_pct', 'risk_attitude', 'cashflow_flexibility',
           'mortgage_rate_pct', 'loan_term_years',
@@ -1073,6 +1503,17 @@ const GoalEnginePage = () => {
               detailsFound = true;
           }
       });
+
+      // Also extract financial fields from ai_decision if present
+      if (normalized.ai_decision) {
+          const financialFields = ['liquid_assets', 'investments', 'debts', 'monthly_income', 'current_super_balance'];
+          financialFields.forEach(field => {
+              if (normalized.ai_decision[field] !== undefined) {
+                  newDetails[field] = normalized.ai_decision[field];
+                  detailsFound = true;
+              }
+          });
+      }
 
       setGoalContext(prev => {
           const nextState = { ...prev };
@@ -1107,7 +1548,7 @@ const GoalEnginePage = () => {
 
           return nextState;
       });
-  };
+  }, []); // setGoalContext is stable, no other dependencies needed
 
   const currentStageId = STAGES[currentStage].id;
   const currentSubstageConfig = activeSubstages[currentStageId];
@@ -1148,6 +1589,137 @@ const GoalEnginePage = () => {
       });
   };
 
+  // 🔑 Execute substage with user-granted permissions
+  const executeSubstageWithPermission = async (nextSubId, allowlist) => {
+      const stageId = 'definition'; // 目前只有definition stage有substage
+      const config = activeSubstages[stageId];
+      const currentState = substageState[stageId];
+      
+      setIsLoadingAI(true);
+      
+      // 🔑 使用函数式更新获取最新的消息索引，避免闭包问题
+      const nextLabel = config.find(s => s.id === nextSubId)?.label || nextSubId;
+      let aiMsgIndex = 0;
+      setMessages(prev => {
+          aiMsgIndex = prev.length; // 获取最新的消息数量作为新消息索引
+          return [...prev, { 
+              role: 'assistant', 
+              text: `Preparing ${nextLabel}...`,
+              isTyping: true,
+              isStreaming: true
+          }];
+      });
+
+      try {
+          let accumulatedRaw = '';
+          
+          const extractField = (field, jsonStr) => {
+              const marker = `"${field}": "`;
+              const startIdx = jsonStr.indexOf(marker);
+              if (startIdx === -1) return '';
+              
+              const contentStart = startIdx + marker.length;
+              let contentEnd = jsonStr.length;
+              
+              let escaped = false;
+              for (let i = contentStart; i < jsonStr.length; i++) {
+                  if (escaped) { escaped = false; continue; }
+                  if (jsonStr[i] === '\\') { escaped = true; continue; }
+                  if (jsonStr[i] === '"') { contentEnd = i; break; }
+              }
+              
+              return jsonStr.slice(contentStart, contentEnd)
+                  .replace(/\\n/g, '\n')
+                  .replace(/\\"/g, '"');
+          };
+
+          const data = await goalEngineService.generateDecisionStream({
+              stage: 'definition',
+              goalContext: {
+                  ...goalContext,
+                  substage: nextSubId
+              },
+              allowAIDataSharing: true, // 🔑 用户已授权
+              dataAllowlist: allowlist, // 🔑 用户选择的数据类型
+              userInput: { text: '' },
+              substageData: substageData.definition || {},
+              previousDecisions: [],
+              useRag
+          }, (chunk) => {
+              accumulatedRaw += chunk;
+              const streamingThought = extractField('thought_process', accumulatedRaw);
+              const streamingRationale = extractField('rationale', accumulatedRaw);
+
+              setMessages(prev => {
+                  const newMessages = [...prev];
+                  if (newMessages[aiMsgIndex]) {
+                      const displayText = streamingRationale || streamingThought || `Analyzing ${nextLabel}...`;
+                      
+                      newMessages[aiMsgIndex] = {
+                          ...newMessages[aiMsgIndex],
+                          text: displayText,
+                          thought_process: streamingThought,
+                          isStreaming: true
+                      };
+                  }
+                  return newMessages;
+              });
+          });
+
+          // 更新substage状态到下一个
+          const nextIdx = config.findIndex(s => s.id === nextSubId);
+          setSubstageState(prev => ({
+              ...prev,
+              [stageId]: {
+                  ...prev[stageId],
+                  currentIndex: nextIdx
+              }
+          }));
+
+          // 标记为已回答
+          setMessages(prev => {
+              const updated = [...prev];
+              if (updated[aiMsgIndex]) {
+                  const aiDecision = data?.ai_decision;
+                  const finalText = aiDecision?.rationale || accumulatedRaw || `${nextLabel} analysis complete.`;
+                  
+                  // Store AI decision in goalContext (especially important for gap_analysis financial data)
+                  if (aiDecision) {
+                      handleContextUpdate({ ai_decision: aiDecision });
+                  }
+                  
+                  updated[aiMsgIndex] = {
+                      ...updated[aiMsgIndex],
+                      text: finalText,
+                      thought_process: aiDecision?.thought_process,
+                      isTyping: false,
+                      isStreaming: false,
+                      ai_decision: aiDecision
+                  };
+              }
+              return updated;
+          });
+          
+          setIsLoadingAI(false);
+      } catch (err) {
+          console.error('[Substage Execution] Error:', err);
+          setMessages(prev => {
+              const updated = [...prev];
+              if (updated[aiMsgIndex]) {
+                  updated[aiMsgIndex] = {
+                      ...updated[aiMsgIndex],
+                      text: `⚠️ Error executing ${nextSubId}. Please try again.`,
+                      isTyping: false,
+                      isStreaming: false
+                  };
+              }
+              return updated;
+          });
+          setIsLoadingAI(false);
+      }
+  };
+
+  // 🆕 执行substage的核心逻辑（提取出来以便在权限授权后调用）
   const handleSubstageSubmit = async (stageId, subId, payload) => {
       // 1. Persist context
       handleContextUpdate(payload);
@@ -1237,7 +1809,44 @@ const GoalEnginePage = () => {
             return;
         }
 
-        setIsLoadingAI(true); // Show loading state
+        // 🆕 权限检查：自动执行substage前也要检查是否需要权限
+        const requiredTypes = getRequiredDataTypes(
+            'definition', 
+            nextSubId, 
+            goalContext?.category
+        );
+        
+        const needsPermission = shouldShowPermissionCard(
+            'definition',
+            nextSubId,
+            goalContext?.category,
+            allowAIDataSharing
+        );
+        
+        console.log('[Privacy Card] Substage auto-execute:', {
+            nextSubId,
+            category: goalContext?.category,
+            currentPrivacy: allowAIDataSharing,
+            requiredTypes,
+            needsPermission
+        });
+        
+        // 🔒 如果需要权限，弹出卡片而不是直接执行
+        if (needsPermission) {
+            // Add user confirmation message
+            const confirmedLabel = config.find(s => s.id === subId)?.label || subId;
+            setMessages(prev => [...prev, { 
+                role: 'user', 
+                text: `✓ ${confirmedLabel} confirmed` 
+            }]);
+            
+            // 设置pending state，等待用户授权
+            setPendingQuery(`auto_substage:${nextSubId}`); // 特殊标记表示这是自动substage
+            setRequestedDataTypes(requiredTypes);
+            setSelectedAllowlist(requiredTypes); // 默认全选
+            setShowPermissionCard(true);
+            return; // 等待用户响应
+        }
         
         // Add user confirmation message
         const confirmedLabel = config.find(s => s.id === subId)?.label || subId;
@@ -1245,123 +1854,12 @@ const GoalEnginePage = () => {
             role: 'user', 
             text: `✓ ${confirmedLabel} confirmed` 
         }]);
-
-        // Add AI "thinking" message
-        const nextLabel = config.find(s => s.id === nextSubId)?.label || nextSubId;
-        const aiMsgIndex = messages.length + 1;
-        setMessages(prev => [...prev, { 
-            role: 'assistant', 
-            text: `Preparing ${nextLabel}...`,
-            isTyping: true,
-            isStreaming: true
-        }]);
-
-        try {
-            let accumulatedRaw = '';
-            
-            const extractField = (field, jsonStr) => {
-                const marker = `"${field}": "`;
-                const startIdx = jsonStr.indexOf(marker);
-                if (startIdx === -1) return '';
-                
-                const contentStart = startIdx + marker.length;
-                let contentEnd = jsonStr.length;
-                
-                let escaped = false;
-                for (let i = contentStart; i < jsonStr.length; i++) {
-                    if (escaped) { escaped = false; continue; }
-                    if (jsonStr[i] === '\\') { escaped = true; continue; }
-                    if (jsonStr[i] === '"') { contentEnd = i; break; }
-                }
-                
-                return jsonStr.slice(contentStart, contentEnd)
-                    .replace(/\\n/g, '\n')
-                    .replace(/\\"/g, '"');
-            };
-
-            const data = await goalEngineService.generateDecisionStream({
-                stage: 'definition',
-                goalContext: {
-                    ...goalContext,
-                    substage: nextSubId
-                },
-                userInput: { text: '' },
-                substageData: updatedSubstageData.definition || {},
-                previousDecisions: [],
-                useRag
-            }, (chunk) => {
-                accumulatedRaw += chunk;
-                const streamingThought = extractField('thought_process', accumulatedRaw);
-                const streamingRationale = extractField('rationale', accumulatedRaw);
-
-                setMessages(prev => {
-                    const newMessages = [...prev];
-                    if (newMessages[aiMsgIndex]) {
-                        // Always show something, never empty
-                        const displayText = streamingRationale || streamingThought || `Analyzing ${nextLabel}...`;
-                        
-                        newMessages[aiMsgIndex] = {
-                            ...newMessages[aiMsgIndex],
-                            text: displayText,
-                            thought_process: streamingThought,
-                            isStreaming: true
-                        };
-                    }
-                    return newMessages;
-                });
-            });
-
-            if (data?.ai_decision) {
-                handleContextUpdate(data.ai_decision);
-                
-                const aiText = data.text || data.ai_decision.rationale || `Ready for ${nextLabel}. ${getSubstageGuidance(nextSubId)}`;
-                
-                setMessages(prev => {
-                    const newMessages = [...prev];
-                    if (newMessages[aiMsgIndex]) {
-                        newMessages[aiMsgIndex] = {
-                            ...newMessages[aiMsgIndex],
-                            text: aiText,
-                            isTyping: false,
-                            isStreaming: false,
-                            thought_process: data.ai_decision.thought_process,
-                            references: data.ai_decision.references,
-                            rag_summary: data.ai_decision.rag_summary
-                        };
-                    }
-                    return newMessages;
-                });
-            }
-
-            // NOW advance to next substage
-            const nextIdx = config.findIndex(s => s.id === nextSubId);
-            setSubstageState(prev => ({
-                ...prev,
-                [stageId]: {
-                    ...prev[stageId],
-                    currentIndex: nextIdx
-                }
-            }));
-            
-        } catch (err) {
-            console.error('Auto-advance AI call failed:', err?.message || err);
-            setMessages(prev => [...prev, { 
-                role: 'system', 
-                text: `Could not prepare ${nextLabel}. You can still fill it out manually.` 
-            }]);
-            
-            // Still advance even if AI fails
-            const nextIdx = config.findIndex(s => s.id === nextSubId);
-            setSubstageState(prev => ({
-                ...prev,
-                [stageId]: {
-                    ...prev[stageId],
-                    currentIndex: nextIdx
-                }
-            }));
-        } finally {
-            setIsLoadingAI(false);
-        }
+        
+        // 🔑 Privacy已启用或用户已授权，执行substage
+        // 如果privacy是开启的，使用默认allowlist；否则会在上面的权限检查中被拦截
+        const allowlist = allowAIDataSharing ? ['all'] : selectedAllowlist;
+        await executeSubstageWithPermission(nextSubId, allowlist);
+        return; // 执行完成，退出
     }
   };
 
@@ -1444,6 +1942,7 @@ const GoalEnginePage = () => {
           if (typeof saved?.useRag === 'boolean') setUseRag(saved.useRag);
           if (saved?.chatMode) setChatMode(saved.chatMode);
           if (saved?.leftWidth) setLeftWidth(saved.leftWidth);
+          if (saved?.collapsed) setCollapsed(saved.collapsed);
           if (saved?.substageState) setSubstageState(saved.substageState);
           if (saved?.substageData) setSubstageData(saved.substageData);
           if (saved?.stageSummary) setStageSummary(saved.stageSummary);
@@ -1467,6 +1966,7 @@ const GoalEnginePage = () => {
           useRag,
           chatMode,
           leftWidth,
+          collapsed,
           substageState,
           substageData,
           stageSummary,
@@ -1486,6 +1986,7 @@ const GoalEnginePage = () => {
       useRag,
       chatMode,
       leftWidth,
+      collapsed,
       substageState,
       substageData,
       stageSummary,
@@ -1500,11 +2001,20 @@ const GoalEnginePage = () => {
       setMessages([getGreeting(0)]);
       setUseRag(true);
       setChatMode('agent');
+      setCollapsed('none');
       setSubstageState(buildInitialSubstageState());
       setSubstageData({});
       setStageSummary({});
       setRecalcFlags({});
       setCardExpanded({});
+  };
+
+  // Expand collapsed panel back to 50/50 split
+  const handleExpand = () => {
+      if (!containerRef.current) return;
+      const containerRect = containerRef.current.getBoundingClientRect();
+      setLeftWidth(containerRect.width / 2);
+      setCollapsed('none');
   };
 
   // Fetch real goals for enrichment
@@ -1747,7 +2257,8 @@ const GoalEnginePage = () => {
           const data = await goalEngineService.generateDecisionStream({
               stage: stageId,
               goalContext: contextWithOthers,
-              useRag
+              useRag,
+              allowAIDataSharing // 🔒 Pass chatbox privacy toggle
           }, (chunk) => {
               accumulatedRaw += chunk;
               const streamingThought = extractField('thought_process', accumulatedRaw);
@@ -1868,7 +2379,8 @@ const GoalEnginePage = () => {
           const data = await goalEngineService.generateDecisionStream({
               stage: 'product',
               goalContext: context,
-              useRag
+              useRag,
+              allowAIDataSharing // 🔒 Pass chatbox privacy toggle
           }, (chunk) => {
               // Extract thought_process from chunks for CoT display
               const thought = extractField('thought_process', chunk);
@@ -2243,9 +2755,26 @@ const GoalEnginePage = () => {
       const containerRect = containerRef.current.getBoundingClientRect();
       let newWidth = e.clientX - containerRect.left;
       
-      // Add constraints (e.g., 320px to 800px)
-      if (newWidth < 320) newWidth = 320;
-      if (newWidth > containerRect.width * 0.6) newWidth = containerRect.width * 0.6;
+      const minWidth = 320;
+      const collapseThreshold = 100; // If dragged beyond this, collapse
+      const maxWidth = containerRect.width * 0.6;
+      
+      // Check for collapse left (dragging left edge to the left)
+      if (newWidth < collapseThreshold) {
+        setCollapsed('left');
+        return;
+      }
+      
+      // Check for collapse right (dragging left edge to the right)
+      if (newWidth > containerRect.width - collapseThreshold) {
+        setCollapsed('right');
+        return;
+      }
+      
+      // Normal resize within bounds
+      if (collapsed !== 'none') setCollapsed('none');
+      if (newWidth < minWidth) newWidth = minWidth;
+      if (newWidth > maxWidth) newWidth = maxWidth;
       
       setLeftWidth(newWidth);
     };
@@ -2266,7 +2795,7 @@ const GoalEnginePage = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', stopResizing);
     };
-  }, [isResizing]);
+  }, [isResizing, collapsed]);
 
   // When entering a new collecting substage in Definition, append guidance to chat
   useEffect(() => {
@@ -2344,51 +2873,91 @@ const GoalEnginePage = () => {
             
             {/* LEFT COPILOT */}
             <div 
-                className="
+                className={`
                     order-2 lg:order-1
                     h-[280px] lg:h-full 
-                    bg-white/50 border border-slate-100 rounded-xl lg:rounded-[2rem] p-2 lg:p-4 backdrop-blur-sm 
+                    bg-white/50 border border-slate-100 rounded-xl lg:rounded-[2rem] backdrop-blur-sm 
                     flex flex-col overflow-hidden
-                "
-                style={{ width: window.innerWidth >= 1024 ? `${leftWidth}px` : '100%' }}
+                    transition-all duration-300
+                    ${collapsed === 'left' ? 'lg:w-0 lg:p-0 lg:border-0 lg:opacity-0' : 'p-2 lg:p-4'}
+                `}
+                style={{ width: window.innerWidth >= 1024 && collapsed !== 'left' ? `${leftWidth}px` : (collapsed === 'left' && window.innerWidth >= 1024 ? '0px' : '100%') }}
             >
-                <Copilot 
-                    stage={currentStage} 
-                    currentStageLabel={STAGES[currentStage].id}
-                    goalContext={goalContext}
-                    onUpdateContext={handleContextUpdate}
-                    messages={messages}
-                    setMessages={setMessages}
-                    useRag={useRag}
-                    setUseRag={setUseRag}
-                    mode={chatMode}
-                    setMode={setChatMode}
-                />
+                {collapsed !== 'left' && (
+                    <Copilot 
+                        stage={currentStage} 
+                        currentStageLabel={STAGES[currentStage].id}
+                        goalContext={goalContext}
+                        onUpdateContext={handleContextUpdate}
+                        messages={messages}
+                        setMessages={setMessages}
+                        useRag={useRag}
+                        setUseRag={setUseRag}
+                        mode={chatMode}
+                        setMode={setChatMode}
+                        allowAIDataSharing={allowAIDataSharing}
+                        setAllowAIDataSharing={setAllowAIDataSharing}
+                        pendingQuery={pendingQuery}
+                        setPendingQuery={setPendingQuery}
+                        showPermissionCard={showPermissionCard}
+                        setShowPermissionCard={setShowPermissionCard}
+                        requestedDataTypes={requestedDataTypes}
+                        setRequestedDataTypes={setRequestedDataTypes}
+                        selectedAllowlist={selectedAllowlist}
+                        setSelectedAllowlist={setSelectedAllowlist}
+                        onExecuteSubstageWithPermission={executeSubstageWithPermission}
+                    />
+                )}
             </div>
 
+            {/* LEFT COLLAPSED EXPAND BUTTON */}
+            {collapsed === 'left' && (
+                <button
+                    onClick={handleExpand}
+                    className="
+                        hidden lg:flex
+                        absolute left-4 top-1/2 -translate-y-1/2 z-30
+                        w-10 h-20 bg-white border-2 border-brand-500 rounded-r-xl
+                        items-center justify-center
+                        hover:w-12 hover:bg-brand-50 transition-all
+                        shadow-lg
+                        group
+                    "
+                    title="展开对话框"
+                >
+                    <ChevronRight size={20} className="text-brand-600 group-hover:text-brand-700" />
+                </button>
+            )}
+
             {/* RESIZER HANDLE (Overlay to remove gap) */}
-            <div 
-                onMouseDown={startResizing}
-                className="
-                    hidden lg:flex 
-                    absolute top-0 bottom-0 z-20
-                    w-2 cursor-col-resize items-center justify-center
-                    transition-all hover:bg-brand-500/10
-                "
-                style={{ left: `${leftWidth - 4}px` }}
-            >
-                <div className={`w-1 rounded-full transition-all ${isResizing ? 'bg-brand-500 h-24 w-1.5' : 'bg-slate-200 h-12 group-hover:bg-brand-300'}`}></div>
-            </div>
+            {collapsed === 'none' && (
+                <div 
+                    onMouseDown={startResizing}
+                    className="
+                        hidden lg:flex 
+                        absolute top-0 bottom-0 z-20
+                        w-2 cursor-col-resize items-center justify-center
+                        transition-all hover:bg-brand-500/10
+                    "
+                    style={{ left: `${leftWidth - 4}px` }}
+                >
+                    <div className={`w-1 rounded-full transition-all ${isResizing ? 'bg-brand-500 h-24 w-1.5' : 'bg-slate-200 h-12 group-hover:bg-brand-300'}`}></div>
+                </div>
+            )}
 
             {/* RIGHT CANVAS */}
             <div 
-                className="
+                className={`
                     order-1 lg:order-2
                     flex-1 lg:h-full 
-                    bg-white border border-slate-100 rounded-xl lg:rounded-[2rem] shadow-sm p-3 md:p-4 lg:p-8 
+                    bg-white border border-slate-100 rounded-xl lg:rounded-[2rem] shadow-sm 
                     flex flex-col overflow-hidden min-w-0
-                "
+                    transition-all duration-300
+                    ${collapsed === 'right' ? 'lg:w-0 lg:p-0 lg:border-0 lg:opacity-0' : 'p-3 md:p-4 lg:p-8'}
+                `}
             >
+                {collapsed !== 'right' && (
+                <>
                 <div className="flex-1 overflow-y-auto pb-4 scrollbar-soft">
     {currentStage === 0 && (
         <div className={`max-w-3xl mx-auto py-1 ${currentSubstageId === 'summary' ? '' : 'space-y-4'}`}>
@@ -2591,7 +3160,28 @@ const GoalEnginePage = () => {
                         )}
                     </div>
                 )}
+                </>
+                )}
             </div>
+
+            {/* RIGHT COLLAPSED EXPAND BUTTON */}
+            {collapsed === 'right' && (
+                <button
+                    onClick={handleExpand}
+                    className="
+                        hidden lg:flex
+                        absolute right-4 top-1/2 -translate-y-1/2 z-30
+                        w-10 h-20 bg-white border-2 border-brand-500 rounded-l-xl
+                        items-center justify-center
+                        hover:w-12 hover:bg-brand-50 transition-all
+                        shadow-lg
+                        group
+                    "
+                    title="展开表单"
+                >
+                    <ChevronLeft size={20} className="text-brand-600 group-hover:text-brand-700" />
+                </button>
+            )}
 
         </div>
 

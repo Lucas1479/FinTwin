@@ -419,6 +419,20 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
     throw new BadRequestError('Valid stage is required', 'STAGE_REQUIRED');
   }
 
+  // 🔒 Privacy Check: Fetch user's AI data sharing preference once
+  const userId = req.user._id;
+  const userPrivacy = await User.findById(userId).select('privacy').lean();
+  const aiSharingEnabled = userPrivacy?.privacy?.shareWithAI !== false;
+  
+  // Allow request-level override (for chatbox "one-time allow/deny")
+  const requestOverride = req.body?.allowAIDataSharing;
+  // 🔧 Fixed logic: respect explicit false from frontend
+  const finalAISharing = requestOverride !== undefined ? requestOverride : aiSharingEnabled;
+  
+  if (!finalAISharing) {
+    console.log(`[Privacy] 🔒 User ${userId} has disabled AI data sharing (global: ${aiSharingEnabled}, request: ${requestOverride})`);
+  }
+
   const sanitizedAskHistory = askHistory
       .filter(item => item && (item.role === 'user' || item.role === 'assistant') && typeof item.text === 'string')
       .slice(-12)
@@ -504,6 +518,21 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
   if (stage === GOAL_ENGINE_STAGES.DEFINITION && currentSubstage === 'gap_analysis') {
       const userId = req.user._id;
       
+      // 🔒 Privacy Check: Skip data enrichment if user disabled AI sharing
+      if (!finalAISharing) {
+          enrichedContext.real_financial_snapshot = {
+              has_data: false,
+              data_source: 'user_privacy_disabled',
+              liquid_assets: 0,
+              investments: 0,
+              debts: 0,
+              current_super_balance: 0,
+              monthly_income: 0,
+              net_position: 0,
+              note: 'AI data sharing is disabled. Enable in Settings > Privacy or allow temporarily via chatbox to get personalized advice.'
+          };
+          console.log('[Privacy] 🔒 Gap Analysis: Skipping asset enrichment (privacy protection active)');
+      } else {
       try {
           const [assets, cashFlows] = await Promise.all([
               FinancialAsset.find({ user_id: userId }).lean(),
@@ -621,12 +650,22 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
               has_data: false,
               error: err.message
           };
+          }
       }
   }
 
   // === EMERGENCY GOAL: Assumptions substage - Pre-fill financial profile ===
   if (stage === GOAL_ENGINE_STAGES.DEFINITION && goalContext?.category === 'emergency' && currentSubstage === 'assumptions') {
       const userId = req.user._id;
+      
+      // 🔒 Privacy Check: Emergency fund calculations require expense data
+      if (!finalAISharing) {
+          enrichedContext.user_financial_profile = {
+              data_source: 'user_privacy_disabled',
+              note: 'AI data sharing is disabled. Emergency fund will use conservative defaults (6 months × estimated expenses). Enable in Settings > Privacy for personalized calculation.'
+          };
+          console.log('[Privacy] 🔒 Emergency Profile: Skipping expense analysis (privacy protection active)');
+      } else {
       try {
           console.log('[Emergency Goal] Fetching financial profile for assumptions pre-fill...');
           const [user, cashFlows, assets] = await Promise.all([
@@ -693,6 +732,7 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
 
       } catch (err) {
           console.warn('[Emergency Goal] Failed to inject financial profile:', err);
+          }
       }
   }
 
@@ -700,6 +740,36 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
   if (stage === GOAL_ENGINE_STAGES.STRATEGY) {
       const userId = req.user._id;
 
+      // 🔒 Privacy Check: Strategy needs detailed financial data
+      if (!finalAISharing) {
+          // Minimal data mode: Only use user's manually selected risk attitude
+          enrichedContext.simulation_data = {
+              ...(goalContext?.simulation_data || {}),
+              user_profile: {
+                  age: null,
+                  income_pa: null,
+                  monthly_surplus: null,
+                  risk_profile: {
+                      attitude: goalContext?.goal_details?.risk_attitude || 'balanced',
+                      notes: 'Privacy mode: Using user-selected risk attitude only'
+                  },
+                  data_source: 'user_privacy_disabled'
+              },
+              financials: {
+                  calculation_source: 'privacy_minimal',
+                  note: 'Detailed financial data hidden. Enable AI data sharing in Settings > Privacy for personalized strategy.'
+              },
+              target_exposure: {
+                  growth: goalContext?.goal_details?.risk_attitude === 'growth' ? 75 : 
+                         goalContext?.goal_details?.risk_attitude === 'conservative' ? 45 : 60,
+                  defensive: goalContext?.goal_details?.risk_attitude === 'growth' ? 20 :
+                            goalContext?.goal_details?.risk_attitude === 'conservative' ? 45 : 30,
+                  liquidity: 5
+              }
+          };
+          console.log('[Privacy] 🔒 Strategy Stage: Using minimal data mode (privacy protection active)');
+      } else {
+          // Full data mode: Original logic
       // === 前端主导：优先使用前端传递的 financials ===
       const frontendFinancials = goalContext?.simulation_data?.financials;
       const hasFrontendFinancials = 
@@ -887,6 +957,7 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
               { type: 'Cash', category: 'Savings', rate: 0.045, liquidity: 'immediate', description: 'Emergency buffer' }
           ]
       };
+      }
   }
 
   // --- PRODUCT STAGE: Use Function Calling (NOT loading all products!) ---

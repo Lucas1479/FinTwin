@@ -85,6 +85,13 @@ const PrivacySchema = new mongoose.Schema({
   isPrivateMode: { type: Boolean, default: false },
   shareWithAI: { type: Boolean, default: true },
   shareWithPartners: { type: Boolean, default: false },
+  // 🆕 Fine-grained data access control (allowlist)
+  dataAllowlist: {
+    type: [String],
+    default: ['all'], // Default: allow all data types
+    enum: ['all', 'financial_assets', 'cash_flows', 'goals', 'plans', 'user_profile'],
+    description: 'Specific data types user permits AI to access'
+  },
 }, { _id: false });
 
 const SecuritySchema = new mongoose.Schema({

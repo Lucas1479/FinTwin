@@ -41,6 +41,27 @@ const PRESETS = [
     priority: 'wish',
   },
   {
+    id: 'vehicle',
+    label: 'Vehicle',
+    description: 'Save for your next car or vehicle upgrade.',
+    category: 'vehicle',
+    priority: 'want',
+  },
+  {
+    id: 'wealth',
+    label: 'Wealth Growth',
+    description: 'Build passive income and grow your investment portfolio.',
+    category: 'wealth',
+    priority: 'want',
+  },
+  {
+    id: 'big_purchase',
+    label: 'Major Purchase / Event',
+    description: 'Save for a wedding, luxury item, or significant event.',
+    category: 'big_purchase',
+    priority: 'want',
+  },
+  {
     id: 'custom',
     label: 'Custom Goal',
     description: 'Start from a blank template and define everything yourself.',
@@ -76,6 +97,12 @@ const GoalGalleryPage = () => {
         ? 'Education'
         : selected.id === 'travel'
         ? 'Travel goal'
+        : selected.id === 'vehicle'
+        ? 'Vehicle purchase'
+        : selected.id === 'wealth'
+        ? 'Wealth growth'
+        : selected.id === 'big_purchase'
+        ? 'Major purchase'
         : '',
     category: selected.category,
     priority: selected.priority,

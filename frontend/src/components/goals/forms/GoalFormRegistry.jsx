@@ -5,6 +5,8 @@ import EducationGoalForm from './EducationGoalForm';
 import EmergencyGoalForm from './EmergencyGoalForm';
 import VehicleGoalForm from './VehicleGoalForm';
 import TravelGoalForm from './TravelGoalForm';
+import MajorPurchaseGoalForm from './MajorPurchaseGoalForm';
+import WealthGrowthGoalForm from './WealthGrowthGoalForm';
 import DynamicFormRenderer from './DynamicFormRenderer';
 
 // Registry Mapping
@@ -14,7 +16,10 @@ const FORM_REGISTRY = {
     education: EducationGoalForm,
     emergency: EmergencyGoalForm,
     vehicle: VehicleGoalForm,
-    travel: TravelGoalForm
+    travel: TravelGoalForm,
+    big_purchase: MajorPurchaseGoalForm,  // Major Purchase / Event
+    wealth: WealthGrowthGoalForm          // Wealth Growth
+    // 'custom' will fall back to DynamicFormRenderer for truly custom goals
 };
 
 /**

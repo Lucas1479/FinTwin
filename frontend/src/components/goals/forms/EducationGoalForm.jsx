@@ -67,15 +67,49 @@ const GoalVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
         study_country: initialValues.goal_details?.study_country || 'NZ',
         institution_tier: initialValues.goal_details?.institution_tier || 'public', 
         living_situation: initialValues.goal_details?.living_situation || 'flat', // 'home' | 'flat' | 'halls'
-        // Financials
+        // Financials (auto-calculated from COST_DATABASE)
         tuition_fees_pa: initialValues.goal_details?.tuition_fees_pa || 8000,
         living_costs_pa: initialValues.goal_details?.living_costs_pa || 25000,
         notes: initialValues.goal_details?.notes || ''
     });
 
-    // Smart Auto-Fill: Update costs when Country/Tier changes
-    // BUT only if user hasn't manually overridden them (we use a simple heuristic here for the demo)
+    // Sync with AI/Parent updates
     useEffect(() => {
+        if (initialValues.goal_details || initialValues.goal_name || initialValues.priority) {
+            setFormData(prev => {
+                const newData = {
+                    goal_name: initialValues.goal_name || prev.goal_name,
+                    priority: initialValues.priority || prev.priority,
+                    study_country: initialValues.goal_details?.study_country || prev.study_country,
+                    institution_tier: initialValues.goal_details?.institution_tier || prev.institution_tier,
+                    living_situation: initialValues.goal_details?.living_situation || prev.living_situation,
+                    tuition_fees_pa: initialValues.goal_details?.tuition_fees_pa || prev.tuition_fees_pa,
+                    living_costs_pa: initialValues.goal_details?.living_costs_pa || prev.living_costs_pa,
+                    notes: initialValues.goal_details?.notes || prev.notes
+                };
+                
+                // Avoid unnecessary updates
+                if (JSON.stringify(newData) === JSON.stringify(prev)) return prev;
+                return newData;
+            });
+        }
+    }, [initialValues]);
+
+    // Smart Auto-Fill: Update costs when Country/Tier changes
+    useEffect(() => {
+        // --- FIX: Don't overwrite if we just synced from AI/InitialValues ---
+        // We only want to auto-calculate if the user actually changed the country/tier/living
+        // away from the initial values provided.
+        const isInitialSync = 
+            formData.study_country === (initialValues.goal_details?.study_country || 'NZ') &&
+            formData.institution_tier === (initialValues.goal_details?.institution_tier || 'public') &&
+            formData.living_situation === (initialValues.goal_details?.living_situation || 'flat');
+
+        if (isInitialSync && initialValues.goal_details?.tuition_fees_pa && initialValues.goal_details?.living_costs_pa) {
+            // Respect the AI/initial values
+            return;
+        }
+        
         const countryData = COST_DATABASE[formData.study_country];
         const baseTuition = countryData.tuition[formData.institution_tier] || countryData.tuition.public;
         
@@ -98,11 +132,9 @@ const GoalVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
                 living_situation: (formData.study_country !== 'NZ' && prev.living_situation === 'home') ? 'flat' : prev.living_situation
             };
         });
-    }, [formData.study_country, formData.institution_tier, formData.living_situation]);
-
-    // Propagate to Parent
-    useEffect(() => {
-        const totalAnnual = formData.tuition_fees_pa + formData.living_costs_pa;
+        
+        // Propagate changes to parent immediately (like Retirement form)
+        const totalAnnual = baseTuition + baseLiving;
         onChange?.({
             goal_name: formData.goal_name,
             priority: formData.priority,
@@ -111,14 +143,41 @@ const GoalVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
                 study_country: formData.study_country,
                 institution_tier: formData.institution_tier,
                 living_situation: formData.living_situation,
-                tuition_fees_pa: formData.tuition_fees_pa,
-                living_costs_pa: formData.living_costs_pa,
-                annual_cost_pa: totalAnnual, // Derived total for consistency
+                tuition_fees_pa: baseTuition,
+                living_costs_pa: baseLiving,
+                annual_cost_pa: totalAnnual,
                 notes: formData.notes
             }
         });
-    }, [formData]);
+    }, [formData.study_country, formData.institution_tier, formData.living_situation]);
 
+
+    // Handle manual cost changes (when user drags sliders)
+    const handleCostChange = (field, value) => {
+        const newFormData = { ...formData, [field]: Number(value) };
+        setFormData(newFormData);
+        
+        // Immediately propagate to parent
+        const totalAnnual = field === 'tuition_fees_pa' 
+            ? Number(value) + newFormData.living_costs_pa 
+            : newFormData.tuition_fees_pa + Number(value);
+            
+        onChange?.({
+            goal_name: newFormData.goal_name,
+            priority: newFormData.priority,
+            goal_details: {
+                ...initialValues.goal_details,
+                study_country: newFormData.study_country,
+                institution_tier: newFormData.institution_tier,
+                living_situation: newFormData.living_situation,
+                tuition_fees_pa: field === 'tuition_fees_pa' ? Number(value) : newFormData.tuition_fees_pa,
+                living_costs_pa: field === 'living_costs_pa' ? Number(value) : newFormData.living_costs_pa,
+                annual_cost_pa: totalAnnual,
+                notes: newFormData.notes
+            }
+        });
+    };
+    
     const totalAnnualCost = formData.tuition_fees_pa + formData.living_costs_pa;
 
     return (
@@ -249,7 +308,7 @@ const GoalVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
                                 <input 
                                     type="range" min={0} max={100000} step={1000}
                                     value={formData.tuition_fees_pa}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, tuition_fees_pa: Number(e.target.value) }))}
+                                    onChange={(e) => handleCostChange('tuition_fees_pa', e.target.value)}
                                     className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                                 />
                             </div>
@@ -262,7 +321,7 @@ const GoalVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
                                 <input 
                                     type="range" min={0} max={60000} step={1000}
                                     value={formData.living_costs_pa}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, living_costs_pa: Number(e.target.value) }))}
+                                    onChange={(e) => handleCostChange('living_costs_pa', e.target.value)}
                                     className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-emerald-500"
                                 />
                             </div>
