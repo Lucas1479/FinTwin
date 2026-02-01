@@ -312,7 +312,7 @@ const SimulationWorkspace = ({ simulationId, simulation, onBack, onSave, backgro
 
   const { summaryData: mcData, expectedReturn, volatility, successProbability } = useMemo(() => {
     if (!activeBackground) return { summaryData: [], expectedReturn: 0, volatility: 0, successProbability: 0 };
-    const initialCapital = (activeBackground.financials.cash || 0) + (activeBackground.financials.investments || 0);
+    const initialCapital = (activeBackground.financials?.cash || 0) + (activeBackground.financials?.investments || 0);
     return runMonteCarlo({ initialCapital, monthlyContribution, lumpSum }, exposure, horizonYears, targetAmount, isInflationAdjusted);
   }, [activeBackground, exposure, monthlyContribution, lumpSum, horizonYears, targetAmount, isInflationAdjusted]);
 

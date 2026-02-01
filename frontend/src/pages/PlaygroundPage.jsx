@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import MainLayout from '../components/layout/MainLayout';
-import { Calculator, PlayCircle, Settings2, RotateCw } from 'lucide-react';
+import { Calculator, PlayCircle, RotateCw } from 'lucide-react';
 import InfoTooltip from '../components/common/InfoTooltip'; // Import Tooltip
 import { HELP_ANCHORS } from '../constants/helpAnchors'; // Import Registry
 import PlaygroundLobby from './Playground/PlaygroundLobby';
@@ -360,20 +360,6 @@ const PlaygroundPage = () => {
                   icon={<Calculator className="text-purple-600" />}
                   color="purple"
                   onClick={() => setActiveTool('mortgage')}
-                />
-                <ToolCard 
-                  title="Latte Factor"
-                  description="See how small daily savings grow over decades with compound interest."
-                  icon={<PlayCircle className="text-emerald-600" />}
-                  color="emerald"
-                  onClick={() => setActiveTool('latte')}
-                />
-                <ToolCard 
-                  title="Retirement Planner"
-                  description="Estimate how much you need to save for your golden years."
-                  icon={<Settings2 className="text-amber-600" />}
-                  color="amber"
-                  onClick={() => alert('Retirement tool coming soon!')}
                 />
                 {/* Placeholder cards for future tools */}
                 <div className="border-2 border-dashed border-slate-200 rounded-[2.5rem] p-8 flex flex-col items-center justify-center text-center group hover:border-indigo-300 transition-colors cursor-pointer bg-slate-50/30">
