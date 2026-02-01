@@ -11,6 +11,7 @@ import { Loader2 } from 'lucide-react';
 
 const WealthPortfolio = () => {
   const { data, loading, onAddAsset, onEditAsset, onOpenConversion } = useContext(WealthContext);
+  const goals = data?.goals || [];
 
   if (loading) {
     return (
@@ -31,7 +32,7 @@ const WealthPortfolio = () => {
     return acc;
   }, { Cash: 0, Investments: 0, Property: 0, Other: 0 });
 
-  const totalAssets = data.summary.totalAssets || 1;
+  const totalAssets = data.summary.totalAssets || 0;
   const totalLiabilities = data.summary.totalLiabilities || 0;
   const netWorth = data.summary.netWorth || (totalAssets - totalLiabilities);
   const debtRatio = totalAssets > 0 ? (totalLiabilities / totalAssets) * 100 : 0;
@@ -193,6 +194,7 @@ const WealthPortfolio = () => {
         liabilities={data.liabilities} 
         onEdit={onEditAsset}
         onOpenConversion={onOpenConversion}
+        goals={goals}
       />
     </div>
   );

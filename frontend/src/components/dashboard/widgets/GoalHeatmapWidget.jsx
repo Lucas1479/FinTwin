@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { Plus, Sparkles } from 'lucide-react';
 import InfoTooltip from '../../common/InfoTooltip'; // Import Tooltip
 import { HELP_ANCHORS } from '../../../constants/helpAnchors'; // Import Registry
 
@@ -21,73 +22,103 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
       day: 'numeric'
     });
   };
-  // --- Treemap Layout Engine (Squarified Treemap Logic) ---
-  // Calculates coordinates (x, y, w, h) based on totalValue weight
-  const calculateLayout = (data, width, height) => {
+  // --- Treemap Layout Engine (Standard Squarified Treemap) ---
+  // Improved algorithm to maintain aspect ratio closer to 1 (squares)
+  const calculateLayout = (data, containerW, containerH) => {
     if (!data || data.length === 0) return [];
     
+    // Normalize values to avoid zero-division and handle sort
+    const totalValue = data.reduce((sum, item) => sum + (item.totalValue || 0), 0);
+    if (totalValue <= 0) return [];
+
+    // Map items to have 'area' property relative to container size
+    const totalArea = containerW * containerH;
+    const items = data.map(d => ({
+      ...d,
+      value: d.totalValue, // Store original value for reference
+      area: (d.totalValue / totalValue) * totalArea
+    })).sort((a, b) => b.area - a.area); // Descending sort is critical for Squarified algorithm
+
     const result = [];
-    const split = (items, x, y, w, h) => {
-      if (items.length === 0) return;
-      if (items.length === 1) {
-        result.push({ ...items[0], x, y, w, h });
-        return;
-      }
+    let x = 0, y = 0, w = containerW, h = containerH;
 
-      const total = items.reduce((sum, d) => sum + d.totalValue, 0);
-      let cumulative = 0;
-      let mid = 0;
-      for (let i = 0; i < items.length; i++) {
-        cumulative += items[i].totalValue;
-        if (cumulative >= total / 2 || i === items.length - 2) {
-          mid = i + 1;
-          break;
+    const getAspectRatio = (w, h) => Math.max(w / h, h / w);
+
+    // Calculate worst aspect ratio for a row of items within a given side length
+    const worst = (row, s) => {
+      if (row.length === 0) return Infinity;
+      const rowArea = row.reduce((sum, d) => sum + d.area, 0);
+      const rowSide = rowArea / s; // Thickness of the row
+      let maxAR = 0;
+      for (const item of row) {
+        const itemLength = item.area / rowSide;
+        const ar = getAspectRatio(rowSide, itemLength);
+        if (ar > maxAR) maxAR = ar;
+      }
+      return maxAR;
+    };
+
+    const layoutRow = (row) => {
+      const rowArea = row.reduce((sum, d) => sum + d.area, 0);
+      
+      // Determine orientation based on shortest side of remaining space
+      if (w < h) {
+        // Shortest side is Width -> Create Horizontal Row (stacking vertically)
+        const rowHeight = rowArea / w;
+        let currentX = x;
+        for (const item of row) {
+          const itemWidth = item.area / rowHeight;
+          result.push({ ...item, x: currentX, y: y, w: itemWidth, h: rowHeight });
+          currentX += itemWidth;
         }
-      }
-
-      const firstGroup = items.slice(0, mid);
-      const secondGroup = items.slice(mid);
-      const firstValue = firstGroup.reduce((sum, d) => sum + d.totalValue, 0);
-
-      const worstAspect = (group, width, height) => {
-        if (group.length === 0) return Infinity;
-        const groupTotal = group.reduce((sum, d) => sum + d.totalValue, 0);
-        if (groupTotal <= 0) return Infinity;
-        return group.reduce((worst, item) => {
-          const area = (item.totalValue / groupTotal) * (width * height);
-          if (area <= 0) return worst;
-          const rectW = Math.max(1e-6, area / height);
-          const rectH = Math.max(1e-6, area / width);
-          const ratio = rectW > rectH ? rectW / rectH : rectH / rectW;
-          return Math.max(worst, ratio);
-        }, 1);
-      };
-
-      const splitW = (firstValue / total) * w;
-      const splitH = (firstValue / total) * h;
-
-      const horizontalWorst = Math.max(
-        worstAspect(firstGroup, splitW, h),
-        worstAspect(secondGroup, w - splitW, h)
-      );
-      const verticalWorst = Math.max(
-        worstAspect(firstGroup, w, splitH),
-        worstAspect(secondGroup, w, h - splitH)
-      );
-
-      if (horizontalWorst <= verticalWorst) {
-        split(firstGroup, x, y, splitW, h);
-        split(secondGroup, x + splitW, y, w - splitW, h);
+        y += rowHeight;
+        h -= rowHeight;
       } else {
-        split(firstGroup, x, y, w, splitH);
-        split(secondGroup, x, y + splitH, w, h - splitH);
+        // Shortest side is Height -> Create Vertical Column (stacking horizontally)
+        const rowWidth = rowArea / h;
+        let currentY = y;
+        for (const item of row) {
+          const itemHeight = item.area / rowWidth;
+          result.push({ ...item, x: x, y: currentY, w: rowWidth, h: itemHeight });
+          currentY += itemHeight;
+        }
+        x += rowWidth;
+        w -= rowWidth;
       }
     };
 
-    const sortedData = [...data].sort((a, b) => b.totalValue - a.totalValue);
-    split(sortedData, 0, 0, width, height);
+    let currentRow = [];
+    for (const item of items) {
+      if (currentRow.length === 0) {
+        currentRow.push(item);
+        continue;
+      }
+
+      // We layout along the shortest side of the remaining rectangle
+      const side = Math.min(w, h);
+      const currentWorst = worst(currentRow, side);
+      const newWorst = worst([...currentRow, item], side);
+
+      if (newWorst <= currentWorst) {
+        currentRow.push(item);
+      } else {
+        layoutRow(currentRow);
+        currentRow = [item];
+      }
+    }
+    
+    if (currentRow.length > 0) {
+      layoutRow(currentRow);
+    }
+
     return result;
   };
+
+  // Define the visual aspect ratio of the widget (Width / Height)
+  // Assuming the widget is roughly 2.2x wider than it is tall (e.g. 1320px x 600px)
+  const CONTAINER_ASPECT = 2.2;
+  const LOGICAL_WIDTH = 100 * CONTAINER_ASPECT;
+  const LOGICAL_HEIGHT = 100;
 
   // Coordinated brand palette for goal sectors
   const GOAL_THEMES = [
@@ -101,7 +132,7 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
 
   // Enhanced mapping logic with robust internal mock fallback
   const treemapData = useMemo(() => {
-    // 1. Define high-quality mock data for 8 goals
+    // 1. Define high-quality mock data for 6 goals
     const mockGoals = [
       { _id: 'm1', title: 'Buy First Home', category: 'Housing', target_amount: 150000 },
       { _id: 'm2', title: 'Retirement fund', category: 'Retirement', target_amount: 500000 },
@@ -109,8 +140,6 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
       { _id: 'm4', title: 'New Vehicle', category: 'Vehicle', target_amount: 45000 },
       { _id: 'm5', title: 'Europe Trip 2027', category: 'Lifestyle', target_amount: 25000 },
       { _id: 'm6', title: 'Kid\'s Education', category: 'Education', target_amount: 120000 },
-      { _id: 'm7', title: 'Wedding Fund', category: 'Lifestyle', target_amount: 40000 },
-      { _id: 'm8', title: 'Investment Property', category: 'Housing', target_amount: 250000 },
     ];
 
     const mockAssets = [
@@ -120,8 +149,9 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
       { name: 'Fixed Deposit', category: 'Term Deposit', value: 20000 },
     ];
 
+    const hasRealGoals = goals && goals.length > 0;
     const hasRealAssets = assets && assets.length > 0;
-    const sourceGoals = goals && goals.length > 0 ? goals : mockGoals;
+    const sourceGoals = hasRealGoals ? goals : mockGoals;
     const sourceAssets = hasRealAssets ? assets : mockAssets;
 
     const assetTypeFromCategory = (category = '') => {
@@ -151,7 +181,7 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
       let assignedAssets = [];
       let displayTotalValue = 0;
 
-      if (viewMode === 'invested' && (linkedAssets.length > 0 || !hasRealAssets)) {
+      if (viewMode === 'invested') {
         if (linkedAssets.length > 0) {
           assignedAssets = linkedAssets.map(asset => {
             const perfValue = Number(asset.performance ?? asset.asset_details?.performance ?? 0) || 0;
@@ -164,8 +194,8 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
               weight_pct: asset.asset_details?.weight_pct
             };
           });
-        } else {
-          // Mock fallback when no real assets exist
+        } else if (!hasRealGoals) {
+          // Mock fallback
           assignedAssets = sourceAssets.slice(idx % sourceAssets.length, (idx % sourceAssets.length) + 2).map(asset => ({
             name: asset.name,
             value: asset.value * (0.4 + (idx * 0.1)),
@@ -174,15 +204,15 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
             performance: (Math.random() * 12 - 3).toFixed(1)
           }));
         }
-
         displayTotalValue = assignedAssets.reduce((sum, a) => sum + a.value, 0);
       } else {
+        // Target Value View Mode logic
         if (portfolio?.products?.length > 0) {
           assignedAssets = portfolio.products.map(item => {
             const product = item.product_id || item;
             if (!product) return null;
 
-            const estimatedValue = (goal.target_amount || 100000) * (item.weight_pct / 100);
+            const estimatedValue = (goal.target_amount || 0) * (item.weight_pct / 100);
             
             let assetType = 'growth';
             if (product.allocation) {
@@ -198,25 +228,24 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
               value: estimatedValue,
               category: product.category || 'Fund',
               type: assetType,
-              performance: (product.metrics?.returns?.y1 != null) 
-                ? product.metrics.returns.y1.toFixed(1)
-                : ((product.returns?.['1y'] != null) 
-                    ? product.returns['1y'].toFixed(1) 
-                    : (Math.random() * 8 + 2).toFixed(1)),
+              performance: (product.metrics?.returns?.y5 != null) 
+                ? product.metrics.returns.y5.toFixed(1)
+                : ((product.returns?.['5y'] != null) 
+                    ? product.returns['5y'].toFixed(1) 
+                    : "0.0"),
               weight_pct: item.weight_pct
             };
           }).filter(Boolean);
-        } else {
+        } else if (!hasRealGoals) {
           assignedAssets = sourceAssets.slice(idx % sourceAssets.length, (idx % sourceAssets.length) + 2).map(asset => ({
             name: asset.name,
-            value: asset.value * (0.4 + (idx * 0.1)),
+            value: (goal.target_amount || 0) * (0.4 + (idx * 0.1)),
             category: asset.category,
             type: assetTypeFromCategory(asset.category),
             performance: (Math.random() * 12 - 3).toFixed(1)
           }));
         }
-
-        displayTotalValue = goal.target_amount || assignedAssets.reduce((sum, a) => sum + a.value, 0);
+        displayTotalValue = goal.target_amount || 0;
       }
 
       const layoutValue = displayTotalValue > 0 ? displayTotalValue : 1;
@@ -235,18 +264,25 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
       };
     });
 
-    // Calculate proportionality based on totalValue (100x100 space)
-    return calculateLayout(data, 100, 100);
+    return calculateLayout(data, LOGICAL_WIDTH, LOGICAL_HEIGHT);
   }, [assets, goals, viewMode]);
 
+  const hasRealGoals = goals && goals.length > 0;
+
   return (
-    <div className="bg-white rounded-[2.5rem] p-8 shadow-2xl shadow-slate-200/50 text-slate-900 overflow-hidden border border-slate-100">
+    <div className="bg-white rounded-[2.5rem] p-8 shadow-2xl shadow-slate-200/50 text-slate-900 overflow-hidden border border-slate-100 relative group/heatmap">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-xl font-black tracking-tight">Strategy Heatmap</h2>
+            <h2 className="text-xl font-black tracking-tight">Goal Heatmap</h2>
+            {!hasRealGoals && (
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-50 border border-amber-100 rounded-lg animate-pulse">
+                <Sparkles size={10} className="text-amber-500" />
+                <span className="text-[9px] font-black text-amber-600 uppercase tracking-wider">Preview Mode</span>
+              </div>
+            )}
             <InfoTooltip 
-                content="Visualizes your wealth distribution by Goal. Larger blocks mean higher current value."
+                content="Visualizes your wealth distribution by Goal. Larger blocks mean higher current value. Performance shows 5-year average returns."
                 anchor={HELP_ANCHORS.DASHBOARD.HEATMAP} 
             />
           </div>
@@ -254,24 +290,26 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
             Proportional Asset-to-Goal Allocation
           </p>
         </div>
-        <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100">
-           <button
-             className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase shadow-sm transition-colors ${viewMode === 'target' ? 'bg-brand-500 text-white' : 'text-slate-400 hover:text-slate-600'}`}
-             onClick={() => setViewMode('target')}
-           >
-             Target Value
-           </button>
-           <button
-             className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase shadow-sm transition-colors ${viewMode === 'invested' ? 'bg-brand-500 text-white' : 'text-slate-400 hover:text-slate-600'}`}
-             onClick={() => setViewMode('invested')}
-           >
-             Invested Value
-           </button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100">
+             <button
+               className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase shadow-sm transition-colors ${viewMode === 'target' ? 'bg-brand-500 text-white' : 'text-slate-400 hover:text-slate-600'}`}
+               onClick={() => setViewMode('target')}
+             >
+               Target Value
+             </button>
+             <button
+               className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase shadow-sm transition-colors ${viewMode === 'invested' ? 'bg-brand-500 text-white' : 'text-slate-400 hover:text-slate-600'}`}
+               onClick={() => setViewMode('invested')}
+             >
+               Invested Value
+             </button>
+          </div>
         </div>
       </div>
 
       {/* TreeMap Container - Absolutely Positioned to fill entire area strictly */}
-      <div className="relative bg-slate-100 p-[1px] rounded-3xl overflow-hidden border border-slate-200 h-[600px] w-full shadow-inner">
+      <div className={`relative bg-slate-100 p-[1px] rounded-3xl overflow-hidden border border-slate-200 h-[600px] w-full shadow-inner transition-all duration-700 ${!hasRealGoals ? 'opacity-70 grayscale-[0.2]' : ''}`}>
         {treemapData.map((goal, gIdx) => {
           const theme = GOAL_THEMES[gIdx % GOAL_THEMES.length];
           const assetLayout = calculateLayout(
@@ -280,25 +318,28 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
               totalValue: item.value,
               _idx: index
             })),
-            100,
-            100
+            goal.w,
+            goal.h
           );
           
-          // Calculate header font sizes based on goal block area
-          const area = goal.w * goal.h;
+          // Calculate header font sizes based on goal block area (normalized to 100x100 scale for consistency)
+          // We convert logical area back to a percentage-based area score
+          const areaScore = (goal.w / CONTAINER_ASPECT) * goal.h;
+          
           let categorySize = "text-[7px]";
           let titleSize = "text-[9px]";
           let valueSize = "text-[8px]";
           
-          if (area > 2500) {
+          // Use normalized areaScore for consistent text sizing regardless of aspect ratio
+          if (areaScore > 2500) {
             categorySize = "text-[10px]";
             titleSize = "text-[14px]";
             valueSize = "text-[12px]";
-          } else if (area > 1200) {
+          } else if (areaScore > 1200) {
             categorySize = "text-[9px]";
             titleSize = "text-[12px]";
             valueSize = "text-[10px]";
-          } else if (area > 600) {
+          } else if (areaScore > 600) {
             categorySize = "text-[8px]";
             titleSize = "text-[10px]";
             valueSize = "text-[9px]";
@@ -309,9 +350,10 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
               key={goal.id} 
               className="absolute bg-white flex flex-col group overflow-hidden transition-all duration-500 hover:z-20 hover:shadow-2xl border border-slate-200/60 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.07)]"
               style={{
-                left: `${goal.x}%`,
+                // Critical Fix: Convert logical coordinates back to CSS percentages
+                left: `${goal.x / CONTAINER_ASPECT}%`,
                 top: `${goal.y}%`,
-                width: `${goal.w}%`,
+                width: `${goal.w / CONTAINER_ASPECT}%`,
                 height: `${goal.h}%`,
               }}
             >
@@ -325,12 +367,12 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
                     {goal.title}
                   </span>
                 </div>
-                {goal.w > 12 && (
+                {goal.w > (12 * CONTAINER_ASPECT) && (
                   <span className={`font-black text-slate-400 ${valueSize}`}>
                     ${(goal.displayValue / 1000).toFixed(0)}k
                   </span>
                 )}
-                {area > 600 && (
+                {areaScore > 600 && (
                   <div className="absolute left-2 right-2 top-full mt-2 opacity-0 group-hover/goal:opacity-100 transition-opacity pointer-events-none">
                     <div className="rounded-xl border border-slate-200 bg-white/95 shadow-lg p-2 text-[10px] text-slate-600">
                       <div className="flex justify-between gap-2">
@@ -377,17 +419,19 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
                   const labelColor = opacity > 0.5 ? 'text-white/70' : 'text-slate-500';
                   
                   // Calculate dynamic font sizes based on goal block area
-                  const area = goal.w * goal.h;
+                  // Use areaScore for consistent sizing
+                  const areaScore = (goal.w / CONTAINER_ASPECT) * goal.h; 
+                  
                   let labelSize = "text-[7px]";
                   let perfSize = "text-[8px]";
                   
-                  if (area > 2500) {
+                  if (areaScore > 2500) {
                     labelSize = "text-[10px]";
                     perfSize = "text-[14px]";
-                  } else if (area > 1200) {
+                  } else if (areaScore > 1200) {
                     labelSize = "text-[9px]";
                     perfSize = "text-[12px]";
-                  } else if (area > 600) {
+                  } else if (areaScore > 600) {
                     labelSize = "text-[8px]";
                     perfSize = "text-[10px]";
                   }
@@ -396,15 +440,17 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
                     <div 
                       key={item._idx ?? iIdx}
                       style={{ 
-                        left: `${item.x}%`,
-                        top: `${item.y}%`,
-                        width: `${item.w}%`,
-                        height: `${item.h}%`,
+                        // Critical Fix: Inner items are relative to the Goal parent
+                        // So we divide by the Goal's logical dimensions to get the percentage WITHIN the goal
+                        left: `${(item.x / goal.w) * 100}%`,
+                        top: `${(item.y / goal.h) * 100}%`,
+                        width: `${(item.w / goal.w) * 100}%`,
+                        height: `${(item.h / goal.h) * 100}%`,
                         backgroundColor: bgColor
                       }}
-                      className="absolute flex flex-col justify-center items-center text-center transition-all duration-300 hover:brightness-110 cursor-pointer p-1 group/asset"
+                      className="absolute flex flex-col justify-center items-center text-center transition-all duration-300 hover:brightness-110 cursor-pointer p-1 group/asset border border-white/20"
                     >
-                      {goal.w > 12 && (
+                      {goal.w > (12 * CONTAINER_ASPECT) && (
                         <span className={`font-black ${labelColor} uppercase truncate w-full px-1.5 ${labelSize} group-hover/asset:opacity-0 transition-opacity`} title={item.name}>
                           {item.name}
                         </span>
@@ -454,7 +500,7 @@ const GoalHeatmapWidget = ({ assets = [], goals = [] }) => {
             </div>
          </div>
          <div className="flex items-center gap-3 text-slate-400 text-[10px] font-bold italic opacity-60">
-            * Color indicates asset type; Opacity indicates performance intensity.
+            * Color indicates asset type; Opacity indicates 5-year return intensity.
          </div>
       </div>
     </div>

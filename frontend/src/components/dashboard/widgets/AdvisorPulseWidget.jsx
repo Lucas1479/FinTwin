@@ -24,7 +24,7 @@ const AdvisorPulseWidget = ({ insights = [] }) => {
   ];
 
   return (
-    <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-xl shadow-slate-200/40">
+    <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-2xl shadow-slate-200/50 flex flex-col h-full">
       <div className="flex items-center gap-3 mb-8">
         <div>
           <h2 className="text-lg font-black text-slate-900 tracking-tight leading-none">Advisor Pulse</h2>
@@ -32,44 +32,50 @@ const AdvisorPulseWidget = ({ insights = [] }) => {
         </div>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3 flex-1">
         {displayInsights.map((insight, i) => {
           const isWarning = insight.type === 'warning';
           const isSuccess = insight.type === 'success';
+          
           return (
             <div 
               key={i} 
-              className={`p-5 rounded-[1.8rem] border transition-all hover:scale-[1.02] cursor-pointer group
-                ${isWarning ? 'bg-amber-50/50 border-amber-100 hover:border-amber-200' : 
-                  isSuccess ? 'bg-emerald-50/50 border-emerald-100 hover:border-emerald-200' : 
-                  'bg-slate-50/50 border-slate-100 hover:border-brand-100'}
-              `}
+              className="group relative p-5 rounded-[2rem] bg-slate-50/50 border border-slate-100/80 transition-all duration-300 hover:bg-white hover:shadow-xl hover:shadow-slate-200/60 hover:-translate-y-0.5 cursor-pointer"
             >
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  {isWarning ? <AlertTriangle size={14} className="text-amber-600" /> : 
-                   isSuccess ? <CheckCircle2 size={14} className="text-emerald-600" /> : 
-                   <Zap size={14} className="text-purple-600" />}
-                  <span className={`text-[10px] font-black uppercase tracking-wider
-                    ${isWarning ? 'text-amber-600' : isSuccess ? 'text-emerald-600' : 'text-purple-600'}
-                  `}>
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className={`p-1.5 rounded-lg ${
+                    isWarning ? 'bg-amber-100/50 text-amber-600' : 
+                    isSuccess ? 'bg-emerald-100/50 text-emerald-600' : 
+                    'bg-indigo-100/50 text-indigo-600'
+                  }`}>
+                    {isWarning ? <AlertTriangle size={12} strokeWidth={3} /> : 
+                     isSuccess ? <CheckCircle2 size={12} strokeWidth={3} /> : 
+                     <Zap size={12} strokeWidth={3} />}
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 group-hover:text-slate-600 transition-colors">
                     {insight.title}
                   </span>
                 </div>
-                <ArrowUpRight size={14} className="text-slate-300 group-hover:text-brand-500 transition-colors" />
+                <ArrowUpRight size={14} className="text-slate-300 group-hover:text-indigo-600 transition-all duration-300" />
               </div>
-              <p className="text-xs font-bold text-slate-700 leading-relaxed">
+              
+              <p className="text-[11px] font-bold text-slate-600 leading-relaxed group-hover:text-slate-900 transition-colors">
                 {insight.content}
               </p>
-              <button 
-                className={`mt-4 text-[10px] font-black px-4 py-2 rounded-xl transition-all
-                  ${isWarning ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/20' : 
-                    isSuccess ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' : 
-                    'bg-slate-900 text-white shadow-lg shadow-slate-900/20 group-hover:bg-brand-600'}
-                `}
-              >
-                {insight.action}
-              </button>
+
+              <div className="mt-4 flex items-center justify-between">
+                <span className={`text-[9px] font-black uppercase tracking-widest ${
+                  isWarning ? 'text-amber-600' : 
+                  isSuccess ? 'text-emerald-600' : 
+                  'text-indigo-600'
+                }`}>
+                  {insight.type}
+                </span>
+                <span className="text-[10px] font-black text-indigo-600 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-2 group-hover:translate-x-0">
+                  {insight.action} →
+                </span>
+              </div>
             </div>
           );
         })}

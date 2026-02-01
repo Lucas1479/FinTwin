@@ -360,16 +360,25 @@ const StageProduct = ({ goalContext, onSelect, isLoadingAI }) => {
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="text-right">
-                          <span className="text-[10px] text-slate-400">Fees</span>
+                          <span className="text-[10px] text-slate-400">Fees %</span>
                           <div className="text-sm font-medium text-slate-700">{p.fees ?? '—'}%</div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-400">5Y Return</span>
+                          <div className="text-sm font-medium text-emerald-600">
+                            {p.returns?.['5y'] != null ? `${Number(p.returns['5y']).toFixed(1)}%` : p.returns?.['1y'] != null ? `${Number(p.returns['1y']).toFixed(1)}%` : '—'}
+                          </div>
                         </div>
                         <div className="text-right">
                           <span className="text-[10px] text-slate-400">Risk</span>
                           <div className="text-sm font-medium text-slate-700">{p.riskLevel || p.strategy || '—'}</div>
                         </div>
-                        <span className="px-2 py-1 bg-green-100 text-green-700 text-[10px] font-bold rounded-lg flex items-center gap-1">
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-400">Weight %</span>
+                          <div className="px-2 py-1 bg-green-100 text-green-700 text-sm font-bold rounded-lg flex items-center gap-1 justify-center">
                           <Zap size={10} /> {p.weight_pct}%
-                        </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                     {p.rationale && <p className="text-[11px] text-slate-500 mt-1">{p.rationale}</p>}

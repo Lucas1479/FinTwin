@@ -76,3 +76,13 @@ export const exportFinancialData = async () => {
   }
 };
 
+// Reset user data with demo seed data (Assets + Cash Flows)
+export const resetDemoData = async () => {
+  try {
+    const { data } = await api.post('/users/reset-demo-data');
+    return data;
+  } catch (error) {
+    console.error('[userService] resetDemoData failed:', error);
+    throw error;
+  }
+};

@@ -1,7 +1,8 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Menu, X, User, Settings, LogOut, Search, Bell } from 'lucide-react';
+import { Menu, X, User, Settings, LogOut, Search, Bell, RefreshCw, Database } from 'lucide-react';
 import { getCurrentUser, logout as logoutService } from '../../services/authService';
+import { resetDemoData } from '../../services/userService';
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -9,6 +10,8 @@ const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   // Load current user information from auth service (internally handles localStorage + /users/me)
   useEffect(() => {
@@ -43,7 +46,84 @@ const Navbar = () => {
     navigate('/login');
   };
 
+  const handleResetDemoData = async () => {
+    setIsResetting(true);
+    try {
+      await resetDemoData();
+      setShowResetConfirm(false);
+      setIsProfileOpen(false);
+      
+      // Show success message and reload the page to reflect new data
+      alert('✅ Demo data loaded successfully! Page will refresh...');
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (error) {
+      console.error('Failed to reset demo data:', error);
+      alert('❌ Failed to load demo data. Please try again later.');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   return (
+    <>
+      {/* Confirmation Dialog */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6 animate-in zoom-in-95 duration-200">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <Database className="text-amber-600" size={24} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-slate-900 mb-1">
+                  Load Demo Data
+                </h3>
+                <p className="text-sm text-slate-600">
+                  This will clear all your current assets and cash flow data, replacing them with preset demo data. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+            
+            <div className="bg-slate-50 rounded-xl p-4 mb-6">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                Will Include:
+              </p>
+              <ul className="text-sm text-slate-700 space-y-1">
+                <li>• 8 financial assets (bank, property, investments, etc.)</li>
+                <li>• 14 cash flow items (income, expenses, subscriptions)</li>
+                <li>• Complete financial data sample</li>
+              </ul>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                disabled={isResetting}
+                className="flex-1 px-4 py-2.5 rounded-xl border-2 border-slate-200 text-slate-700 font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleResetDemoData}
+                disabled={isResetting}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isResetting ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  'Confirm Load'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     <nav className="bg-white border-b border-slate-100 sticky top-0 z-50">
       <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo - Aligned with Sidebar width mostly, but kept simple */}
@@ -113,6 +193,13 @@ const Navbar = () => {
                     <Settings size={18} /> Settings
                   </Link>
                   <div className="border-t border-slate-50 my-1"></div>
+                  <button 
+                    onClick={() => setShowResetConfirm(true)}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50 text-left transition-colors"
+                  >
+                    <Database size={18} /> Load Demo Data
+                  </button>
+                  <div className="border-t border-slate-50 my-1"></div>
                   <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 text-left transition-colors">
                     <LogOut size={18} /> Sign out
                   </button>
@@ -122,6 +209,7 @@ const Navbar = () => {
         </div>
       </div>
     </nav>
+    </>
   );
 };
 

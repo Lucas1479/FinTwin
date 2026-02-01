@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRightLeft, ChevronDown, Wallet, Building2, TrendingUp, CreditCard, PiggyBank } from 'lucide-react';
+import { ArrowRightLeft, ChevronDown, Wallet, Building2, TrendingUp, CreditCard, PiggyBank, Plus } from 'lucide-react';
 
 const GroupHeader = ({ title, total, count, icon: Icon, colorClass, isOpen, toggle }) => (
   <div 
@@ -28,7 +28,7 @@ const GroupHeader = ({ title, total, count, icon: Icon, colorClass, isOpen, togg
 
 const CASH_CATEGORIES = ['Cash_Bank', 'Cash_Physical', 'Cash_TermDeposit'];
 
-const AssetItem = ({ item, isLiability = false, onEdit, onOpenConversion }) => {
+const AssetItem = ({ item, isLiability = false, onEdit, onOpenConversion, goalName = null }) => {
   const details = item.asset_details || {};
   const subLabel = details.bank_name || details.provider || details.platform || details.lender || item.category.replace(/_/g, ' ');
   const isCash = CASH_CATEGORIES.includes(item.category);
@@ -56,6 +56,11 @@ const AssetItem = ({ item, isLiability = false, onEdit, onOpenConversion }) => {
             {item.is_liquid && (
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100">
                 Liquid
+              </span>
+            )}
+            {goalName && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-200 flex items-center gap-1">
+                🎯 {goalName}
               </span>
             )}
           </div>
@@ -86,13 +91,20 @@ const AssetItem = ({ item, isLiability = false, onEdit, onOpenConversion }) => {
   );
 };
 
-const AssetLiabilityList = ({ assets, liabilities, onEdit, onOpenConversion }) => {
+const AssetLiabilityList = ({ assets, liabilities, onEdit, onOpenConversion, goals = [] }) => {
   const [openSections, setOpenSections] = useState({
     cash: true, invest: true, property: true, liabilities: true
   });
   const toggle = (section) => {
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
+  
+  // Create goal lookup map for quick access
+  const goalMap = goals.reduce((map, goal) => {
+    map[goal._id] = goal.goal_name || goal.title;
+    return map;
+  }, {});
+  
   const grouped = {
     cash: assets.filter(a => ['Cash_Bank', 'Cash_Physical', 'Cash_TermDeposit'].includes(a.category)),
     invest: assets.filter(a => ['Invest_Shares', 'Invest_ManagedFund', 'KiwiSaver'].includes(a.category)),
@@ -113,15 +125,26 @@ const AssetLiabilityList = ({ assets, liabilities, onEdit, onOpenConversion }) =
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden transition-all duration-300">
-        {hasCash && <><GroupHeader title="Cash & Savings" total={totals.cash} count={grouped.cash.length} icon={Wallet} colorClass="bg-emerald-50 text-emerald-600" isOpen={openSections.cash} toggle={() => toggle('cash')} />{openSections.cash && grouped.cash.map(item => <AssetItem key={item._id || item.name} item={item} onEdit={onEdit} onOpenConversion={onOpenConversion} />)}</>}
-        {hasInvest && <><GroupHeader title="Investment Portfolio" total={totals.invest} count={grouped.invest.length} icon={TrendingUp} colorClass="bg-indigo-50 text-indigo-600" isOpen={openSections.invest} toggle={() => toggle('invest')} />{openSections.invest && grouped.invest.map(item => <AssetItem key={item._id || item.name} item={item} onEdit={onEdit} onOpenConversion={onOpenConversion} />)}</>}
-        {hasProperty && <><GroupHeader title="Property & Assets" total={totals.property} count={grouped.property.length} icon={Building2} colorClass="bg-blue-50 text-blue-600" isOpen={openSections.property} toggle={() => toggle('property')} />{openSections.property && grouped.property.map(item => <AssetItem key={item._id || item.name} item={item} onEdit={onEdit} onOpenConversion={onOpenConversion} />)}</>}
-        {hasLiabilities && <><GroupHeader title="Liabilities & Loans" total={totals.liabilities} count={grouped.liabilities.length} icon={CreditCard} colorClass="bg-rose-50 text-rose-600" isOpen={openSections.liabilities} toggle={() => toggle('liabilities')} />{openSections.liabilities && grouped.liabilities.map(item => <AssetItem key={item._id || item.name} item={item} isLiability={true} onEdit={onEdit} />)}</>}
+        {hasCash && <><GroupHeader title="Cash & Savings" total={totals.cash} count={grouped.cash.length} icon={Wallet} colorClass="bg-emerald-50 text-emerald-600" isOpen={openSections.cash} toggle={() => toggle('cash')} />{openSections.cash && grouped.cash.map(item => <AssetItem key={item._id || item.name} item={item} onEdit={onEdit} onOpenConversion={onOpenConversion} goalName={item.asset_details?.linked_goal_id ? goalMap[item.asset_details.linked_goal_id] : null} />)}</>}
+        {hasInvest && <><GroupHeader title="Investment Portfolio" total={totals.invest} count={grouped.invest.length} icon={TrendingUp} colorClass="bg-indigo-50 text-indigo-600" isOpen={openSections.invest} toggle={() => toggle('invest')} />{openSections.invest && grouped.invest.map(item => <AssetItem key={item._id || item.name} item={item} onEdit={onEdit} onOpenConversion={onOpenConversion} goalName={item.asset_details?.linked_goal_id ? goalMap[item.asset_details.linked_goal_id] : null} />)}</>}
+        {hasProperty && <><GroupHeader title="Property & Assets" total={totals.property} count={grouped.property.length} icon={Building2} colorClass="bg-blue-50 text-blue-600" isOpen={openSections.property} toggle={() => toggle('property')} />{openSections.property && grouped.property.map(item => <AssetItem key={item._id || item.name} item={item} onEdit={onEdit} onOpenConversion={onOpenConversion} goalName={item.asset_details?.linked_goal_id ? goalMap[item.asset_details.linked_goal_id] : null} />)}</>}
+        {hasLiabilities && <><GroupHeader title="Liabilities & Loans" total={totals.liabilities} count={grouped.liabilities.length} icon={CreditCard} colorClass="bg-rose-50 text-rose-600" isOpen={openSections.liabilities} toggle={() => toggle('liabilities')} />{openSections.liabilities && grouped.liabilities.map(item => <AssetItem key={item._id || item.name} item={item} isLiability={true} onEdit={onEdit} goalName={item.asset_details?.linked_goal_id ? goalMap[item.asset_details.linked_goal_id] : null} />)}</>}
         {!hasCash && !hasInvest && !hasProperty && !hasLiabilities && (
           <div className="p-12 text-center">
-            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4"><PiggyBank size={24} className="text-slate-300" /></div>
-            <h4 className="text-base font-bold text-slate-700 mb-1">No assets yet</h4>
-            <p className="text-xs text-slate-500">Start building your wealth profile.</p>
+            <div className="w-20 h-20 bg-indigo-50 rounded-[2rem] flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-500">
+              <Plus size={32} className="text-indigo-600" strokeWidth={2.5} />
+            </div>
+            <h4 className="text-xl font-black text-slate-900 mb-2">Build Your Wealth Profile</h4>
+            <p className="text-sm font-bold text-slate-400 max-w-[280px] mx-auto mb-8">
+              Add your first asset or liability to start tracking your net worth and financial growth.
+            </p>
+            <button 
+              onClick={() => onEdit && onEdit(null)}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-indigo-500 transition-all shadow-md shadow-indigo-200 hover:shadow-indigo-300 transform hover:-translate-y-0.5"
+            >
+              <Plus size={16} />
+              <span>Add First Item</span>
+            </button>
           </div>
         )}
       </div>

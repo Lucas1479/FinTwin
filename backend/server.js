@@ -1,17 +1,23 @@
 import express from 'express';
 import dotenv from 'dotenv';
-
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
 import connectDB from './config/db.js';
 import routes from './routes/index.js';
+import { startScheduler } from './jobs/snapshotScheduler.js';
 
 // Load environment variables (always from backend/.env, independent of CWD)
 dotenv.config();
 
 // Connect to Database
 connectDB();
+
+// Start Snapshot Scheduler (automated snapshot generation)
+// Only start if not in test environment
+if (process.env.NODE_ENV !== 'test') {
+  startScheduler();
+}
 
 const app = express();
 

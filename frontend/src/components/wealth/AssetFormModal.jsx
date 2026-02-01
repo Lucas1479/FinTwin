@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { createAsset, updateAsset, deleteAsset } from '../../services/wealthService';
 import { createPassiveIncome } from '../../services/cashFlowService';
+import productService from '../../services/productService';
 
 // Category Definitions
 const CATEGORIES = {
@@ -89,13 +90,37 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null, onOpen
         setRecordType(assetToEdit.record_type);
         setSelectedCategory(assetToEdit.category);
         setStep(2);
-        setFormData({
+        
+        const baseFormData = {
           name: assetToEdit.name,
           value: assetToEdit.value,
           currency: assetToEdit.currency || 'NZD',
           is_liquid: assetToEdit.is_liquid ?? false,
           details: assetToEdit.asset_details || {}
-        });
+        };
+        
+        setFormData(baseFormData);
+        
+        // If asset has source_product_id, fetch product details
+        if (assetToEdit.source_product_id) {
+          productService.getProductById(assetToEdit.source_product_id)
+            .then(product => {
+              if (product) {
+                setFormData(prev => ({
+                  ...prev,
+                  details: {
+                    ...prev.details,
+                    provider: product.provider || prev.details.provider,
+                    fund_name: product.name || prev.details.fund_name,
+                    risk_level: product.strategy || prev.details.risk_level
+                  }
+                }));
+              }
+            })
+            .catch(err => {
+              console.warn('Failed to fetch product details:', err);
+            });
+        }
       } else {
         // Create Mode
         setStep(1);
@@ -493,16 +518,25 @@ const AssetFormModal = ({ isOpen, onClose, onRefresh, assetToEdit = null, onOpen
                                         )}
                                         {['KiwiSaver', 'Invest_ManagedFund'].includes(selectedCategory) && (
                                             <InputField label="Provider" placeholder="e.g. Simplicity, Milford" icon={Landmark}
-                                                value={formData.details.provider} onChange={v => updateDetail('provider', v)} />
+                                                value={formData.details.provider} 
+                                                onChange={v => updateDetail('provider', v)} 
+                                                disabled={assetToEdit?.source_product_id}
+                                            />
                                         )}
                                         {['KiwiSaver', 'Invest_ManagedFund'].includes(selectedCategory) && (
                                             <InputField label="Fund Name" placeholder="e.g. Growth Fund" 
-                                                value={formData.details.fund_name} onChange={v => updateDetail('fund_name', v)} />
+                                                value={formData.details.fund_name} 
+                                                onChange={v => updateDetail('fund_name', v)}
+                                                disabled={assetToEdit?.source_product_id}
+                                            />
                                         )}
                                         {['KiwiSaver', 'Invest_ManagedFund'].includes(selectedCategory) && (
                                             <SelectField label="Risk Profile" 
                                                 options={['Defensive', 'Conservative', 'Balanced', 'Growth', 'Aggressive']}
-                                                value={formData.details.risk_level} onChange={v => updateDetail('risk_level', v)} />
+                                                value={formData.details.risk_level} 
+                                                onChange={v => updateDetail('risk_level', v)}
+                                                disabled={assetToEdit?.source_product_id}
+                                            />
                                         )}
                                         {selectedCategory === 'Property' && (
                                             <div className="col-span-2">
@@ -714,10 +748,11 @@ const formatCurrency = (val) => new Intl.NumberFormat('en-NZ', {
 }).format(val);
 
 // UI Components
-const InputField = ({ label, type = "text", placeholder, value, onChange, icon: Icon, prefix, required, className, autoFocus }) => (
+const InputField = ({ label, type = "text", placeholder, value, onChange, icon: Icon, prefix, required, className, autoFocus, disabled }) => (
   <div className="space-y-2">
     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5 ml-1">
         {label} {required && <span className="text-rose-500">*</span>}
+        {disabled && <span className="text-xs normal-case text-slate-400 font-medium ml-1">(LOCKED)</span>}
     </label>
     <div className="relative group">
       {Icon && <Icon size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />}
@@ -729,20 +764,25 @@ const InputField = ({ label, type = "text", placeholder, value, onChange, icon: 
         onChange={(e) => onChange(e.target.value)}
         required={required}
         autoFocus={autoFocus}
-        className={`w-full bg-slate-100/50 border border-slate-100 text-slate-900 text-sm font-bold rounded-2xl py-3.5 transition-all outline-none focus:bg-white focus:border-indigo-500 focus:ring-8 focus:ring-indigo-500/5 ${Icon || prefix ? 'pl-12' : 'pl-5'} pr-5 ${className}`}
+        disabled={disabled}
+        className={`w-full bg-slate-100/50 border border-slate-100 text-slate-900 text-sm font-bold rounded-2xl py-3.5 transition-all outline-none focus:bg-white focus:border-indigo-500 focus:ring-8 focus:ring-indigo-500/5 ${Icon || prefix ? 'pl-12' : 'pl-5'} pr-5 ${disabled ? 'opacity-60 cursor-not-allowed' : ''} ${className}`}
       />
     </div>
   </div>
 );
 
-const SelectField = ({ label, options, value, onChange }) => (
+const SelectField = ({ label, options, value, onChange, disabled }) => (
   <div className="space-y-2">
-    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{label}</label>
+    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+      {label}
+      {disabled && <span className="text-xs normal-case text-slate-400 font-medium ml-1">(LOCKED)</span>}
+    </label>
     <div className="relative group">
       <select
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-slate-100/50 border border-slate-100 text-slate-900 text-sm font-bold rounded-2xl py-3.5 pl-5 pr-12 appearance-none outline-none focus:bg-white focus:border-indigo-500 focus:ring-8 focus:ring-indigo-500/5 cursor-pointer transition-all"
+        disabled={disabled}
+        className={`w-full bg-slate-100/50 border border-slate-100 text-slate-900 text-sm font-bold rounded-2xl py-3.5 pl-5 pr-12 appearance-none outline-none focus:bg-white focus:border-indigo-500 focus:ring-8 focus:ring-indigo-500/5 cursor-pointer transition-all ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
       >
         <option value="" disabled>Select...</option>
         {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}

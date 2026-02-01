@@ -174,7 +174,9 @@ const FundingFlowWidget = ({ cashFlows = [], profile }) => {
         {/* Center Stats */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none z-10">
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block leading-none mb-1">Surplus</span>
-          <span className="text-2xl font-black text-slate-900 leading-none">${displaySurplus.toLocaleString()}</span>
+          <span className="text-2xl font-black text-slate-900 leading-none">
+            ${displaySurplus.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
           <span className="text-[9px] font-bold text-slate-400 block mt-1">/ {frequency === 'Monthly' ? 'Month' : 'Week'}</span>
         </div>
       </div>

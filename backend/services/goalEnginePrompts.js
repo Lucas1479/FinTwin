@@ -92,7 +92,7 @@ What you must do:
 - Return common assumptions: expected_return_pct, inflation_pct, risk_attitude
 - Category-specific assumptions:
   * Retirement: retirement_age, life_expectancy, include_superannuation
-  * Home: mortgage_rate_pct, loan_term_years
+  * Home: mortgage_rate_pct, loan_term_years, property_appreciation_pct (NZ historical avg ~3-5%)
   * Emergency: use user_financial_profile to justify conservative, highly liquid assumptions; call out burn-rate implications and insurance presence/absence.
 - Provide user_guidance explaining the recommended assumptions
 - Set next_substage to 'gap_analysis'
@@ -125,16 +125,21 @@ Background context:
 - Goal: ${discovery.goal_name || 'Financial goal'}
 ${discovery.living_expense_pa ? `- Living expense: $${discovery.living_expense_pa}/year` : ''}
 ${discovery.target_amount ? `- Target: $${discovery.target_amount}` : ''}
+${discovery.property_price_estimate ? `- Property price: $${discovery.property_price_estimate}` : ''}
+${discovery.deposit_percentage ? `- Deposit %: ${discovery.deposit_percentage}%` : ''}
 ${assumptions.expected_return_pct ? `- Expected return: ${assumptions.expected_return_pct}%` : ''}
 ${assumptions.retirement_age ? `- Retirement age: ${assumptions.retirement_age}` : ''}
 ${assumptions.life_expectancy ? `- Life expectancy: ${assumptions.life_expectancy}` : ''}
 ${assumptions.include_superannuation !== undefined ? `- Include NZ Super: ${assumptions.include_superannuation}` : ''}
 
 CRITICAL: Real Financial Data (AVAILABLE Assets Only)
-- Check context.real_financial_snapshot for AVAILABLE (unallocated) assets
+- **ONLY use context.real_financial_snapshot** for asset amounts - this is the SINGLE SOURCE OF TRUTH
+- **IGNORE any other asset fields** you may see elsewhere in the context (they may be stale/outdated)
 - IMPORTANT: These amounts EXCLUDE assets already bound to other goals (similar to how monthly_surplus excludes contributions to other goals)
 - If real_financial_snapshot.has_data === true:
-  * Return those EXACT values (liquid_assets, investments, debts, current_super_balance, monthly_income)
+  * **Return those EXACT values** (liquid_assets, investments, debts, current_super_balance, monthly_income)
+  * **DO NOT calculate or modify these values** - copy them directly from real_financial_snapshot
+  * Calculate available_assets = liquid_assets + current_super_balance + investments (use ONLY values from real_financial_snapshot)
   * Your rationale should say: "Based on your available assets from Wealth Centre (excluding amounts already allocated to other goals)..."
   * If user has multiple retirement goals, only show unallocated KiwiSaver
 - If real_financial_snapshot.has_data === false:
@@ -142,46 +147,69 @@ CRITICAL: Real Financial Data (AVAILABLE Assets Only)
   * Your rationale should say: "We don't have your financial data yet. Please update in Wealth Centre."
 
 What you must do:
-1. Return available asset fields (use real_financial_snapshot if available):
-   - liquid_assets: Cash & savings (immediate access, unallocated)
-   - investments: Other investments excluding KiwiSaver (unallocated)
-   - current_super_balance: Available KiwiSaver balance (unallocated)
-   - debts: Total liabilities (all debts, not goal-specific)
-   - monthly_income: Monthly income from cash flow
+1. Return available asset fields (**COPY DIRECTLY from real_financial_snapshot, DO NOT modify**):
+   - liquid_assets: **COPY from real_financial_snapshot.liquid_assets** (Cash & savings, unallocated)
+   - investments: **COPY from real_financial_snapshot.investments** (Other investments excluding KiwiSaver, unallocated)
+   - current_super_balance: **COPY from real_financial_snapshot.current_super_balance** (Available KiwiSaver, unallocated)
+   - debts: **COPY from real_financial_snapshot.debts** (Total liabilities)
+   - monthly_income: **COPY from real_financial_snapshot.monthly_income** (Monthly income from cash flow)
 
-2. Calculate required amount (if not already in context):
+2. Calculate target_amount (investment/savings goal):
    - Retirement: (living_expense_pa - (include_superannuation ? 24000 : 0)) × 25
      * NZ Super (~$24k) reduces the self-funding requirement significantly.
-   - Home: property_price_estimate
-   - Other: target_amount
+   - **Home: property_price_estimate × (deposit_percentage / 100)**
+     * CRITICAL: target_amount for home goals = DEPOSIT/DOWN PAYMENT, not total property price
+     * Example: $4,200,000 property × 20% deposit = $840,000 target_amount
+     * Rationale: Users need to save for the deposit to purchase. The remaining amount is financed through mortgage (handled separately in strategy/timeline stages).
+     * Read property_price_estimate and deposit_percentage from context.goal_details or context.ai_decision
+     * If only target_amount is provided but category=home, use it as property_price and calculate deposit (assume 20% if deposit_percentage not specified)
+   - Other goals: target_amount (direct savings/investment goal)
 
-3. Calculate reference_gap for FEASIBILITY ASSESSMENT ONLY:
-   - reference_gap = target_amount - (liquid_assets + current_super_balance + investments)
+3. Calculate reference_gap and feasibility indicators for next stage:
+   - **Use ONLY values from real_financial_snapshot:** liquid_assets, current_super_balance, investments
+   - available_assets = real_financial_snapshot.liquid_assets + real_financial_snapshot.current_super_balance + real_financial_snapshot.investments
+   - reference_gap = target_amount - available_assets
+   - coverage_ratio = (available_assets / target_amount) × 100 (MUST return this field!)
+   - For HOME goals, this gap is relative to the DEPOSIT target (not total property price)
    - **CRITICAL: DO NOT subtract debts from available assets**
    - RATIONALE: Debt servicing costs are already reflected in monthly_surplus (cash flow impact). Debts affect cash flow, not investment capital availability. We handle debt through reduced surplus, not by reducing available assets.
-   - Also calculate net_position = (assets - debts) as a separate risk indicator
+   - Also calculate net_position = (available_assets - real_financial_snapshot.debts) as a separate risk indicator
    - IMPORTANT: This is a REFERENCE number to show feasibility. It does NOT represent actual allocation commitment.
    - For NEW goals, no assets are allocated yet, so this gap represents "how far you are from the target with available resources"
-   - The actual allocation decision happens in Strategy stage (Stage 2)
+   - The actual allocation decision happens in Strategy stage (Stage 2), which will use your coverage_ratio to inform allocation strategy
 
 4. Provide CLEAR, PROFESSIONAL user_guidance:
    - Use direct, confident language
-   - If reference_gap is large: "Gap of $XXX from your $YYY available assets. This will be addressed through strategic allocation and monthly contributions in the next stage. Your $ZZZ monthly surplus (after debt servicing) provides strong foundation."
-   - If reference_gap is manageable or negative: "Your available assets of $XXX cover the target. Next stage will optimize allocation strategy."
+   - Calculate coverage_ratio = available_assets / target_amount
+   - Tailor language based on coverage_ratio:
+   
+   **If coverage_ratio >= 80% (Strong Position):**
+   "Your available assets of $XXX cover YY% of the target. Next stage will optimize allocation strategy."
+   
+   **If coverage_ratio 50-79% (Moderate Gap):**
+   "Gap of $XXX from your $YYY available assets. Your $ZZZ monthly surplus provides capacity for strategic contributions. Next stage: allocation and contribution plan."
+   
+   **If coverage_ratio 20-49% (Substantial Gap):**
+   "Gap of $XXX from your $YYY available assets. This will require substantial monthly contributions alongside strategic allocation. Your $ZZZ monthly surplus (after debt servicing) will be assessed for feasibility in the next stage."
+   
+   **If coverage_ratio < 20% (Significant Challenge):**
+   "Your available assets cover only XX% of the target ($YYY of $ZZZ needed). This indicates a significant funding challenge that will require evaluation in the Strategy stage. Your $AAA monthly surplus will determine monthly feasibility."
+   
    - If net_position is negative or debts are substantial: "Net position: $XXX after $YYY debts. Your debt servicing is already factored into monthly surplus of $ZZZ."
    - Special notes (be factual, not cautionary):
-     * For HOME goals with negative net_position: "Banks will assess debt-to-income ratio for loan approval."
+     * For HOME goals: Mention the deposit target clearly in your guidance (e.g., "Gap of $XXX to reach your $YYY deposit target (Z% of $AAA property)"). If negative net_position: "Banks will assess debt-to-income ratio for loan approval."
      * For RETIREMENT goals: State NZ Super adjustment directly - "NZ Super (~$24k/year) reduces self-funding requirement."
-   - Present facts clearly, not as warnings
-   - Always end with: "Next stage: strategic allocation from your available assets."
+   - Present facts clearly and proportionately to the gap size
    
    DO NOT:
-   - Use tentative phrases ("this is common...", "you might want to consider...")
+   - Use encouraging language when coverage_ratio < 20% (be factual instead)
+   - Use tentative phrases ("this is common...", "you might consider...")
    - Over-explain or apologize for gaps
-   - Present information as gentle suggestions
+   - Say "provides strong foundation" when gap is severe
    
    DO:
    - State facts directly and professionally
+   - Scale optimism appropriately to coverage ratio
    - Show path forward clearly
    - Demonstrate expertise through precision
 
@@ -189,9 +217,13 @@ What you must do:
 
 Rules:
 - Return JSON only. Focus on gap_analysis fields ONLY.
-- Be ENCOURAGING, not discouraging. Gap is normal for low-net-worth individuals.
-- Your rationale should be 2-3 sentences, empathetic and constructive.
+- Be factual and proportionate: 
+  * If coverage_ratio >= 50%: Be encouraging and constructive
+  * If coverage_ratio < 50%: Be factual and clear about the challenge, but professional (not discouraging)
+  * If coverage_ratio < 20%: State the challenge directly - user needs to know this will be difficult
+- Your rationale should be 2-3 sentences, clear and proportionate to the gap size.
 - Reference NZ context: KiwiSaver, NZ Super baseline, typical savings rates.
+- Remember: Strategy stage will do detailed feasibility check. Your job is to set realistic expectations based on coverage ratio.
 `.trim();
 }
 
@@ -245,13 +277,51 @@ Analysis Logic:
 2. **Enrich with real financial position**: Use context.goalContext.simulation_data.financials for current cash flow and surplus (monthly_income, monthly_surplus, liquid_capital).
 3. **Calculate contribution requirement (CRITICAL - Multi-Goal Resource Allocation)**:
    - For NEW goals: allocated_amount = 0 (no assets have been allocated yet)
+   
+   **STEP 0 (MANDATORY): Use Definition Stage Coverage Ratio**
+   The Definition stage (gap_analysis) already calculated coverage_ratio for you:
+   - coverage_ratio = (available_assets / target_amount) × 100
+   - Read this from: context.goalContext.ai_decision.coverage_ratio
+   
+   Use coverage_ratio to choose allocation strategy (no need to recalculate):
+   - If coverage_ratio >= 80%: Use CONSERVATIVE allocation (20-40% of assets)
+   - If coverage_ratio 50-79%: Use CONSERVATIVE allocation (20-40% of assets)  
+   - If coverage_ratio 20-49%: Use MODERATE allocation (40-60% of assets)
+   - If coverage_ratio < 20%: Use AGGRESSIVE allocation (max prudent amount)
+   
    - Step 1: Recommend lump_sum allocation from available assets (liquid_assets from Gap Analysis)
-     * Keep emergency fund buffer (typically 3-6 months expenses)
+     
+     **ALLOCATION STRATEGY (MANDATORY - choose based on coverage_ratio from Definition stage):**
+     
+     A. **If coverage_ratio >= 50% (Strong to Moderate Position)**:
+        - Use CONSERVATIVE allocation strategy
+        - Keep emergency fund buffer (6 months expenses = monthly_outflow × 6)
+        - Keep other goals reserve (1 year = locked_allocations × 12)
+        - Allocate 20-40% of available assets
+        - Example: From $349k available, allocate $60k-$140k
+        - Rationale: Goal is achievable with reasonable monthly contributions
+     
+     B. **If coverage_ratio 20-49% (Substantial Gap)**:
+        - Use MODERATE allocation strategy
+        - Allocate 40-60% of available assets
+        - Balance between showing commitment and maintaining prudent reserves
+        - Example: From $349k available, allocate $140k-$210k
+     
+     C. **If coverage_ratio < 20% (Significant Challenge)**:
+        - Use AGGRESSIVE allocation strategy to demonstrate challenge magnitude
+        - Calculate minimum emergency fund: monthly_outflow × 6
+        - Calculate minimum other goals reserve: locked_allocations × 12
+        - Allocate: available_assets - emergency_fund - other_goals_reserve
+        - Example: coverage_ratio 11.8%, from $375k available, expenses $3,772/mo, other goals $3,200/mo:
+          * Emergency fund: $3,772 × 6 = $22,632
+          * Other goals reserve: $3,200 × 12 = $38,400
+          * Allocate: $375k - $22.6k - $38.4k = $314k (83% of assets)
+        - Rationale: Show that even maximizing lump sum doesn't close the massive gap
+     
      * **DEBT CONSIDERATION (UNIVERSAL):**
        - DO NOT subtract debts from available assets for ANY goal type
        - RATIONALE: Debt servicing costs are already reflected in monthly_surplus (reduced cash flow). Debts affect monthly budget, not investment capital.
        - Debts are a RISK indicator (net_position, debt-to-income ratio), not an investment constraint
-     * Example: From $349k available assets, recommend $60k allocation (保留 $289k for emergency/other goals)
      * Note: If user has $781k debts, their net_position is negative, but this doesn't reduce the $349k cash available for investment
    - Step 2: Calculate FUNDING GAP based on allocation decision
      * funding_gap = target_amount - lump_sum_allocation - allocated_amount
@@ -290,14 +360,31 @@ CRITICAL CONSISTENCY RULES (apply to all outputs):
   5) Calculate remaining_gap: funding_gap - (lump_sum_FV - lump_sum_allocation)
   6) Compute monthly_amount using FV annuity formula based on remaining_gap
   
-  Example: Target=$480k, allocated=$0 (new goal), available_assets=$349k, debts=$781k, years=6
-  - Lump allocation: $60k from $349k available (debts don't reduce available investment capital)
+  Example 1 (Feasible goal): Target=$480k, allocated=$0, available_assets=$349k, years=6, monthly_surplus=$5,000
+  - Rough check: $480k/6/12 = $6,667/mo (≈ monthly_surplus) → FEASIBLE, use conservative allocation
+  - Lump allocation: $60k from $349k available (keep $289k for emergency/other goals)
   - Funding gap: $480k - $60k - $0 = $420k
   - Real return: 3.7% (60/30/10 → 6.2% - 2.5% inflation)
   - Lump FV: $60k × 1.037^6 = $73.6k (growth: $13.6k)
   - Remaining: $420k - $13.6k = $406.4k
-  - Monthly: Solve FV_annuity($X, 6 years, 3.7%) = $406.4k → $4,560/mo
-  - Note: $781k debts affect monthly_surplus (through debt servicing), not lump sum calculation
+  - Monthly: Solve FV_annuity($X, 6 years, 3.7%) = $406.4k → $4,560/mo ✓
+  
+  Example 2 (Infeasible goal): Target=$3,600k, allocated=$0, available_assets=$375k, years=5, monthly_surplus=$1,484
+  - **Step 0 (Read from Definition stage)**: coverage_ratio = ($375k / $3,600k) × 100 = 10.4%
+    * coverage_ratio < 20% → **Decision: Use AGGRESSIVE allocation strategy**
+  - **Step 1 (Lump sum)**: Calculate aggressive allocation
+    * Available assets: $375,979
+    * Emergency fund (6 months × $3,772): $22,632
+    * Other goals reserve (12 months × $3,200): $38,400
+    * **Allocate: $375,979 - $22,632 - $38,400 = $314,947 (83% of assets)**
+  - **Step 2 (Funding gap)**: $3,600k - $314.9k - $0 = $3,285.1k
+  - **Step 3 (Monthly calc)**: 
+    * Lump FV: $314.9k × 1.037^5 = $377.1k (growth: $62.2k)
+    * Remaining: $3,285.1k - $62.2k = $3,222.9k
+    * Monthly: Solve FV_annuity($X, 5 years, 3.7%) = $3,222.9k → $47,400/mo
+  - **Step 4 (Check)**: $47,400 >> $1,484 (32× available)
+  - **Outcome**: Even with aggressive allocation (83% of assets), required monthly is 32× available surplus → goal NOT achievable
+  - **Rationale for aggressive allocation**: coverage_ratio 10.4% indicates massive gap; show user that even maximizing lump sum doesn't close it
   
   NOTE: The funding_gap is based on ALLOCATION DECISION ($60k), not available assets ($349k) or net position ($349k - $781k = -$431k). Debts are already accounted for in monthly_surplus.
   
@@ -306,6 +393,11 @@ CRITICAL CONSISTENCY RULES (apply to all outputs):
 - **EXPOSURE LANGUAGE ONLY**: Use ONLY economic exposure terms (growth/defensive/liquidity) in your rationale. DO NOT mention asset classes like stocks, bonds, cash, equities, or fixed income. These are implementation details handled later in product selection.
 
 What you must do:
+- **In thought_process field (MUST BE FIRST)**: 
+   Show your Step 0 allocation strategy selection explicitly:
+   "0. Read coverage_ratio from Definition stage: XX%. Based on coverage_ratio < 20% / 20-49% / 50-79% / >= 80%, selecting [AGGRESSIVE/MODERATE/CONSERVATIVE] allocation strategy."
+   Then continue with steps 1-5 as usual.
+
 - Populate 'ai_decision':
    - target_amount: For retirement, output the CALCULATED total funding need. For others, carry forward user's target.
 - Populate 'ai_decision.strategy_recommendation':
@@ -317,11 +409,16 @@ What you must do:
    - contribution_strategy with CALCULATED amounts:
        * mode: lump_sum / recurring / hybrid (based on available surplus and lump sum capital)
       * lump_sum_amount: Recommended allocation from available liquid_assets, keeping emergency buffer (e.g., $60k from $349k available)
-      * monthly_amount: MUST be calculated based on funding_gap (target - lump_sum - allocated), real_return_pct, and horizon. If calculation shows required amount > monthly_surplus_allocatable, set to max affordable and note the shortfall.
+      * monthly_amount: MUST be calculated based on funding_gap (target - lump_sum - allocated), real_return_pct, and horizon. 
+        - If calculated_amount > monthly_surplus_allocatable: set monthly_amount to monthly_surplus_allocatable (max affordable), set is_monthly_feasible=false, and explain shortfall clearly in rationale
+        - If calculated_amount <= monthly_surplus_allocatable: use calculated_amount, set is_monthly_feasible=true
        * income_linked: true if recurring/hybrid
        * escalation_rate_pct: Use inflation_pct from goal_details as baseline
        * reserve_for_other_goals_pct: if provided in simulation_data
-   - implementation_notes and consistency_check (note if required contribution > available surplus, or if goal may be underfunded)
+   - implementation_notes and consistency_check:
+     * is_monthly_feasible: true if monthly_amount <= monthly_surplus_allocatable, false otherwise
+     * monthly_shortfall: if not feasible, calculate (monthly_amount - monthly_surplus_allocatable), otherwise 0
+     * notes: if not feasible, briefly state options (reduce target / extend timeline / increase lump sum)
 - Explain WHY in 'rationale' with CONFIDENT, PROFESSIONAL tone:
    - Use assertive language: state decisions directly, not tentatively
    - CRITICAL: Use structured markdown format with clear headings
@@ -347,20 +444,48 @@ What you must do:
    - Always calculate and show both expected return and real return (after inflation)
    
    **ALLOCATION DECISION:**
-   - Lead with the decision: "Allocate $XXXk to this goal: $YYk liquid assets + $ZZk KiwiSaver."
-   - Or: "Allocate $XXXk liquid assets (keeping $YYYk for emergency fund and other goals)."
-   - Be direct and clear about the allocation strategy
+   YOU MUST state which allocation strategy you selected and why (based on coverage_ratio from Definition stage):
+   
+   - **If CONSERVATIVE allocation (coverage_ratio >= 50%):**
+     "Allocate $XXXk (20-40% of available assets) from $YYYk liquid assets, keeping $ZZZk for emergency fund and other goals. This conservative approach is appropriate given the XX% coverage ratio from Definition stage, indicating the goal is achievable with reasonable monthly contributions."
+   
+   - **If MODERATE allocation (coverage_ratio 20-49%):**
+     "Allocate $XXXk (40-60% of available assets) from $YYYk liquid assets, keeping $ZZZk for emergency fund and other goals. This balanced approach reflects the XX% coverage ratio, indicating a substantial but manageable gap."
+   
+   - **If AGGRESSIVE allocation (coverage_ratio < 20%):**
+     "Allocating $XXXk (XX% of available assets, keeping only $YYYk for 6-month emergency fund of $AAA and 1-year other goals reserve of $BBB). Using this aggressive allocation based on the YY% coverage ratio from Definition stage to demonstrate the challenge magnitude: even with maximum prudent lump sum, the remaining gap would require $ZZZ/month—XX times your available surplus of $CCC/month."
+   
+   - Always show the calculation: available_assets → emergency_fund → other_goals_reserve → allocation_amount
    
    **FUNDING GAP:**
    - State the gap calculation: "After this $XXXk allocation, the remaining gap is $YYYk, which needs monthly contributions."
    - Show the math clearly and confidently
    
-   **MONTHLY FEASIBILITY:**
-   - Show calculation: "Using real return = X% - Y% = Z%, this requires $X/month."
-   - State available surplus: "You have $Y monthly surplus available after other goals (already reduced by debt servicing)."
-   - If shortfall: "Shortfall: $Z/month under target. Options: reduce target, extend timeline, or reallocate from other goals."
-   - If sufficient: "This is well within your available surplus."
-   - Be direct about feasibility - don't hedge
+   **MONTHLY FEASIBILITY (CRITICAL - MUST BE EXPLICIT):**
+   YOU MUST evaluate feasibility and state it clearly:
+   
+   1. Calculate required monthly contribution
+   2. Show calculation: "Using real return = X% - Y% = Z%, this requires $X/month."
+   3. State available surplus: "You have $Y monthly surplus available after other goals."
+   4. **MANDATORY COMPARISON:**
+      
+      IF required_monthly <= available_monthly:
+      ✅ "This is well within your available surplus of $Y/month."
+      
+      IF required_monthly > available_monthly:
+      ❌ "**SHORTFALL: Required $X/month exceeds your available surplus of $Y/month by $Z/month.**
+      
+      **This goal is not achievable with current resources. Options:**
+      1. **Reduce target**: Lower from $A to $B (achievable with current surplus)
+      2. **Extend timeline**: Increase from X years to Y years (makes monthly affordable)
+      3. **Increase lump sum**: Allocate more upfront to reduce monthly requirement
+      4. **Reduce other goals**: Free up additional monthly surplus
+      
+      **With current surplus ($Y/month):**
+      - Over X years, you will accumulate: $ACTUAL
+      - Achievement rate: XX% of target"
+   
+   5. Be direct and explicit - don't hide shortfalls in vague language
    
    **RISK NOTES (if applicable):**
    - For HOME goals with debts: "Banks will assess your debt-to-income ratio (current: $XXXk debts vs. $YYYk income)."
@@ -370,12 +495,21 @@ What you must do:
    DO NOT:
    - Use tentative language ("I recommend...", "you might consider...", "perhaps...")
    - Hedge decisions ("this could work...", "you may want to...")
+   - Hide shortfalls in vague language ("confirm affordability", "may need adjustment")
+   - Use conservative allocation when coverage_ratio < 20% - this makes infeasible goals look worse than they are
+   - Skip Step 0 - you MUST read coverage_ratio from Definition stage before deciding allocation strategy
+   - Recalculate coverage_ratio yourself - it's already provided by Definition stage
    - Over-explain rationale for not subtracting debts (it's already correct in the calculation)
    - Skip or bury the economic exposure - it MUST be prominent
+   - State numbers without explicitly comparing feasibility
    
    DO:
+   - ALWAYS read coverage_ratio from Definition stage (context.goalContext.ai_decision.coverage_ratio)
+   - ALWAYS select allocation strategy based on coverage_ratio thresholds (<20% / 20-49% / 50-79% / ≥80%)
+   - ALWAYS show Step 0 in thought_process: "coverage_ratio = XX%, selecting [strategy]"
    - ALWAYS lead with Economic Exposure in structured format
    - Be assertive and direct ("Allocate...", "This requires...", "Your strategy is...")
+   - For aggressive allocation, explicitly state: "Using aggressive allocation (XX% of assets, based on coverage_ratio < 20%) to demonstrate challenge magnitude"
    - Show expertise through clear calculations
    - Present options when there are trade-offs, but do so confidently
    - Use markdown formatting (bold, bullets) for clarity
@@ -387,35 +521,48 @@ Stage: 3 · Product Selection (Vehicle) - FUNCTION CALLING MODE
 
 Goal: Present 2-3 portfolio options that match the strategy's economic exposure.
 
-**NZ RETIREMENT CONTEXT (CRITICAL):**
-- If context.strategy_summary.is_retirement is true, you MUST call build_optimized_portfolios with is_retirement_goal: true.
-- In New Zealand, KiwiSaver is the primary vehicle for retirement due to the 3% Employer Match and $521.43 Annual Government Credit.
-- Even if KiwiSaver fees look slightly higher than passive ETFs, the "free money" from contributions far outweighs the fee difference. ALWAYS prioritize including KiwiSaver for retirement goals.
+**NZ KIWISAVER CONTEXT (CRITICAL):**
+- **Retirement Goals**: If context.goalContext.category === 'retirement', set is_retirement_goal: true
+- **Home Purchase Goals**: If context.goalContext.category === 'home', set is_home_goal: true
+- **Employment Income**: If context.goalContext.simulation_data.financials.monthly_income > 0, set has_employment_income: true
+
+**Why KiwiSaver Matters:**
+- In New Zealand, KiwiSaver provides 3% Employer Match + $521.43 Annual Government Credit for retirement
+- For first home buyers, KiwiSaver offers special withdrawal provisions and HomeStart grants
+- If user has employment income, including at least one KiwiSaver product is essential for these benefits
+- The "free money" from contributions far outweighs any fee differences with other products
 
 **PRIMARY TOOL:**
 
-build_optimized_portfolios(target_growth_pct, target_defensive_pct, target_liquidity_pct, is_retirement_goal)
-→ Returns 3 PRE-OPTIMIZED portfolio options (lowest_cost, diversified, balanced)
+build_optimized_portfolios(target_growth_pct, target_defensive_pct, target_liquidity_pct, is_retirement_goal, is_home_goal, has_employment_income)
+→ Returns 2-3 PRE-OPTIMIZED portfolio options (lowest_cost, diversified, balanced)
 → Each portfolio already has optimal weights and calculated exposure
+→ Automatically ensures KiwiSaver inclusion when required
 → Just call it ONCE and use the results!
 
 **WORKFLOW:**
 
 Step 1: Get target exposure from context.strategy_summary.economic_exposure
-Step 2: Determine if is_retirement_goal is true/false based on context.strategy_summary.is_retirement.
+Step 2: Determine goal type and employment status from context.goalContext:
+  - is_retirement_goal = (context.goalContext.category === 'retirement')
+  - is_home_goal = (context.goalContext.category === 'home')
+  - has_employment_income = (context.goalContext.simulation_data.financials.monthly_income > 0)
 Step 3: Call build_optimized_portfolios({ 
   target_growth_pct: X, 
   target_defensive_pct: Y, 
   target_liquidity_pct: Z,
-  is_retirement_goal: (context.strategy_summary.is_retirement === true)
+  is_retirement_goal: (true/false),
+  is_home_goal: (true/false),
+  has_employment_income: (true/false),
+  max_fees: 2.0
 })
-Step 4: The tool returns ready-to-use portfolio_options
+Step 4: The tool returns ready-to-use portfolio_options (2-3 portfolios)
 Step 5: Copy the portfolio_options to your response
 Step 6: Add your AI value:
   - Explain which portfolio is BEST for this specific user's situation
-  - If retirement, emphasize why the KiwiSaver component is included
-  - Explain trade-offs between the options
-  - Personalize rationale based on user's goal, timeline, and preferences
+  - If retirement or home goal with employment income, emphasize why KiwiSaver is included
+  - Explain trade-offs between the options (fees vs diversification vs performance)
+  - Personalize rationale based on user's goal, timeline, and risk preferences
 
 **YOUR ROLE AS AI ADVISOR:**
 
@@ -432,10 +579,10 @@ Your job is to:
 
 **RESPONSE FORMAT:**
 {
-  "thought_process": "1. Identified goal as retirement. 2. Called build_optimized_portfolios with is_retirement_goal: true. 3. Selected balanced as best fit...",
+  "thought_process": "1. Identified goal as home purchase with 5-year timeline. 2. Called build_optimized_portfolios with is_home_goal: true and has_employment_income: true to ensure KiwiSaver inclusion. 3. Selected diversified as best fit due to better asset class balance...",
   "rationale": "**My Recommendation:** [Explain which portfolio suits this user best and why KiwiSaver is used if applicable]...",
   "portfolio_options": [
-    // Copy directly from tool output, with enhanced rationale
+    // Copy directly from tool output - DO NOT modify
   ]
 }
 
@@ -453,6 +600,7 @@ Goal:
 - Provide a high-level projection summary: is this goal broadly plausible with current settings?
 - Give the user a brief conversational readout of the simulation (no tables needed; charts are handled locally).
 - Anchor your explanation strictly on the provided simulation data; do NOT invent numbers or probabilities.
+- **CRITICAL: Explain nominal vs. real values (inflation-adjusted) to avoid confusion**
 
 What you must do:
 - Use local simulation outputs from context.goalContext (e.g., projection curves, confidence_level, funding_strategy, glide_path) and explain them in plain English.
@@ -463,6 +611,30 @@ What you must do:
 - Keep the response streaming-friendly: short sentences, bullet-style markdown, no tables.
 - Do NOT return or reconstruct numeric tables/series; those are already computed client-side.
 - Reference key figures that the client provides (e.g., confidence %, monthly contribution, glide path status) to add color, but avoid re-tabulating.
+
+**CRITICAL - Inflation Explanation (MANDATORY for long-term goals >= 10 years):**
+If horizon_years >= 10, you MUST clearly explain the difference between nominal and real values in your "Projection Summary" section:
+
+1. Read inflation_pct from context.goalContext.goal_details (typically 2-3%)
+2. Calculate inflation multiplier: (1 + inflation_pct/100)^horizon_years
+3. In your rationale, add a dedicated "**Inflation-Adjusted Values:**" section:
+   - "Your $XXX target is stated in today's dollars (purchasing power)"
+   - "With Y% inflation over Z years, $XXX today = $AAA in future nominal dollars"
+   - "Median outcome: $BBB (nominal) = approximately $CCC in today's purchasing power"
+   - "**Real achievement: XX% of target (inflation-adjusted)**"
+
+Example format for 35-year goal with 2.5% inflation:
+**Inflation-Adjusted Values:**
+- Target: $1,025,000 (today's purchasing power)
+- Inflation: 2.5% × 35 years → 2.37× multiplier
+- Target in 35 years (nominal): ~$2,430,000
+- Median projection: $3,250,000 (nominal) = ~$1,370,000 (today's dollars)
+- **Real achievement: 134% of target**
+
+This explains why "$3.25M sounds much larger than $1M target" - it's nominal future dollars, not today's purchasing power.
+
+DO NOT skip this for long-term goals (>= 10 years) - it's the #1 source of user confusion!
+For short-term goals (< 10 years), inflation impact is minimal - you can omit this section.
 `.trim();
 
     default:
@@ -628,6 +800,7 @@ function getAssumptionsSchema() {
           // Home assumptions
           mortgage_rate_pct: { type: 'number', description: '[home] Mortgage rate %' },
           loan_term_years: { type: 'number', description: '[home] Loan term years' },
+          property_appreciation_pct: { type: 'number', description: '[home] Expected property value appreciation % per year (NZ historical avg 3-5%)' },
           // Emergency (pre-filled profile echo)
           user_financial_profile: {
             type: 'object',
@@ -671,6 +844,7 @@ function getGapAnalysisSchema() {
           // Target and gap
           target_amount: { type: 'number', description: 'Calculated required amount for goal' },
           reference_gap: { type: 'number', description: 'Reference gap = target - available_assets (WITHOUT subtracting debts). Debts are handled through monthly_surplus, not asset reduction. NOT an allocation commitment.' },
+          coverage_ratio: { type: 'number', description: 'Percentage of target covered by available assets (available_assets / target_amount × 100). Used by Strategy stage to determine allocation strategy.' },
           net_position: { type: 'number', description: 'Net financial position (assets - debts). Risk indicator only - does not affect investment calculations. Important for assessing financial health and loan approval.' },
           // Current allocation (NEW goals = 0)
           allocated_amount: { type: 'number', description: 'Amount already allocated to this goal. For NEW goals, this is 0.' },
@@ -763,7 +937,19 @@ function getStageResponseSchema(stage, substage = null) {
                     },
                     consistency_check: {
                         type: 'object',
-                        properties: { exposure_vs_products_ok: { type: 'boolean' }, notes: { type: 'string' } }
+                        properties: { 
+                            exposure_vs_products_ok: { type: 'boolean' }, 
+                            is_monthly_feasible: { 
+                                type: 'boolean',
+                                description: 'Whether required monthly contribution is within available surplus' 
+                            },
+                            monthly_shortfall: { 
+                                type: 'number',
+                                description: 'If not feasible, the shortfall amount (required - available). 0 if feasible.' 
+                            },
+                            notes: { type: 'string' } 
+                        },
+                        required: ['exposure_vs_products_ok', 'is_monthly_feasible', 'notes']
                     }
                 },
                 required: ['recommended_risk', 'economic_exposure']

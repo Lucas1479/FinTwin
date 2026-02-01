@@ -100,6 +100,9 @@ const Dashboard = () => {
     if (hour >= 12 && hour < 17) timeGreeting = "Good Afternoon";
     if (hour >= 17) timeGreeting = "Good Evening";
 
+    const hasNoGoals = !data.goals || data.goals.length === 0;
+    const hasNoAssets = !data.assets || data.assets.length === 0;
+
     return (
       <div className="mb-8 pt-4 flex items-center justify-between">
         <div className="flex items-center gap-6">
@@ -117,14 +120,52 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* New Goal CTA - Minimalist Professional Style */}
-        <button 
-          onClick={() => navigate('/goals/intake')}
-          className="hidden sm:flex items-center gap-2.5 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white px-5 py-2.5 rounded-2xl transition-all duration-300 group border border-indigo-100/50 shadow-sm"
-        >
-          <Plus size={16} className="transition-transform group-hover:rotate-90" />
-          <span className="text-xs font-bold tracking-tight">New Goal</span>
-        </button>
+        {/* Dynamic CTAs based on data state */}
+        <div className="flex flex-col items-end gap-3">
+          <div className="flex items-center p-1.5 bg-slate-100/50 backdrop-blur-md rounded-[2rem] border border-slate-200/50 shadow-inner">
+            {/* Asset Entry CTA - Refined Glassmorphism Style */}
+            {hasNoAssets && (
+              <button 
+                onClick={() => navigate('/wealth', { state: { tab: 'portfolio' } })}
+                className="flex items-center gap-2 px-5 py-2.5 bg-white text-emerald-600 rounded-full hover:bg-emerald-50 transition-all duration-300 shadow-sm group border border-emerald-100"
+              >
+                <div className="w-5 h-5 rounded-full bg-emerald-50 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Plus size={14} className="stroke-[3px]" />
+                </div>
+                <span className="text-[11px] font-black uppercase tracking-wider">Add Assets</span>
+              </button>
+            )}
+
+            {/* Divider if both exist */}
+            {hasNoAssets && hasNoGoals && <div className="w-px h-4 bg-slate-200 mx-2"></div>}
+
+            {/* Goal Entry CTA - Refined Brand Style */}
+            <button 
+              onClick={() => navigate('/goals/intake')}
+              className={`flex items-center gap-2 px-5 py-2.5 transition-all duration-500 group rounded-full ${
+                hasNoGoals 
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-indigo-300' 
+                  : 'text-indigo-600 hover:bg-indigo-50'
+              }`}
+            >
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${hasNoGoals ? 'bg-white/20' : 'bg-indigo-50'}`}>
+                <Plus size={14} className={`transition-transform group-hover:rotate-90 ${hasNoGoals ? 'stroke-[3px]' : ''}`} />
+              </div>
+              <span className="text-[11px] font-black uppercase tracking-wider">
+                {hasNoGoals ? 'Create First Goal' : 'New Goal'}
+              </span>
+            </button>
+          </div>
+          
+          {(hasNoGoals || hasNoAssets) && (
+            <div className="flex items-center gap-2 mr-4">
+              <span className="w-1 h-1 rounded-full bg-indigo-400 animate-ping"></span>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                {hasNoGoals && hasNoAssets ? 'Initialize your digital twin' : hasNoGoals ? 'Set your trajectory' : 'Map your resources'}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -158,7 +199,7 @@ const Dashboard = () => {
               goals={evolvedSnapshot.goals} 
             />
             <GoalProgressChartWidget 
-              goals={evolvedSnapshot.goals} 
+              goals={evolvedSnapshot.goals}
             />
           </div>
 

@@ -45,10 +45,40 @@ const HomeVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
     });
 
     const [isMapOpen, setIsMapOpen] = useState(false);
+    const [searchTrigger, setSearchTrigger] = useState('');
+
+    // Track the last synced data to prevent infinite loops
+    const lastSyncedRef = React.useRef(null);
+    const isInternalUpdateRef = React.useRef(false);
 
     // Sync with initialValues from AI/Parent
     useEffect(() => {
+        // Skip if this is triggered by our own onChange call
+        if (isInternalUpdateRef.current) {
+            isInternalUpdateRef.current = false;
+            return;
+        }
+
         if (initialValues.goal_details || initialValues.goal_name || initialValues.due_date) {
+            // Create a stable key from incoming data
+            const incomingKey = JSON.stringify({
+                goal_name: initialValues.goal_name,
+                location: initialValues.goal_details?.location,
+                coordinates: initialValues.goal_details?.coordinates,
+                property_price_estimate: initialValues.goal_details?.property_price_estimate,
+                deposit_percentage: initialValues.goal_details?.deposit_percentage,
+                is_first_home: initialValues.goal_details?.is_first_home,
+                property_type: initialValues.goal_details?.property_type,
+                property_condition: initialValues.goal_details?.property_condition,
+                due_date: initialValues.due_date
+            });
+
+            // Skip if data hasn't changed
+            if (incomingKey === lastSyncedRef.current) {
+                return;
+            }
+            lastSyncedRef.current = incomingKey;
+
             setFormData(prev => {
                 const newVal = {
                     goal_name: initialValues.goal_name || prev.goal_name,
@@ -80,13 +110,46 @@ const HomeVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
                 return newVal;
             });
         }
-    }, [initialValues]);
+    }, [
+        initialValues.goal_name,
+        initialValues.due_date,
+        initialValues.goal_details?.location,
+        initialValues.goal_details?.property_price_estimate,
+        initialValues.goal_details?.deposit_percentage,
+        initialValues.goal_details?.is_first_home,
+        initialValues.goal_details?.property_type,
+        initialValues.goal_details?.property_condition
+    ]);
 
     // Derived State - 派生值自动计算（房价 × 首付比例 = 首付金额）
     const targetDeposit = Math.round(formData.property_price_estimate * (formData.deposit_percentage / 100));
 
     // Propagate changes to parent immediately
+    const lastPropagatedRef = React.useRef(null);
     useEffect(() => {
+        // Create a stable key from current formData
+        const currentKey = JSON.stringify({
+            goal_name: formData.goal_name,
+            location: formData.location,
+            coordinates: formData.coordinates,
+            property_price_estimate: formData.property_price_estimate,
+            deposit_percentage: formData.deposit_percentage,
+            is_first_home: formData.is_first_home,
+            property_type: formData.property_type,
+            property_condition: formData.property_condition,
+            due_date: formData.due_date,
+            targetDeposit
+        });
+        
+        // Skip if we've already propagated this exact data
+        if (currentKey === lastPropagatedRef.current) {
+            return;
+        }
+        lastPropagatedRef.current = currentKey;
+
+        // Mark that this is an internal update
+        isInternalUpdateRef.current = true;
+
         onChange?.({
             goal_name: formData.goal_name,
             target_amount: targetDeposit,
@@ -111,8 +174,8 @@ const HomeVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
         formData.property_type,
         formData.property_condition,
         formData.due_date,
-        targetDeposit
-        // Note: onChange is intentionally NOT in deps (should be stable)
+        targetDeposit,
+        onChange
     ]);
 
     const handleLocationSelect = (loc) => {
@@ -122,6 +185,17 @@ const HomeVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
             coordinates: { lat: loc.lat, lng: loc.lng }
         }));
         setIsMapOpen(false);
+    };
+
+    const handleLocationInputChange = (newLocation) => {
+        setFormData(prev => ({ ...prev, location: newLocation }));
+    };
+
+    const handleLocationSearch = () => {
+        if (formData.location && formData.location.trim().length > 0) {
+            setSearchTrigger(formData.location);
+            setIsMapOpen(true);
+        }
     };
 
     const PROPERTY_TYPES = [
@@ -175,16 +249,33 @@ const HomeVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
 
                     <div>
                         <label className="block text-sm font-bold text-slate-700 mb-2">Target Location</label>
-                        <div className="relative group cursor-pointer" onClick={() => setIsMapOpen(true)}>
-                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-hover:text-emerald-500 transition-colors">
-                                <MapPin size={18} />
+                        <div className="flex gap-2">
+                            <div className="relative flex-1">
+                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                                    <MapPin size={18} />
+                                </div>
+                                <input 
+                                    type="text" 
+                                    value={formData.location}
+                                    onChange={(e) => handleLocationInputChange(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            handleLocationSearch();
+                                        }
+                                    }}
+                                    placeholder="e.g. Wellington, Christchurch"
+                                    className="w-full input-base pl-10"
+                                />
                             </div>
-                            <input 
-                                type="text" 
-                                readOnly
-                                value={formData.location}
-                                className="w-full input-base pl-10 cursor-pointer hover:border-emerald-300 transition-colors"
-                            />
+                            <button
+                                type="button"
+                                onClick={handleLocationSearch}
+                                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold text-sm transition-colors flex items-center gap-2"
+                            >
+                                <MapPin size={16} />
+                                Find on Map
+                            </button>
                         </div>
                     </div>
 
@@ -361,6 +452,7 @@ const HomeVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
                 onClose={() => setIsMapOpen(false)}
                 onSelect={handleLocationSelect}
                 initialLocation={formData.coordinates}
+                searchAddress={searchTrigger}
             />
         </div>
     );
@@ -369,49 +461,93 @@ const HomeVisionForm = ({ initialValues, onChange, onSubstageSubmit, needsRecomp
 // --- STAGE 2: PARAMETERS (Market & Mortgage) ---
 const HomePlanningParametersForm = ({ initialValues, onChange, onSubstageSubmit }) => {
     const [formData, setFormData] = useState({
-        // Market Assumptions
-        expected_return_pct: initialValues.goal_details?.expected_return_pct || 6,
-        inflation_pct: initialValues.goal_details?.inflation_pct || 2.5,
-        property_appreciation_pct: initialValues.goal_details?.property_appreciation_pct || 3.5,
-        risk_attitude: initialValues.goal_details?.risk_attitude || 'balanced',
+        // Market Assumptions - 优先从AI返回的ai_decision读取，否则从goal_details，最后才用默认值
+        expected_return_pct: initialValues.ai_decision?.expected_return_pct ?? initialValues.goal_details?.expected_return_pct ?? 6,
+        inflation_pct: initialValues.ai_decision?.inflation_pct ?? initialValues.goal_details?.inflation_pct ?? 2.5,
+        property_appreciation_pct: initialValues.ai_decision?.property_appreciation_pct ?? initialValues.goal_details?.property_appreciation_pct ?? 3.5,
+        risk_attitude: initialValues.ai_decision?.risk_attitude ?? initialValues.goal_details?.risk_attitude ?? 'balanced',
         
-        // Mortgage Specifics
-        mortgage_rate_pct: initialValues.goal_details?.mortgage_rate_pct || 6.5,
-        stress_test_rate_pct: initialValues.goal_details?.stress_test_rate_pct || 8.5, // Usually +2% buffer
-        loan_term_years: initialValues.goal_details?.loan_term_years || 30
+        // Mortgage Specifics - 优先从AI返回的ai_decision读取
+        mortgage_rate_pct: initialValues.ai_decision?.mortgage_rate_pct ?? initialValues.goal_details?.mortgage_rate_pct ?? 6.5,
+        stress_test_rate_pct: initialValues.ai_decision?.stress_test_rate_pct ?? initialValues.goal_details?.stress_test_rate_pct ?? 8.5, // Usually +2% buffer
+        loan_term_years: initialValues.ai_decision?.loan_term_years ?? initialValues.goal_details?.loan_term_years ?? 30
     });
 
-    // Sync with initialValues from parent
-    useEffect(() => {
-        if (initialValues.goal_details) {
-            setFormData(prev => {
-                const newVal = {
-                    expected_return_pct: initialValues.goal_details.expected_return_pct ?? prev.expected_return_pct,
-                    inflation_pct: initialValues.goal_details.inflation_pct ?? prev.inflation_pct,
-                    property_appreciation_pct: initialValues.goal_details.property_appreciation_pct ?? prev.property_appreciation_pct,
-                    risk_attitude: initialValues.goal_details.risk_attitude ?? prev.risk_attitude,
-                    mortgage_rate_pct: initialValues.goal_details.mortgage_rate_pct ?? prev.mortgage_rate_pct,
-                    stress_test_rate_pct: initialValues.goal_details.stress_test_rate_pct ?? prev.stress_test_rate_pct,
-                    loan_term_years: initialValues.goal_details.loan_term_years ?? prev.loan_term_years
-                };
+    // Track the last synced data to prevent infinite loops
+    const lastSyncedRef = React.useRef(null);
+    const isInternalUpdateRef = React.useRef(false);
 
-                // Avoid update if values are identical
-                if (
-                    newVal.expected_return_pct === prev.expected_return_pct &&
-                    newVal.inflation_pct === prev.inflation_pct &&
-                    newVal.property_appreciation_pct === prev.property_appreciation_pct &&
-                    newVal.risk_attitude === prev.risk_attitude &&
-                    newVal.mortgage_rate_pct === prev.mortgage_rate_pct &&
-                    newVal.stress_test_rate_pct === prev.stress_test_rate_pct &&
-                    newVal.loan_term_years === prev.loan_term_years
-                ) {
-                    return prev;
-                }
-                
-                return newVal;
-            });
+    // Sync with initialValues from parent (AI or goal_details)
+    useEffect(() => {
+        // Skip if this is triggered by our own onChange call
+        if (isInternalUpdateRef.current) {
+            isInternalUpdateRef.current = false;
+            return;
         }
-    }, [initialValues]);
+
+        // 优先从AI的ai_decision读取，否则从goal_details读取
+        const aiDecision = initialValues.ai_decision || {};
+        const goalDetails = initialValues.goal_details || {};
+        
+        // Create a stable key from incoming data (从两个源合并)
+        const incomingKey = JSON.stringify({
+            expected_return_pct: aiDecision.expected_return_pct ?? goalDetails.expected_return_pct,
+            inflation_pct: aiDecision.inflation_pct ?? goalDetails.inflation_pct,
+            property_appreciation_pct: aiDecision.property_appreciation_pct ?? goalDetails.property_appreciation_pct,
+            risk_attitude: aiDecision.risk_attitude ?? goalDetails.risk_attitude,
+            mortgage_rate_pct: aiDecision.mortgage_rate_pct ?? goalDetails.mortgage_rate_pct,
+            stress_test_rate_pct: aiDecision.stress_test_rate_pct ?? goalDetails.stress_test_rate_pct,
+            loan_term_years: aiDecision.loan_term_years ?? goalDetails.loan_term_years
+        });
+
+        // Skip if data hasn't changed
+        if (incomingKey === lastSyncedRef.current) {
+            return;
+        }
+        lastSyncedRef.current = incomingKey;
+
+        setFormData(prev => {
+            const newVal = {
+                expected_return_pct: aiDecision.expected_return_pct ?? goalDetails.expected_return_pct ?? prev.expected_return_pct,
+                inflation_pct: aiDecision.inflation_pct ?? goalDetails.inflation_pct ?? prev.inflation_pct,
+                property_appreciation_pct: aiDecision.property_appreciation_pct ?? goalDetails.property_appreciation_pct ?? prev.property_appreciation_pct,
+                risk_attitude: aiDecision.risk_attitude ?? goalDetails.risk_attitude ?? prev.risk_attitude,
+                mortgage_rate_pct: aiDecision.mortgage_rate_pct ?? goalDetails.mortgage_rate_pct ?? prev.mortgage_rate_pct,
+                stress_test_rate_pct: aiDecision.stress_test_rate_pct ?? goalDetails.stress_test_rate_pct ?? prev.stress_test_rate_pct,
+                loan_term_years: aiDecision.loan_term_years ?? goalDetails.loan_term_years ?? prev.loan_term_years
+            };
+
+            // Avoid update if values are identical
+            if (
+                newVal.expected_return_pct === prev.expected_return_pct &&
+                newVal.inflation_pct === prev.inflation_pct &&
+                newVal.property_appreciation_pct === prev.property_appreciation_pct &&
+                newVal.risk_attitude === prev.risk_attitude &&
+                newVal.mortgage_rate_pct === prev.mortgage_rate_pct &&
+                newVal.stress_test_rate_pct === prev.stress_test_rate_pct &&
+                newVal.loan_term_years === prev.loan_term_years
+            ) {
+                return prev;
+            }
+            
+            return newVal;
+        });
+    }, [
+        initialValues.ai_decision?.expected_return_pct, 
+        initialValues.ai_decision?.inflation_pct, 
+        initialValues.ai_decision?.property_appreciation_pct, 
+        initialValues.ai_decision?.risk_attitude, 
+        initialValues.ai_decision?.mortgage_rate_pct, 
+        initialValues.ai_decision?.stress_test_rate_pct, 
+        initialValues.ai_decision?.loan_term_years,
+        initialValues.goal_details?.expected_return_pct, 
+        initialValues.goal_details?.inflation_pct, 
+        initialValues.goal_details?.property_appreciation_pct, 
+        initialValues.goal_details?.risk_attitude, 
+        initialValues.goal_details?.mortgage_rate_pct, 
+        initialValues.goal_details?.stress_test_rate_pct, 
+        initialValues.goal_details?.loan_term_years
+    ]);
 
     // 自动联动：当贷款利率变化时，压力测试利率自动跟随（+2%）
     useEffect(() => {
@@ -425,15 +561,25 @@ const HomePlanningParametersForm = ({ initialValues, onChange, onSubstageSubmit 
         });
     }, [formData.mortgage_rate_pct]);
 
-    // Propagate changes to parent immediately
+    // Propagate changes to parent immediately (but only propagate formData, not merge with initialValues)
+    const lastPropagatedRef = React.useRef(null);
     useEffect(() => {
+        // Create a stable key from current formData
+        const currentKey = JSON.stringify(formData);
+        
+        // Skip if we've already propagated this exact data
+        if (currentKey === lastPropagatedRef.current) {
+            return;
+        }
+        lastPropagatedRef.current = currentKey;
+
+        // Mark that this is an internal update
+        isInternalUpdateRef.current = true;
+
         onChange?.({
-            goal_details: {
-                ...initialValues.goal_details,
-                ...formData
-            }
+            goal_details: formData
         });
-    }, [formData, onChange]);
+    }, [formData.expected_return_pct, formData.inflation_pct, formData.property_appreciation_pct, formData.risk_attitude, formData.mortgage_rate_pct, formData.stress_test_rate_pct, formData.loan_term_years, onChange]);
 
     const handleSubmit = () => {
         onSubstageSubmit(formData);

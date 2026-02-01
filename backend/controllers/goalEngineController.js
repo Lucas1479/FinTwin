@@ -146,11 +146,23 @@ const sanitizeProductSelection = (aiDecision, toolCalls = []) => {
         }
     });
 
+    console.log(`[sanitizeProductSelection] Allowed product IDs: ${allowedIds.size} total`);
+
     if (allowedIds.size === 0) return aiDecision;
 
     const sanitizedOptions = (aiDecision.portfolio_options || [])
         .map((opt) => {
-            const products = (opt?.products || []).filter((p) => allowedIds.has(String(p.product_id)));
+            const originalCount = (opt?.products || []).length;
+            const products = (opt?.products || []).filter((p) => {
+                const isAllowed = allowedIds.has(String(p.product_id));
+                if (!isAllowed) {
+                    console.log(`[sanitizeProductSelection] ❌ Filtered out: ${p.product_id} (${p.name}) from ${opt.option_id}`);
+                }
+                return isAllowed;
+            });
+            if (products.length < originalCount) {
+                console.log(`[sanitizeProductSelection] ${opt.option_id}: ${originalCount} → ${products.length} products after filtering`);
+            }
             if (products.length < 2) return null;
             return { ...opt, products };
         })
@@ -211,15 +223,29 @@ const buildAskPrompt = () => `
 You are the "FinTwin Copilot".
 
 Task:
-- Answer the user's question in English, clearly and concisely.
+- Answer the user's question DIRECTLY in the 'rationale' field. This is your main response that the user will see.
 - Do NOT propose goal parameters or fill any forms.
-- Do NOT assume you have chat history. If the user asks about prior messages you cannot see, say you do not have access.
-- If external_knowledge is provided, ground factual statements in it and include references.
+
+CRITICAL - Field Usage:
+- 'rationale': Your DIRECT ANSWER to the user's question (main content). Use Markdown. This is what the user sees.
+  Example: "To qualify for NZ Super, you must: 1) Be 65 or older, 2) Be a NZ citizen or permanent resident, 3) Have lived in NZ for at least 10 years since age 20..."
+- 'thought_process': Internal reasoning (optional, brief)
+- 'references': Source citations from external_knowledge (if available)
+- 'rag_summary': Optional brief summary of what external sources covered (NOT quality评价, NOT meta-commentary)
+
+DO NOT:
+- Provide meta-commentary about the external knowledge (e.g., "The external knowledge clearly outlines..." ❌)
+- Evaluate RAG quality in the rationale (e.g., "This information is sourced from reliable..." ❌)
+
+DO:
+- Answer the question directly as if speaking to the user
+- Use Markdown formatting for clarity (bold, bullets, tables)
+- Include specific facts, numbers, and criteria from external knowledge
+
 
 Output requirements:
 - Return JSON only.
 - The JSON MUST follow the "responseSchema" in context.responseSchema.
-- Focus only on thought_process, rationale, references, and rag_summary.
 `.trim();
 
 const buildSummaryPrompt = () => `
@@ -518,6 +544,18 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
   if (stage === GOAL_ENGINE_STAGES.DEFINITION && currentSubstage === 'gap_analysis') {
       const userId = req.user._id;
       
+      // Clear any stale asset fields from goalContext to avoid confusion
+      // AI should ONLY use real_financial_snapshot, not any legacy fields
+      delete enrichedContext.liquid_assets;
+      delete enrichedContext.investments;
+      delete enrichedContext.debts;
+      delete enrichedContext.current_super_balance;
+      delete enrichedContext.monthly_income;
+      delete enrichedContext.net_position;
+      delete enrichedContext.reference_gap;
+      delete enrichedContext.coverage_ratio;
+      delete enrichedContext.target_amount;
+      
       // 🔒 Privacy Check: Skip data enrichment if user disabled AI sharing
       if (!finalAISharing) {
           enrichedContext.real_financial_snapshot = {
@@ -539,15 +577,17 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
               CashFlow.find({ user_id: userId }).lean()
           ]);
           
-          // Filter AVAILABLE assets using allocated_to_goal_id field
+          // Filter AVAILABLE assets using asset_details.linked_goal_id field
           // Assets are available if: (1) unallocated OR (2) allocated to current goal (re-editing case)
           const currentGoalId = goalContext?._id || goalContext?.goal_id;
           const availableAssets = assets.filter(a => {
+              const linkedGoalId = a.asset_details?.linked_goal_id;
+              
               // Unallocated assets are available
-              if (!a.allocated_to_goal_id) return true;
+              if (!linkedGoalId) return true;
               
               // Assets allocated to current goal (when re-editing) are available
-              if (currentGoalId && a.allocated_to_goal_id.toString() === currentGoalId.toString()) {
+              if (currentGoalId && linkedGoalId.toString() === currentGoalId.toString()) {
                   return true;
               }
               
@@ -621,7 +661,7 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
               kiwisaver_detail: kiwiSaverAssets.map(a => ({
                   name: a.name,
                   value: a.value,
-                  allocated_to: a.allocated_to_goal_id ? a.allocated_to_goal_id.toString() : 'unallocated'
+                  allocated_to: a.asset_details?.linked_goal_id ? a.asset_details.linked_goal_id.toString() : 'unallocated'
               })),
               liquid_detail: availableAssets.filter(a => 
                   a.record_type === 'Asset' && a.is_liquid
@@ -629,7 +669,7 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
                   name: a.name,
                   value: a.value,
                   category: a.category,
-                  allocated_to: a.allocated_to_goal_id ? a.allocated_to_goal_id.toString() : 'unallocated'
+                  allocated_to: a.asset_details?.linked_goal_id ? a.asset_details.linked_goal_id.toString() : 'unallocated'
               })),
               investments_detail: availableAssets.filter(a => 
                   a.record_type === 'Asset' && 
@@ -640,7 +680,7 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
                   name: a.name,
                   value: a.value,
                   category: a.category,
-                  allocated_to: a.allocated_to_goal_id ? a.allocated_to_goal_id.toString() : 'unallocated'
+                  allocated_to: a.asset_details?.linked_goal_id ? a.asset_details.linked_goal_id.toString() : 'unallocated'
               }))
           });
       } catch (err) {
@@ -742,22 +782,34 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
 
       // 🔒 Privacy Check: Strategy needs detailed financial data
       if (!finalAISharing) {
-          // Minimal data mode: Only use user's manually selected risk attitude
+          // === 隐私模式：信任前端传递的财务数据（单一真相源原则） ===
+          // 财务数据来自用户自己的 Wealth Centre，不是敏感信息
+          // 只隐藏后端数据库中的个人身份信息（年龄、收入来源等）
+          const frontendFinancials = goalContext?.simulation_data?.financials;
+          const hasFrontendFinancials = 
+              frontendFinancials?.calculation_source === 'frontend_real_time' &&
+              typeof frontendFinancials?.monthly_surplus_total === 'number';
+
+          if (!hasFrontendFinancials) {
+              console.log('[Privacy] ⚠️ Frontend financials not available, using minimal mode');
+          }
+
           enrichedContext.simulation_data = {
               ...(goalContext?.simulation_data || {}),
               user_profile: {
-                  age: null,
-                  income_pa: null,
-                  monthly_surplus: null,
+                  age: null,  // 隐藏年龄
+                  income_pa: null,  // 隐藏年收入
+                  monthly_surplus: hasFrontendFinancials ? frontendFinancials.monthly_surplus_total : null,
                   risk_profile: {
                       attitude: goalContext?.goal_details?.risk_attitude || 'balanced',
-                      notes: 'Privacy mode: Using user-selected risk attitude only'
+                      notes: 'Privacy mode: Using user-selected risk attitude'
                   },
                   data_source: 'user_privacy_disabled'
               },
-              financials: {
+              // ✅ 关键修复：保留前端传递的完整 financials 对象
+              financials: hasFrontendFinancials ? frontendFinancials : {
                   calculation_source: 'privacy_minimal',
-                  note: 'Detailed financial data hidden. Enable AI data sharing in Settings > Privacy for personalized strategy.'
+                  note: 'Frontend financial data not available.'
               },
               target_exposure: {
                   growth: goalContext?.goal_details?.risk_attitude === 'growth' ? 75 : 
@@ -767,7 +819,7 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
                   liquidity: 5
               }
           };
-          console.log('[Privacy] 🔒 Strategy Stage: Using minimal data mode (privacy protection active)');
+          console.log('[Privacy] 🔒 Strategy Stage: Privacy mode active, frontend financials:', hasFrontendFinancials ? 'TRUSTED' : 'MISSING');
       } else {
           // Full data mode: Original logic
       // === 前端主导：优先使用前端传递的 financials ===
@@ -782,7 +834,6 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
 
       if (hasFrontendFinancials) {
           // 信任前端计算
-          console.log('[Strategy] ✅ Using frontend-calculated financials:', frontendFinancials);
           financials = frontendFinancials;
           
           // 从 DB 获取 liquid_capital（前端可能没有这个数据）
@@ -793,7 +844,6 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
           financials.liquid_capital = liquidCapital;
       } else {
           // Fallback：后端重新计算（兼容性保障）
-          console.log('[Strategy] ⚠️ Frontend financials missing/invalid, calculating from DB');
           
           const normalizeFrequency = (frequency) => {
               if (!frequency) return null;
@@ -1126,18 +1176,105 @@ export const generateGoalDecision = asyncHandler(async (req, res) => {
           );
 
           if (result?.json?.ai_decision) {
-              // Enforce local portfolio optimization: AI should not construct portfolios.
+              // Verify AI called the tool with correct parameters
+              const aiToolCall = result.toolCalls?.find(tc => tc.name === 'build_optimized_portfolios');
               const exposure = resolveTargetExposure(enrichedContext);
-              const localPortfolios = await productTools.buildOptimizedPortfolios({
-                  target_growth_pct: exposure.growth,
-                  target_defensive_pct: exposure.defensive,
-                  target_liquidity_pct: exposure.liquidity,
-                  max_fees: 2,
-                  is_retirement_goal: enrichedContext?.category === 'retirement'
-              });
-              if (!localPortfolios?.error && Array.isArray(localPortfolios?.portfolio_options)) {
-                  result.json.ai_decision.portfolio_options = localPortfolios.portfolio_options;
+              
+              // 确定期望的参数
+              const isRetirement = enrichedContext?.category === 'retirement';
+              const isHome = enrichedContext?.category === 'home';
+              const monthlyIncome = enrichedContext?.simulation_data?.financials?.monthly_income || 0;
+              const hasEmploymentIncome = monthlyIncome > 0;
+              
+              // 检查AI是否使用了正确的参数
+              const aiUsedCorrectParams = aiToolCall && 
+                  aiToolCall.args.is_retirement_goal === isRetirement &&
+                  aiToolCall.args.is_home_goal === isHome &&
+                  aiToolCall.args.has_employment_income === hasEmploymentIncome;
+              
+              if (!aiUsedCorrectParams) {
+                  console.log(`[Goal Engine] ⚠️ AI tool call parameters incorrect or missing!`);
+                  console.log(`[Goal Engine]   Expected: retirement=${isRetirement}, home=${isHome}, employment=${hasEmploymentIncome}`);
+                  console.log(`[Goal Engine]   AI used: ${JSON.stringify(aiToolCall?.args || 'no tool call')}`);
+                  console.log(`[Goal Engine]   → Falling back to local call with correct parameters...`);
+                  
+                  // Fallback: 使用正确参数重新调用
+                  const localPortfolios = await productTools.buildOptimizedPortfolios({
+                      target_growth_pct: exposure.growth,
+                      target_defensive_pct: exposure.defensive,
+                      target_liquidity_pct: exposure.liquidity,
+                      max_fees: 2,
+                      is_retirement_goal: isRetirement,
+                      is_home_goal: isHome,
+                      has_employment_income: hasEmploymentIncome
+                  });
+                  
+                  if (!localPortfolios?.error && Array.isArray(localPortfolios?.portfolio_options)) {
+                      console.log(`[Goal Engine]   → Fallback succeeded, re-generating AI recommendation...`);
+                      
+                      // 重新生成AI推荐
+                      const regenPrompt = `${prompt}
+
+CRITICAL: The portfolio search has been completed with the correct parameters. Below are the FINAL portfolio options that were successfully built:
+
+${JSON.stringify(localPortfolios, null, 2)}
+
+Your task: Based on these portfolios, write your recommendation to the user.
+
+IMPORTANT:
+1. ONLY reference portfolios that exist in the results above
+2. DO NOT recommend portfolios that were not built (e.g., if "balanced" is missing, don't recommend it)
+3. Explain which portfolio best suits this user's situation
+4. Highlight key trade-offs between available options
+
+Output the COMPLETE ai_decision object with thought_process, rationale, references, and portfolio_options.`;
+
+                      const regenContext = {
+                          ...context,
+                          strategy_summary: {
+                              ...context.strategy_summary,
+                              final_portfolios: localPortfolios.portfolio_options
+                          }
+                      };
+                      
+                      const regenResult = await llmService.generate(regenPrompt, regenContext);
+                      
+                      if (regenResult?.json?.ai_decision) {
+                          console.log(`[Goal Engine] ✅ Fallback complete with corrected recommendation`);
+                          result.json.ai_decision = regenResult.json.ai_decision;
+                      }
+                      
+                      // 确保使用正确的组合结果
+                      result.json.ai_decision.portfolio_options = localPortfolios.portfolio_options;
+                      
+                      // Update toolCalls
+                      if (!result.toolCalls) {
+                          result.toolCalls = [];
+                      }
+                      const portfolioToolIndex = result.toolCalls.findIndex(tc => tc.name === 'build_optimized_portfolios');
+                      const updatedToolCall = {
+                          name: 'build_optimized_portfolios',
+                          args: {
+                              target_growth_pct: exposure.growth,
+                              target_defensive_pct: exposure.defensive,
+                              target_liquidity_pct: exposure.liquidity,
+                              max_fees: 2,
+                              is_retirement_goal: isRetirement,
+                              is_home_goal: isHome,
+                              has_employment_income: hasEmploymentIncome
+                          },
+                          result: localPortfolios
+                      };
+                      if (portfolioToolIndex >= 0) {
+                          result.toolCalls[portfolioToolIndex] = updatedToolCall;
+                      } else {
+                          result.toolCalls.push(updatedToolCall);
+                      }
+                  }
+              } else {
+                  console.log(`[Goal Engine] ✅ AI used correct parameters - using AI's portfolio results directly`);
               }
+              
               result.json.ai_decision = sanitizeProductSelection(result.json.ai_decision, result.toolCalls || []);
           }
           

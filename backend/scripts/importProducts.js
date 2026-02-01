@@ -190,7 +190,48 @@ async function importProducts() {
   const processedProducts = products.map(p => {
     // Basic allocation calculation
     let allocation = p.allocation ? { ...p.allocation } : {};
-    const metrics = normalizeReturns(p.metrics);
+    
+    // Normalize metrics structure: handle both Python script format and original format
+    let metrics;
+    if (p.metrics) {
+      metrics = normalizeReturns(p.metrics);
+    } else if (p.returns || p.fees !== undefined || p.riskScore) {
+      // Python script format: convert to metrics format
+      const riskScore = p.riskScore ?? p.riskLevel ?? 4;
+      const feesTotal = typeof p.fees === 'number' ? p.fees : (p.fees?.total ?? 1.0);
+      
+      metrics = {
+        riskScore: parseInt(riskScore) || 4,
+        returns: {
+          y1: p.returns?.['1y'] ?? p.returns?.y1,
+          y5: p.returns?.['5y'] ?? p.returns?.y5,
+          annualized5yr: p.returns?.['5y'] ?? p.returns?.annualized5yr,
+        },
+        fees: {
+          total: feesTotal,
+          performance: 0,
+          admin: 0
+        }
+      };
+      metrics = normalizeReturns(metrics);
+    } else {
+      metrics = {
+        riskScore: 4,
+        fees: { total: 1.0, performance: 0, admin: 0 },
+        returns: {}
+      };
+    }
+
+    // Derive strategy from riskLevel for KiwiSaver products if not present
+    let strategy = p.strategy;
+    if (!strategy && p.riskLevel) {
+      const riskNum = parseInt(p.riskLevel) || parseInt(p.riskScore) || 4;
+      if (riskNum <= 2) strategy = 'Conservative';
+      else if (riskNum === 3) strategy = 'Balanced';
+      else if (riskNum === 4) strategy = 'Balanced';
+      else if (riskNum >= 5) strategy = 'Growth';
+    }
+    if (!strategy) strategy = 'Balanced'; // Default fallback
 
     // Special handling for Term Deposits: ensure they are 100% cash if not specified
     if (p.category === 'TermDeposit') {
@@ -205,7 +246,9 @@ async function importProducts() {
       allocation = normalizeAllocation(allocation);
       return {
         ...p,
+        strategy,
         metrics,
+        isActive: p.isActive !== false, // Default to true
         allocation: {
           ...allocation,
           growth: (allocation.equities || 0) + (allocation.property || 0) + (allocation.other || 0),
@@ -216,7 +259,9 @@ async function importProducts() {
     }
     return {
       ...p,
-      metrics
+      strategy,
+      metrics,
+      isActive: p.isActive !== false // Default to true
     };
   });
 

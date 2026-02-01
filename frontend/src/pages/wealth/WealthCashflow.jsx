@@ -168,17 +168,21 @@ const FlowItem = ({ item, colorScheme, onEdit, onDelete, displayAmount, frequenc
 };
 
 // ============ SUB-COMPONENT: EMPTY STATE ============
-const EmptyState = ({ icon: Icon, title, actionLabel, onAction, colorClass = "text-slate-300" }) => (
-    <div className="p-10 text-center flex flex-col items-center justify-center min-h-[200px]">
-        <div className={`w-14 h-14 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100`}>
-            <Icon size={24} className={colorClass} />
+const EmptyState = ({ icon: Icon, title, actionLabel, onAction, colorClass = "text-indigo-600" }) => (
+    <div className="p-10 text-center flex flex-col items-center justify-center min-h-[200px] group/empty">
+        <div className={`w-14 h-14 bg-indigo-50/50 rounded-2xl flex items-center justify-center mb-4 group-hover/empty:scale-110 group-hover/empty:rotate-3 transition-all duration-500`}>
+            <Plus size={20} className={colorClass} strokeWidth={3} />
         </div>
-        <p className="text-sm font-bold text-slate-400 mb-1">{title}</p>
+        <h4 className="text-sm font-black text-slate-900 mb-1">{title}</h4>
+        <p className="text-[11px] font-bold text-slate-400 max-w-[200px] mx-auto mb-5 leading-relaxed">
+          Track your flows to get a clear picture of your financial health.
+        </p>
         <button 
             onClick={onAction} 
-            className="text-xs font-bold text-indigo-600 hover:text-indigo-700 hover:underline mt-2 transition-all"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-wider hover:border-indigo-200 hover:text-indigo-600 hover:bg-indigo-50/30 transition-all duration-300 shadow-sm hover:shadow-indigo-100 transform hover:-translate-y-0.5"
         >
-            {actionLabel}
+            <Plus size={12} strokeWidth={3} />
+            <span>{actionLabel}</span>
         </button>
     </div>
 );
@@ -489,11 +493,11 @@ const WealthCashflow = () => {
           <div className={`${CARD_BASE} overflow-hidden min-h-[240px]`}>
             {incomes.length === 0 ? (
               <EmptyState 
-                icon={ArrowUpCircle} 
-                title="No income streams yet" 
-                actionLabel="+ Add your first income" 
+                icon={Plus} 
+                title="No Income Streams" 
+                actionLabel="Add Income" 
                 onAction={() => handleAdd('Income')}
-                colorClass="text-emerald-300" 
+                colorClass="text-indigo-600" 
               />
             ) : incomes.map((item) => (
               <FlowItem 
@@ -534,11 +538,11 @@ const WealthCashflow = () => {
                </div>
               {investments.length === 0 ? (
                 <EmptyState 
-                  icon={TrendingUp} 
-                  title="No active investments" 
-                  actionLabel="+ Setup your first goal" 
+                  icon={Plus} 
+                  title="No Investments" 
+                  actionLabel="Add Investment" 
                   onAction={() => handleAdd('Investment')} 
-                  colorClass="text-indigo-300"
+                  colorClass="text-indigo-600"
                 />
               ) : investments.map((item) => (
                 <FlowItem 
@@ -574,15 +578,15 @@ const WealthCashflow = () => {
             </div>
 
             <div className={`${CARD_BASE} overflow-hidden min-h-[240px]`}>
-              {expenses.length === 0 ? (
-                <EmptyState 
-                  icon={ArrowDownCircle} 
-                  title="No expenses yet" 
-                  actionLabel="+ Add your first expense" 
-                  onAction={() => handleAdd('Expense')} 
-                  colorClass="text-rose-300"
-                />
-              ) : expenses.map((item) => (
+            {expenses.length === 0 ? (
+              <EmptyState 
+                icon={Plus} 
+                title="No Expenses" 
+                actionLabel="Add Expense" 
+                onAction={() => handleAdd('Expense')} 
+                colorClass="text-indigo-600"
+              />
+            ) : expenses.map((item) => (
                 <FlowItem 
                   key={item._id} 
                   item={item} 
@@ -624,11 +628,11 @@ const WealthCashflow = () => {
 
                {subscriptions.length === 0 ? (
                   <EmptyState 
-                    icon={Repeat} 
-                    title="No subscriptions tracked" 
-                    actionLabel="+ Add subscription" 
+                    icon={Plus} 
+                    title="No Subscriptions" 
+                    actionLabel="Add Subscription" 
                     onAction={() => handleAdd('Subscription')} 
-                    colorClass="text-indigo-300"
+                    colorClass="text-indigo-600"
                   />
                ) : subscriptions.map((item) => (
                   <FlowItem 

@@ -25,6 +25,16 @@ const HelpChatBox = () => {
   const inputRef = useRef(null);
   const chatBoxRef = useRef(null);
 
+  // Suggested questions for first-time users
+  const suggestedQuestions = [
+    "What are the reasonable grounds for financial advice?",
+    "What is the current OCR interest rate in New Zealand?",
+    "What is the current state and future trend of New Zealand housing prices?",
+    "What is KiwiSaver and how does it work?",
+    "How do I calculate my retirement savings needs?",
+    "What is the difference between growth and defensive investments?"
+  ];
+
   // 🔒 Privacy Control State
   const [userPrivacySettings, setUserPrivacySettings] = useState({ shareWithAI: true });
   const [allowAIDataSharing, setAllowAIDataSharing] = useState(true);
@@ -358,6 +368,32 @@ const HelpChatBox = () => {
              </div>
           </div>
         )}
+
+        {/* Suggested Questions - Show when only initial message exists */}
+        {messages.length === 1 && !isTyping && (
+          <div className="mt-4 space-y-3">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              Popular Questions
+            </p>
+            <div className="grid grid-cols-1 gap-2">
+              {suggestedQuestions.map((question, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    handleSendMessage(question);
+                  }}
+                  className="text-left px-4 py-2.5 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-lg text-xs text-slate-700 hover:text-indigo-700 transition-all duration-200 shadow-sm hover:shadow-md active:scale-[0.98] group"
+                >
+                  <div className="flex items-start gap-2">
+                    <Sparkles size={14} className="text-indigo-400 mt-0.5 shrink-0 group-hover:text-indigo-600 transition-colors" />
+                    <span className="font-medium">{question}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
