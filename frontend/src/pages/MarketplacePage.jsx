@@ -89,8 +89,9 @@ function processProducts(products, filters, profile) {
     let valA, valB;
     switch (sortField) {
       case "annual":
-        valA = a.returns?.["1y"] ?? -Infinity;
-        valB = b.returns?.["1y"] ?? -Infinity;
+        // Use same logic as ProductCard display: prefer 5y, fallback to 1y
+        valA = a.returns?.["5y"] ?? a.returns?.["1y"] ?? -Infinity;
+        valB = b.returns?.["5y"] ?? b.returns?.["1y"] ?? -Infinity;
         break;
       case "return5y":
         valA = a.returns?.["5y"] ?? -Infinity;
