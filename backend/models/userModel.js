@@ -100,6 +100,36 @@ const SecuritySchema = new mongoose.Schema({
   lastPasswordChange: { type: Date, default: Date.now },
 }, { _id: false });
 
+const SnapshotSettingsSchema = new mongoose.Schema({
+  enabled: { 
+    type: Boolean, 
+    default: true,
+    description: 'Enable automatic snapshot generation'
+  },
+  frequency: { 
+    type: String, 
+    enum: ['daily', 'weekly', 'monthly'], 
+    default: 'weekly',
+    description: 'Snapshot frequency'
+  },
+  auto_snapshot_day: { 
+    type: Number, 
+    default: 0,
+    description: 'For weekly: 0=Sunday, 1=Monday, etc. For monthly: 1-28 = day of month'
+  },
+  keep_history_months: { 
+    type: Number, 
+    default: 24,
+    min: 1,
+    max: 120,
+    description: 'How many months of history to retain'
+  },
+  last_snapshot_date: {
+    type: Date,
+    description: 'Timestamp of last snapshot taken'
+  }
+}, { _id: false });
+
 const UserSchema = mongoose.Schema(
   {
     name: {
@@ -145,6 +175,7 @@ const UserSchema = mongoose.Schema(
     settings: { type: UserSettingsSchema, default: () => ({}) },
     privacy: { type: PrivacySchema, default: () => ({}) },
     security: { type: SecuritySchema, default: () => ({}) },
+    snapshotSettings: { type: SnapshotSettingsSchema, default: () => ({}) },
 
     // 预留 Shadow Accounts 数据结构
     shadowAccounts: {

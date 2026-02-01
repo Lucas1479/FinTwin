@@ -16,6 +16,7 @@ import { getCashFlows } from '../services/cashFlowService';
 import { computeFinancialsFromCashFlows, extractOtherGoalsMonthly } from '../utils/financialCalculations';
 import { getUserProfile } from '../services/userService';
 import { getRequiredDataTypes, getDataTypeLabels, shouldShowPermissionCard } from '../constants/privacyDataTypes';
+import { extractField } from '../utils/streamHelpers';
 import {
     Send,
     ChevronRight,
@@ -34,8 +35,11 @@ import {
     ChevronDown,
     ChevronUp,
     ShieldCheck,
-    ShieldOff
+    ShieldOff,
+    HelpCircle,
+    X
 } from 'lucide-react';
+import OnboardingGuide from '../components/goals/OnboardingGuide';
 
 // Typewriter Effect Component - NOW SUPPORTS MARKDOWN
 const TypewriterMessage = ({ text, onComplete, role }) => {
@@ -368,7 +372,10 @@ const Copilot = ({
     setRequestedDataTypes,
     selectedAllowlist,
     setSelectedAllowlist,
-    onExecuteSubstageWithPermission // 🆕 Callback to execute substage after permission granted
+    onExecuteSubstageWithPermission,
+    quickStartPrompt,
+    isLoadingAI,
+    setIsLoadingAI
 }) => {
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -377,7 +384,6 @@ const Copilot = ({
     const [expandedRef, setExpandedRef] = useState(null);
     const [showSources, setShowSources] = useState(false);
     const [showJumpToLatest, setShowJumpToLatest] = useState(false);
-    // 🔒 Privacy states are now passed as props from parent (GoalEnginePage)
     
     const scrollRef = useRef(null);
     const textareaRef = useRef(null); 
@@ -393,7 +399,14 @@ const Copilot = ({
         } else {
             setShowJumpToLatest(true);
         }
-    }, [messages]); 
+    }, [messages]);
+
+    // Auto-trigger AI response when quick start prompt is set
+    useEffect(() => {
+        if (quickStartPrompt && !isLoading) {
+            handleSend(quickStartPrompt);
+        }
+    }, [quickStartPrompt]); 
 
     const handleChatScroll = () => {
         if (!scrollRef.current) return;
@@ -434,24 +447,21 @@ const Copilot = ({
             return;
         }
 
-        // 🆕 检查是否是自动substage请求
+        // Check if this is an auto-substage request
         if (pendingQuery.startsWith('auto_substage:')) {
             const nextSubId = pendingQuery.replace('auto_substage:', '');
             setPendingQuery(null);
             
-            // 用户授权了，现在执行substage（调用父组件的回调）
-            console.log('[Privacy] User authorized auto-substage:', nextSubId, 'with allowlist:', selectedAllowlist);
-            
-            // 调用父组件提供的执行函数
+            // User authorized - execute substage with permissions
             if (onExecuteSubstageWithPermission) {
                 onExecuteSubstageWithPermission(nextSubId, selectedAllowlist);
             }
             return;
         }
 
-        // 🔑 普通聊天消息的处理
+        // Handle normal chat message with permission
         const queryText = pendingQuery;
-        const oneTimePermission = granted; // true = Allow, false already handled above
+        const oneTimePermission = granted;
         setPendingQuery(null);
         
         setIsLoading(true);
@@ -459,8 +469,7 @@ const Copilot = ({
         // Calculate AI message index using functional update to get latest state
         let aiMsgIndex = 0;
         setMessages(prev => {
-            aiMsgIndex = prev.length; // AI message will be at this index after adding
-            console.log('[Permission] AI message will be at index:', aiMsgIndex, 'Current messages:', prev.length);
+            aiMsgIndex = prev.length;
             return [...prev, { 
                 role: 'assistant', 
                 text: '', 
@@ -472,47 +481,11 @@ const Copilot = ({
 
         try {
             let accumulatedRaw = '';
-            console.log('[Permission] Starting AI request for query:', queryText);
             
-            // Helper to extract field content from incomplete JSON stream
-            const extractField = (field, jsonStr) => {
-                const marker = `"${field}": "`;
-                const startIdx = jsonStr.indexOf(marker);
-                if (startIdx === -1) return '';
-                
-                const contentStart = startIdx + marker.length;
-                let contentEnd = jsonStr.length;
-                
-                // Track if we are inside an escaped sequence
-                let escaped = false;
-                for (let i = contentStart; i < jsonStr.length; i++) {
-                    if (escaped) {
-                        escaped = false;
-                        continue;
-                    }
-                    if (jsonStr[i] === '\\') {
-                        escaped = true;
-                        continue;
-                    }
-                    if (jsonStr[i] === '"') {
-                        contentEnd = i;
-                        break;
-                    }
-                }
-                
-                return jsonStr.slice(contentStart, contentEnd)
-                    .replace(/\\n/g, '\n')
-                    .replace(/\\"/g, '"')
-                    .replace(/\\r/g, '')
-                    .replace(/\\t/g, '\t');
-            };
-
             const askHistory = messages
                 .filter(m => m.mode === 'ask' && (m.role === 'user' || m.role === 'assistant') && m.text)
                 .slice(-8)
                 .map(m => ({ role: m.role, text: m.text }));
-
-            console.log('[Permission] Calling AI with aiMsgIndex:', aiMsgIndex);
 
             const finalData = await goalEngineService.generateDecisionStream({
                 stage: currentStageLabel,
@@ -520,8 +493,8 @@ const Copilot = ({
                 userInput: { text: queryText },
                 previousDecisions: [],
                 useRag,
-                allowAIDataSharing: oneTimePermission, // 🔑 Use one-time permission from card
-                dataAllowlist: selectedAllowlist, // 🆕 Send user-selected data types
+                allowAIDataSharing: oneTimePermission,
+                dataAllowlist: selectedAllowlist,
                 mode,
                 askHistory
             }, (chunk) => {
@@ -549,12 +522,9 @@ const Copilot = ({
                 });
             });
             
-            console.log('[Permission] ✅ Stream completed. finalData:', finalData);
-            
             if (finalData) {
                 // finalData is the json field from SSE (ai_decision + form_schema)
                 const aiDecision = finalData.ai_decision;
-                console.log('[Permission] AI Decision:', aiDecision?.rationale?.substring(0, 100));
                 
                 // --- FAULT TOLERANCE: Try to extract fields manually if aiDecision is missing ---
                 let fallbackDecision = {};
@@ -576,11 +546,8 @@ const Copilot = ({
 
                 const aiText = aiDecision?.rationale || extractField('rationale', accumulatedRaw) || "I've updated the plan based on your request.";
 
-                console.log('[Permission] Final update - aiMsgIndex:', aiMsgIndex, 'aiText length:', aiText?.length);
-
                 setMessages(prev => {
                     const newMessages = [...prev];
-                    console.log('[Permission] Message array has', newMessages.length, 'messages, updating index', aiMsgIndex);
                     if (newMessages[aiMsgIndex]) {
                         newMessages[aiMsgIndex] = {
                             ...newMessages[aiMsgIndex],
@@ -591,9 +558,8 @@ const Copilot = ({
                             references: aiDecision?.references,
                             rag_summary: aiDecision?.rag_summary
                         };
-                        console.log('[Permission] ✅ Message updated successfully');
                     } else {
-                        console.error('[Permission] ❌ ERROR: No message at index', aiMsgIndex, '! Array length:', newMessages.length);
+                        console.error('[Permission] ERROR: No message at index', aiMsgIndex, '! Array length:', newMessages.length);
                     }
                     return newMessages;
                 });
@@ -605,7 +571,7 @@ const Copilot = ({
                 }
             }
         } catch (err) {
-            console.error('[Permission] ❌ Error:', err);
+            console.error('[Permission] Error:', err);
             setMessages(prev => [...prev, { role: 'system', text: "Sorry, I'm having trouble connecting to the brain." }]);
         } finally {
             setIsLoading(false);
@@ -644,7 +610,12 @@ const Copilot = ({
         const textToSend = typeof overrideText === 'string' ? overrideText : inputText;
         if (!textToSend.trim()) return;
         
-        // 🆕 智能检测：判断当前请求是否需要隐私数据
+        // Set parent loading state if in definition stage
+        if (currentStageLabel === 'definition' && setIsLoadingAI) {
+            setIsLoadingAI(true);
+        }
+        
+        // Check if current request needs privacy data
         const requiredTypes = getRequiredDataTypes(
             currentStageLabel, 
             goalContext?.substage, 
@@ -658,18 +629,7 @@ const Copilot = ({
             allowAIDataSharing
         );
         
-        // 🐛 Debug日志
-        console.log('[Privacy Card] Debug:', {
-            stage: currentStageLabel,
-            substage: goalContext?.substage,
-            category: goalContext?.category,
-            currentPrivacy: allowAIDataSharing,
-            requiredTypes,
-            needsPermission,
-            mode
-        });
-        
-        // 🔒 只在需要敏感数据时显示权限卡片
+        // Only show permission card when sensitive data is needed
         if (needsPermission && mode !== 'ask') {
             // Show user message first
             const userMsg = { role: 'user', text: textToSend, mode };
@@ -704,39 +664,6 @@ const Copilot = ({
         try {
             let accumulatedRaw = '';
             
-            // Helper to extract field content from incomplete JSON stream
-            const extractField = (field, jsonStr) => {
-                const marker = `"${field}": "`;
-                const startIdx = jsonStr.indexOf(marker);
-                if (startIdx === -1) return '';
-                
-                const contentStart = startIdx + marker.length;
-                let contentEnd = jsonStr.length;
-                
-                // Track if we are inside an escaped sequence
-                let escaped = false;
-                for (let i = contentStart; i < jsonStr.length; i++) {
-                    if (escaped) {
-                        escaped = false;
-                        continue;
-                    }
-                    if (jsonStr[i] === '\\') {
-                        escaped = true;
-                        continue;
-                    }
-                    if (jsonStr[i] === '"') {
-                        contentEnd = i;
-                        break;
-                    }
-                }
-                
-                return jsonStr.slice(contentStart, contentEnd)
-                    .replace(/\\n/g, '\n')
-                    .replace(/\\"/g, '"')
-                    .replace(/\\r/g, '')
-                    .replace(/\\t/g, '\t');
-            };
-
             const askHistory = messages
                 .filter(m => m.mode === 'ask' && (m.role === 'user' || m.role === 'assistant') && m.text)
                 .slice(-8)
@@ -748,7 +675,7 @@ const Copilot = ({
                 userInput: { text: userMsg.text },
                 previousDecisions: [],
                 useRag,
-                allowAIDataSharing, // 🔒 Pass chatbox privacy toggle
+                allowAIDataSharing,
                 mode,
                 askHistory
             }, (chunk) => {
@@ -825,6 +752,13 @@ const Copilot = ({
             setMessages(prev => [...prev, { role: 'system', text: "Sorry, I'm having trouble connecting to the brain." }]);
         } finally {
             setIsLoading(false);
+            
+            // Reset parent loading state after a delay to ensure form is ready
+            if (currentStageLabel === 'definition' && setIsLoadingAI) {
+                setTimeout(() => {
+                    setIsLoadingAI(false);
+                }, 500);
+            }
         }
     };
 
@@ -1215,8 +1149,8 @@ const Copilot = ({
                 <div className="flex flex-wrap justify-end gap-2 mb-3">
                     {[
                         "I want a retirement plan that lets me travel overseas once a year.",
-                        "I want to save for my child's university education.",
-                        "What's a realistic goal for a first-home deposit?"
+                        "Who is eligible for NZ Super?",
+                        "I want to buy a big house on Waiheke Island within 5 years"
                     ].map((opt, idx) => (
                         <button
                             key={idx}
@@ -1333,29 +1267,34 @@ const GoalEnginePage = () => {
   const [goalContext, setGoalContext] = useState(buildFreshGoalContext);
   const [submitting, setSubmitting] = useState(false);
   const [messages, setMessages] = useState([]);
-  const [useRag, setUseRag] = useState(true); // Default to RAG enabled
+  const [useRag, setUseRag] = useState(true);
   const [chatMode, setChatMode] = useState('agent');
   
-  // 🔒 Privacy Control State
-  const [userPrivacySettings, setUserPrivacySettings] = useState({ shareWithAI: true }); // Global setting from profile
-  const [allowAIDataSharing, setAllowAIDataSharing] = useState(true); // Chatbox override (temporary)
+  // Onboarding state
+  const [showOnboarding, setShowOnboarding] = useState(true);
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
+  const [quickStartPrompt, setQuickStartPrompt] = useState(null);
   
-  // 🔒 Privacy Permission Card State
-  const [pendingQuery, setPendingQuery] = useState(null); // Store query waiting for permission
+  // Privacy control state
+  const [userPrivacySettings, setUserPrivacySettings] = useState({ shareWithAI: true });
+  const [allowAIDataSharing, setAllowAIDataSharing] = useState(true);
+  
+  // Privacy permission card state
+  const [pendingQuery, setPendingQuery] = useState(null);
   const [showPermissionCard, setShowPermissionCard] = useState(false);
-  const [requestedDataTypes, setRequestedDataTypes] = useState([]); // 🆕 Store what data this request needs
-  const [selectedAllowlist, setSelectedAllowlist] = useState([]); // 🆕 User's selection
+  const [requestedDataTypes, setRequestedDataTypes] = useState([]);
+  const [selectedAllowlist, setSelectedAllowlist] = useState([]);
   
-  // Resizable Sidebar State (Pixels instead of percentage for better precision)
+  // Resizable sidebar state
   const [leftWidth, setLeftWidth] = useState(window.innerWidth > 1440 ? 450 : 340); 
   const [isResizing, setIsResizing] = useState(false);
-  const [collapsed, setCollapsed] = useState('none'); // 'none' | 'left' | 'right'
+  const [collapsed, setCollapsed] = useState('none');
   
   const containerRef = useRef(null);
 
-  // NEW: Track loading state for stage transitions
+  // Track loading state for stage transitions
   const [isLoadingAI, setIsLoadingAI] = useState(false);
-  // NEW: Substage state machine with reversible data
+  // Substage state machine with reversible data
   const [substageState, setSubstageState] = useState(buildInitialSubstageState);
   const [substageData, setSubstageData] = useState({});
   const [stageSummary, setStageSummary] = useState({});
@@ -1367,18 +1306,16 @@ const GoalEnginePage = () => {
       definition: getSubstagesForCategory(goalContext.category)
   };
 
-  // 🔒 Fetch user privacy settings on mount
+  // Fetch user privacy settings on mount
   useEffect(() => {
     const fetchPrivacySettings = async () => {
       try {
         const profile = await getUserProfile();
-        const shareWithAI = profile?.privacy?.shareWithAI !== false; // Default to true
+        const shareWithAI = profile?.privacy?.shareWithAI !== false;
         setUserPrivacySettings({ shareWithAI });
-        setAllowAIDataSharing(shareWithAI); // Initialize chatbox toggle with global setting
-        console.log('[Privacy] Loaded user privacy settings:', { shareWithAI });
+        setAllowAIDataSharing(shareWithAI);
       } catch (error) {
         console.error('[Privacy] Failed to load privacy settings:', error);
-        // Fail open: default to enabled
         setUserPrivacySettings({ shareWithAI: true });
         setAllowAIDataSharing(true);
       }
@@ -1404,6 +1341,22 @@ const GoalEnginePage = () => {
         }
     }));
   }, [goalContext.category]);
+
+  // Auto-close onboarding when AI generates data or user starts chatting
+  useEffect(() => {
+    if (!showOnboarding) return;
+    
+    // Close when AI has generated goal data
+    if (goalContext.goal_name || goalContext.category) {
+      setTimeout(() => setShowOnboarding(false), 300);
+    }
+    
+    // Close when user sends first message
+    const hasUserMessage = messages.some(m => m.role === 'user');
+    if (hasUserMessage) {
+      setTimeout(() => setShowOnboarding(false), 500);
+    }
+  }, [showOnboarding, goalContext, messages]);
 
   const STAGES = [
       { id: 'definition', label: 'Definition', icon: Target },
@@ -1496,6 +1449,7 @@ const GoalEnginePage = () => {
       let detailsFound = false;
       const newDetails = {};
 
+      // Extract from root level
       detailFields.forEach(field => {
           if (normalized[field] !== undefined) {
               newDetails[field] = normalized[field];
@@ -1504,8 +1458,18 @@ const GoalEnginePage = () => {
           }
       });
 
-      // Also extract financial fields from ai_decision if present
+      // ✅ Also extract from nested goal_details if present
+      if (normalized.goal_details) {
+          Object.keys(normalized.goal_details).forEach(field => {
+              newDetails[field] = normalized.goal_details[field];
+              detailsFound = true;
+          });
+          delete normalized.goal_details;
+      }
+
+      // Also extract financial fields and assumption fields from ai_decision if present
       if (normalized.ai_decision) {
+          // Financial fields from gap_analysis
           const financialFields = ['liquid_assets', 'investments', 'debts', 'monthly_income', 'current_super_balance'];
           financialFields.forEach(field => {
               if (normalized.ai_decision[field] !== undefined) {
@@ -1513,7 +1477,33 @@ const GoalEnginePage = () => {
                   detailsFound = true;
               }
           });
+          
+          // Assumption fields from assumptions substage (need to be in goal_details for forms)
+          const assumptionFields = [
+              'expected_return_pct', 
+              'inflation_pct', 
+              'risk_attitude',
+              'cashflow_flexibility',
+              // Retirement assumptions
+              'retirement_age',
+              'life_expectancy',
+              'include_superannuation',
+              // Home assumptions
+              'mortgage_rate_pct',
+              'loan_term_years',
+              'property_appreciation_pct',
+              'stress_test_rate_pct'
+          ];
+          assumptionFields.forEach(field => {
+              if (normalized.ai_decision[field] !== undefined) {
+                  newDetails[field] = normalized.ai_decision[field];
+                  detailsFound = true;
+              }
+          });
       }
+
+      // ✅ Track which root-level fields are being updated (before Object.assign)
+      const updatedRootFields = Object.keys(normalized).filter(k => k !== 'ai_decision');
 
       setGoalContext(prev => {
           const nextState = { ...prev };
@@ -1538,6 +1528,33 @@ const GoalEnginePage = () => {
                   ...prev.goal_details,
                   ...newDetails
               };
+
+              // ✅ Clear stale AI values when user modifies goal_details
+              // This prevents old AI suggestions from overriding user changes
+              if (nextState.ai_decision && !isAiDecisionPayload) {
+                  const aiDecision = { ...nextState.ai_decision };
+                  Object.keys(newDetails).forEach(field => {
+                      if (aiDecision[field] !== undefined) {
+                          delete aiDecision[field];
+                      }
+                  });
+                  nextState.ai_decision = aiDecision;
+              }
+          }
+
+          // ✅ Also clear AI values when user modifies root-level fields (like target_amount)
+          if (nextState.ai_decision && !isAiDecisionPayload && updatedRootFields.length > 0) {
+              const aiDecision = { ...nextState.ai_decision };
+              let needsUpdate = false;
+              updatedRootFields.forEach(field => {
+                  if (aiDecision[field] !== undefined) {
+                      delete aiDecision[field];
+                      needsUpdate = true;
+                  }
+              });
+              if (needsUpdate) {
+                  nextState.ai_decision = aiDecision;
+              }
           }
           if (normalized.ai_decision?.strategy_recommendation) {
              nextState.ai_decision = {
@@ -1589,19 +1606,30 @@ const GoalEnginePage = () => {
       });
   };
 
-  // 🔑 Execute substage with user-granted permissions
+  // Execute substage with user-granted permissions
   const executeSubstageWithPermission = async (nextSubId, allowlist) => {
-      const stageId = 'definition'; // 目前只有definition stage有substage
+      const stageId = 'definition';
       const config = activeSubstages[stageId];
       const currentState = substageState[stageId];
       
+      // Update to next substage IMMEDIATELY so loading UI can display
+      const nextIdx = config.findIndex(s => s.id === nextSubId);
+      setSubstageState(prev => ({
+          ...prev,
+          [stageId]: {
+              ...prev[stageId],
+              currentIndex: nextIdx
+          }
+      }));
+      
+      // Set loading state AFTER updating index
       setIsLoadingAI(true);
       
-      // 🔑 使用函数式更新获取最新的消息索引，避免闭包问题
+      // Use functional update to get latest message index
       const nextLabel = config.find(s => s.id === nextSubId)?.label || nextSubId;
       let aiMsgIndex = 0;
       setMessages(prev => {
-          aiMsgIndex = prev.length; // 获取最新的消息数量作为新消息索引
+          aiMsgIndex = prev.length;
           return [...prev, { 
               role: 'assistant', 
               text: `Preparing ${nextLabel}...`,
@@ -1613,34 +1641,14 @@ const GoalEnginePage = () => {
       try {
           let accumulatedRaw = '';
           
-          const extractField = (field, jsonStr) => {
-              const marker = `"${field}": "`;
-              const startIdx = jsonStr.indexOf(marker);
-              if (startIdx === -1) return '';
-              
-              const contentStart = startIdx + marker.length;
-              let contentEnd = jsonStr.length;
-              
-              let escaped = false;
-              for (let i = contentStart; i < jsonStr.length; i++) {
-                  if (escaped) { escaped = false; continue; }
-                  if (jsonStr[i] === '\\') { escaped = true; continue; }
-                  if (jsonStr[i] === '"') { contentEnd = i; break; }
-              }
-              
-              return jsonStr.slice(contentStart, contentEnd)
-                  .replace(/\\n/g, '\n')
-                  .replace(/\\"/g, '"');
-          };
-
           const data = await goalEngineService.generateDecisionStream({
               stage: 'definition',
               goalContext: {
                   ...goalContext,
                   substage: nextSubId
               },
-              allowAIDataSharing: true, // 🔑 用户已授权
-              dataAllowlist: allowlist, // 🔑 用户选择的数据类型
+              allowAIDataSharing: true,
+              dataAllowlist: allowlist,
               userInput: { text: '' },
               substageData: substageData.definition || {},
               previousDecisions: [],
@@ -1666,17 +1674,7 @@ const GoalEnginePage = () => {
               });
           });
 
-          // 更新substage状态到下一个
-          const nextIdx = config.findIndex(s => s.id === nextSubId);
-          setSubstageState(prev => ({
-              ...prev,
-              [stageId]: {
-                  ...prev[stageId],
-                  currentIndex: nextIdx
-              }
-          }));
-
-          // 标记为已回答
+          // Mark as answered
           setMessages(prev => {
               const updated = [...prev];
               if (updated[aiMsgIndex]) {
@@ -1700,7 +1698,10 @@ const GoalEnginePage = () => {
               return updated;
           });
           
-          setIsLoadingAI(false);
+          // Delay resetting loading state to ensure user sees the transition animation
+          setTimeout(() => {
+              setIsLoadingAI(false);
+          }, 400);
       } catch (err) {
           console.error('[Substage Execution] Error:', err);
           setMessages(prev => {
@@ -1715,11 +1716,14 @@ const GoalEnginePage = () => {
               }
               return updated;
           });
-          setIsLoadingAI(false);
+          
+          setTimeout(() => {
+              setIsLoadingAI(false);
+          }, 400);
       }
   };
 
-  // 🆕 执行substage的核心逻辑（提取出来以便在权限授权后调用）
+  // Execute substage - core logic extracted for permission flow
   const handleSubstageSubmit = async (stageId, subId, payload) => {
       // 1. Persist context
       handleContextUpdate(payload);
@@ -1809,7 +1813,7 @@ const GoalEnginePage = () => {
             return;
         }
 
-        // 🆕 权限检查：自动执行substage前也要检查是否需要权限
+        // Check permissions before auto-executing substage
         const requiredTypes = getRequiredDataTypes(
             'definition', 
             nextSubId, 
@@ -1823,15 +1827,7 @@ const GoalEnginePage = () => {
             allowAIDataSharing
         );
         
-        console.log('[Privacy Card] Substage auto-execute:', {
-            nextSubId,
-            category: goalContext?.category,
-            currentPrivacy: allowAIDataSharing,
-            requiredTypes,
-            needsPermission
-        });
-        
-        // 🔒 如果需要权限，弹出卡片而不是直接执行
+        // If permission needed, show card instead of executing
         if (needsPermission) {
             // Add user confirmation message
             const confirmedLabel = config.find(s => s.id === subId)?.label || subId;
@@ -1840,12 +1836,12 @@ const GoalEnginePage = () => {
                 text: `✓ ${confirmedLabel} confirmed` 
             }]);
             
-            // 设置pending state，等待用户授权
-            setPendingQuery(`auto_substage:${nextSubId}`); // 特殊标记表示这是自动substage
+            // Set pending state and wait for user authorization
+            setPendingQuery(`auto_substage:${nextSubId}`);
             setRequestedDataTypes(requiredTypes);
-            setSelectedAllowlist(requiredTypes); // 默认全选
+            setSelectedAllowlist(requiredTypes);
             setShowPermissionCard(true);
-            return; // 等待用户响应
+            return;
         }
         
         // Add user confirmation message
@@ -1855,11 +1851,10 @@ const GoalEnginePage = () => {
             text: `✓ ${confirmedLabel} confirmed` 
         }]);
         
-        // 🔑 Privacy已启用或用户已授权，执行substage
-        // 如果privacy是开启的，使用默认allowlist；否则会在上面的权限检查中被拦截
+        // Privacy enabled or user authorized - execute substage
         const allowlist = allowAIDataSharing ? ['all'] : selectedAllowlist;
         await executeSubstageWithPermission(nextSubId, allowlist);
-        return; // 执行完成，退出
+        return;
     }
   };
 
@@ -1948,6 +1943,7 @@ const GoalEnginePage = () => {
           if (saved?.stageSummary) setStageSummary(saved.stageSummary);
           if (saved?.recalcFlags) setRecalcFlags(saved.recalcFlags);
           if (saved?.cardExpanded) setCardExpanded(saved.cardExpanded);
+          if (typeof saved?.showOnboarding === 'boolean') setShowOnboarding(saved.showOnboarding);
       } catch (err) {
           console.warn('Failed to restore local session:', err);
           setMessages([getGreeting(0)]);
@@ -1955,6 +1951,17 @@ const GoalEnginePage = () => {
           setIsHydrated(true);
       }
   }, []);
+
+  // ESC key to close onboarding modal
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && showOnboardingModal) {
+        setShowOnboardingModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [showOnboardingModal]);
 
   // Persist session to localStorage (lightweight)
   useEffect(() => {
@@ -1971,7 +1978,8 @@ const GoalEnginePage = () => {
           substageData,
           stageSummary,
           recalcFlags,
-          cardExpanded
+          cardExpanded,
+          showOnboarding
       };
       try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -1991,7 +1999,8 @@ const GoalEnginePage = () => {
       substageData,
       stageSummary,
       recalcFlags,
-      cardExpanded
+      cardExpanded,
+      showOnboarding
   ]);
 
   const handleClearLocalSession = () => {
@@ -2007,6 +2016,15 @@ const GoalEnginePage = () => {
       setStageSummary({});
       setRecalcFlags({});
       setCardExpanded({});
+      setShowOnboarding(true);
+  };
+
+  // Handle quick start from onboarding guide
+  const handleQuickStart = (prompt) => {
+      // Set prompt to trigger Copilot's response
+      setQuickStartPrompt(prompt);
+      // Clear after setting to allow retriggering
+      setTimeout(() => setQuickStartPrompt(null), 100);
   };
 
   // Expand collapsed panel back to 50/50 split
@@ -2101,26 +2119,6 @@ const GoalEnginePage = () => {
       try {
           let accumulatedRaw = "";
           
-          const extractField = (field, jsonStr) => {
-                const marker = `"${field}": "`;
-                const startIdx = jsonStr.indexOf(marker);
-                if (startIdx === -1) return '';
-                
-                const contentStart = startIdx + marker.length;
-                let contentEnd = jsonStr.length;
-                
-                let escaped = false;
-                for (let i = contentStart; i < jsonStr.length; i++) {
-                    if (escaped) { escaped = false; continue; }
-                    if (jsonStr[i] === '\\') { escaped = true; continue; }
-                    if (jsonStr[i] === '"') { contentEnd = i; break; }
-                }
-                
-                return jsonStr.slice(contentStart, contentEnd)
-                    .replace(/\\n/g, '\n')
-                    .replace(/\\"/g, '"');
-          };
-
           // Process real goals data to match simulation_data.other_goals format
           const currentGoalId = context?._id || context?.goal_id;
           
@@ -2191,10 +2189,13 @@ const GoalEnginePage = () => {
                 lumpSum,
                 monthlyContribution,
               };
-              const mc = runMonteCarlo(simParams, exposure, horizonYears, glidePath, simSeed);
+              const mc = runMonteCarlo(simParams, exposure, horizonYears, glidePath, simSeed, targetAmount);
               const finalYear = mc.summaryData[mc.summaryData.length - 1] || {};
-              const ratio = targetAmount > 0 && finalYear.median ? finalYear.median / targetAmount : 0;
-              const successProb = Math.min(97, Math.max(5, ratio * 90));
+              
+              // 使用真实的蒙特卡洛成功概率
+              const successProb = mc.realSuccessProbability !== null 
+                ? mc.realSuccessProbability 
+                : 0;
 
               simulationSummary = {
                 horizon_years: horizonYears,
@@ -2226,22 +2227,33 @@ const GoalEnginePage = () => {
             otherGoalsMonthly: otherGoalsMonthlyTotal
           });
 
-          console.log('[runStageAnalysis] Frontend-calculated financials:', financialsSnapshot);
-          console.log('[runStageAnalysis] Other goals monthly total:', otherGoalsMonthlyTotal);
+          // 计算 monthly_surplus_allocatable（投资前盈余，扣除 reserve 和 other goals 后的可分配盈余）
+          // Logic: (surplus_total - other_goals_locked) * (1 - reserve%)
+          const reservePct = context?.simulation_data?.financials?.reserve_for_other_goals_pct ?? 25;
+          const surplusTotal = financialsSnapshot.monthly_surplus_total || 0;
+          const afterOtherGoals = Math.max(0, surplusTotal - otherGoalsMonthlyTotal);
+          const surplusAllocatable = Math.round(afterOtherGoals * (1 - reservePct / 100));
 
           const contextWithOthers = {
             ...context,
             simulation_data: {
               ...(context?.simulation_data || {}),
               financials: {
+                // 保留原有的所有字段
+                ...(context?.simulation_data?.financials || {}),
+                // 覆盖最新计算的字段
                 ...financialsSnapshot,
-                // 保留前端可能有的额外字段（如 liquid_capital）
-                liquid_capital: context?.simulation_data?.financials?.liquid_capital
+                // 添加 allocatable surplus
+                monthly_surplus_allocatable: surplusAllocatable,
+                reserve_for_other_goals_pct: reservePct,
+                locked_allocations: otherGoalsMonthlyTotal,
+                available_for_goals: surplusAllocatable
               },
               other_goals: processedOtherGoals.length > 0 ? processedOtherGoals : otherGoalsData,
               projection_summary: Object.keys(simulationSummary).length > 0 ? simulationSummary : context?.simulation_data?.projection_summary
             }
           };
+
 
           // Ensure UI state also sees the other goals list for display (simulation only)
           if (stageId === 'simulation') {
@@ -2354,27 +2366,6 @@ const GoalEnginePage = () => {
       try {
           let accumulatedThought = '';
           
-          // Helper to extract thought_process from streaming JSON chunks
-          const extractField = (field, jsonStr) => {
-              const marker = `"${field}": "`;
-              const startIdx = jsonStr.indexOf(marker);
-              if (startIdx === -1) return '';
-              
-              const contentStart = startIdx + marker.length;
-              let contentEnd = jsonStr.length;
-              
-              let escaped = false;
-              for (let i = contentStart; i < jsonStr.length; i++) {
-                  if (escaped) { escaped = false; continue; }
-                  if (jsonStr[i] === '\\') { escaped = true; continue; }
-                  if (jsonStr[i] === '"') { contentEnd = i; break; }
-              }
-              
-              return jsonStr.slice(contentStart, contentEnd)
-                  .replace(/\\n/g, '\n')
-                  .replace(/\\"/g, '"');
-          };
-
           // Use streaming API to show Function Calling progress
           const data = await goalEngineService.generateDecisionStream({
               stage: 'product',
@@ -2415,15 +2406,9 @@ const GoalEnginePage = () => {
               }
           });
           
-          console.log('[Product Analysis] Stream complete:', data);
-          
           // Handle final response
           const aiDecision = data?.ai_decision;
           const displayText = data?.text || aiDecision?.rationale || "I've found some suitable products for your goal.";
-          
-          console.log('[Product Analysis] AI Decision:', aiDecision);
-          console.log('[Product Analysis] Product Selection:', 
-              aiDecision?.product_selection || aiDecision?.strategy_recommendation?.product_selection);
           
           if (aiDecision) {
               handleContextUpdate(aiDecision);
@@ -2532,8 +2517,6 @@ const GoalEnginePage = () => {
   };
 
   const handleCreate = async (payload) => {
-    // Stage 1 manual submit
-    console.log('Stage 1 Submitted:', payload);
     const updatedContext = { ...goalContext, ...payload };
     setGoalContext(updatedContext);
     
@@ -2552,8 +2535,6 @@ const GoalEnginePage = () => {
   const handleFinalCommit = async () => {
       setSubmitting(true);
       try {
-          console.log('Final Goal Context:', goalContext);
-          
           // Generate a session ID if not present
           const sessionId = goalContext.session_id || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
           
@@ -2853,6 +2834,17 @@ const GoalEnginePage = () => {
             </div>
 
             <div className="flex items-center gap-2">
+                {/* Help Button */}
+                <button
+                    type="button"
+                    onClick={() => setShowOnboardingModal(true)}
+                    className="hidden md:flex items-center justify-center w-8 h-8 rounded-full text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-all"
+                    title="How to use Goal Engine"
+                >
+                    <HelpCircle size={18} />
+                </button>
+                
+                {/* Clear Session Button */}
                 <button
                     type="button"
                     onClick={handleClearLocalSession}
@@ -2906,6 +2898,9 @@ const GoalEnginePage = () => {
                         selectedAllowlist={selectedAllowlist}
                         setSelectedAllowlist={setSelectedAllowlist}
                         onExecuteSubstageWithPermission={executeSubstageWithPermission}
+                        quickStartPrompt={quickStartPrompt}
+                        isLoadingAI={isLoadingAI}
+                        setIsLoadingAI={setIsLoadingAI}
                     />
                 )}
             </div>
@@ -2953,40 +2948,49 @@ const GoalEnginePage = () => {
                     bg-white border border-slate-100 rounded-xl lg:rounded-[2rem] shadow-sm 
                     flex flex-col overflow-hidden min-w-0
                     transition-all duration-300
-                    ${collapsed === 'right' ? 'lg:w-0 lg:p-0 lg:border-0 lg:opacity-0' : 'p-3 md:p-4 lg:p-8'}
+                    ${collapsed === 'right' ? 'lg:w-0 lg:p-0 lg:border-0 lg:opacity-0' : (showOnboarding && currentStage === 0 ? 'p-0' : 'p-3 md:p-4 lg:p-8')}
                 `}
             >
                 {collapsed !== 'right' && (
                 <>
-                <div className="flex-1 overflow-y-auto pb-4 scrollbar-soft">
-    {currentStage === 0 && (
-        <div className={`max-w-3xl mx-auto py-1 ${currentSubstageId === 'summary' ? '' : 'space-y-4'}`}>
-             {currentSubstageId !== 'summary' && (
+                {/* 🎓 Welcome Guide - Shows on first visit or after clear */}
+                {showOnboarding && currentStage === 0 ? (
+                    <OnboardingGuide 
+                        mode="page"
+                        onClose={() => setShowOnboarding(false)}
+                        onQuickStart={handleQuickStart}
+                    />
+                ) : (
                 <>
-                    <div className="flex items-center gap-3">
-                        <h2 className="text-xl lg:text-2xl font-bold text-slate-900">
-                            <span className="text-slate-900 mr-2">{goalContext.goal_name || (goalContext.category ? goalContext.category : 'Goal')} Plan:</span>
-                            <span className="text-indigo-600">{currentSubstageConfig?.[currentSubstageIndex]?.label}</span>
-                        </h2>
-                        {recalcFlags.definition?.[currentSubstageId] && (
-                            <span className="text-xs font-bold bg-amber-100 text-amber-700 px-3 py-1 rounded-full border border-amber-200 animate-pulse">
-                                Update Required
-                            </span>
-                        )}
-                    </div>
-                    <p className="text-xs lg:text-sm text-slate-500">Complete each substage, confirm to lock as background, and edit anytime to recompute.</p>
+               <div className="flex-1 overflow-y-auto pb-4 scrollbar-soft">
+   {currentStage === 0 && (
+       <div className={`max-w-3xl mx-auto py-1 ${currentSubstageId === 'summary' ? '' : 'space-y-4'}`}>
+            {currentSubstageId !== 'summary' && (
+               <>
+                   <div className="flex items-center gap-3">
+                       <h2 className="text-xl lg:text-2xl font-bold text-slate-900">
+                           <span className="text-slate-900 mr-2">{goalContext.goal_name || (goalContext.category ? goalContext.category : 'Goal')} Plan:</span>
+                           <span className="text-indigo-600">{currentSubstageConfig?.[currentSubstageIndex]?.label}</span>
+                       </h2>
+                       {recalcFlags.definition?.[currentSubstageId] && (
+                           <span className="text-xs font-bold bg-amber-100 text-amber-700 px-3 py-1 rounded-full border border-amber-200 animate-pulse">
+                               Update Required
+                           </span>
+                       )}
+                   </div>
+                   <p className="text-xs lg:text-sm text-slate-500">Complete each substage, confirm to lock as background, and edit anytime to recompute.</p>
 
-                    <div className="mt-1">
-                        <SubstageStepIndicator
-                        config={activeSubstages.definition}
-                        state={substageState.definition}
-                        />
-                    </div>
-                </>
-             )}
+                   <div className="mt-1">
+                       <SubstageStepIndicator
+                       config={activeSubstages.definition}
+                       state={substageState.definition}
+                       />
+                   </div>
+               </>
+            )}
 
-             {/* Sequential substage rendering: confirmed cards + current form/loading */}
-             <div className={currentSubstageId === 'summary' ? '' : 'space-y-3'}>
+            {/* Sequential substage rendering: confirmed cards + current form/loading */}
+            <div className={currentSubstageId === 'summary' ? '' : 'space-y-3'}>
                                 {(() => {
                                     const order = activeSubstages.definition.map(s => s.id);
                                     const state = substageState.definition;
@@ -3020,39 +3024,72 @@ const GoalEnginePage = () => {
                                             );
                                         }
 
-                                        // Collecting: show full form OR loading state
-                                        if (status === 'collecting') {
-                                            // If AI is loading for this substage, show loading skeleton
-                                            if (isLoadingAI && idx === currentIdx) {
-                                                return (
-                                                    <div key={subId} className="animate-fade-in">
-                                                        <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
-                                                            <div className="flex flex-col items-center justify-center gap-4 py-12">
-                                                                <div className="relative">
-                                                                    <div className="w-16 h-16 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin"></div>
-                                                                    <Brain className="absolute inset-0 m-auto text-indigo-600" size={24} />
-                                                                </div>
-                                                                <div className="text-center">
-                                                                    <div className="text-lg font-bold text-slate-900 mb-1">AI is preparing {config?.label}...</div>
-                                                                    <div className="text-sm text-slate-500">Analyzing your information and generating guidance</div>
-                                                                </div>
-                                                                <div className="flex gap-2 mt-2">
-                                                                    <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                                                                    <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                                                                    <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            }
-                                            
-                                            return (
-                                                <div key={subId} className="animate-fade-in">
-                                                    {renderDefinitionSubstageBody(subId, recalcFlags.definition?.[subId])}
-                                                </div>
-                                            );
-                                        }
+                                      // Collecting: show full form OR loading state
+                                      if (status === 'collecting') {
+                                          const hasAnyConfirmedSubstage = Object.values(state.statusById || {}).some(s => s === 'confirmed');
+                                          
+                                          // Show loading animation when AI is preparing this substage
+                                          if (isLoadingAI && idx === currentIdx) {
+                                              // Different UI for first substage vs substage transitions
+                                              if (!hasAnyConfirmedSubstage) {
+                                                  // First substage: Large centered loading animation
+                                                  return (
+                                                      <div key={subId} className="animate-fade-in">
+                                                          <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
+                                                              <div className="flex flex-col items-center justify-center gap-4 py-12">
+                                                                  <div className="relative">
+                                                                      <div className="w-16 h-16 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                                                                      <Brain className="absolute inset-0 m-auto text-indigo-600" size={24} />
+                                                                  </div>
+                                                                  <div className="text-center">
+                                                                      <div className="text-lg font-bold text-slate-900 mb-1">AI is preparing {config?.label}...</div>
+                                                                      <div className="text-sm text-slate-500">Analyzing your information and generating guidance</div>
+                                                                  </div>
+                                                                  <div className="flex gap-2 mt-2">
+                                                                      <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                                                                      <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                                                                      <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                                                                  </div>
+                                                              </div>
+                                                          </div>
+                                                      </div>
+                                                  );
+                                              } else {
+                                                  // Substage transition: Compact loading card that fits below confirmed cards
+                                                  return (
+                                                      <div key={subId} className="animate-fade-in">
+                                                          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-2xl p-6 shadow-sm">
+                                                              <div className="flex items-center gap-4">
+                                                                  <div className="relative flex-shrink-0">
+                                                                      <div className="w-12 h-12 border-3 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                                                                      <Brain className="absolute inset-0 m-auto text-indigo-600" size={20} />
+                                                                  </div>
+                                                                  <div className="flex-1">
+                                                                      <div className="text-base font-bold text-indigo-900 mb-1">
+                                                                          Preparing {config?.label}...
+                                                                      </div>
+                                                                      <div className="text-sm text-indigo-700">
+                                                                          AI is analyzing your previous answers to guide you through this section
+                                                                      </div>
+                                                                  </div>
+                                                                  <div className="flex gap-1.5">
+                                                                      <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                                                                      <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                                                                      <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                                                                  </div>
+                                                              </div>
+                                                          </div>
+                                                      </div>
+                                                  );
+                                              }
+                                          }
+                                          
+                                          return (
+                                              <div key={subId} className="animate-fade-in">
+                                                  {renderDefinitionSubstageBody(subId, recalcFlags.definition?.[subId])}
+                                              </div>
+                                          );
+                                      }
 
                                         return null;
                                     });
@@ -3096,9 +3133,9 @@ const GoalEnginePage = () => {
                                     </div>
                                 </div>
                              )}
-                        </div>
-                    )}
-                    {currentStage === 1 && (
+                       </div>
+                   )}
+                   {currentStage === 1 && (
                          <div className="max-w-3xl mx-auto py-2 animate-fade-in">
                             <h2 className="text-xl lg:text-2xl font-bold text-slate-900 mb-4 lg:mb-6">Choose your Strategy</h2>
                             <StageStrategy 
@@ -3162,6 +3199,8 @@ const GoalEnginePage = () => {
                 )}
                 </>
                 )}
+                </>
+                )}
             </div>
 
             {/* RIGHT COLLAPSED EXPAND BUTTON */}
@@ -3186,6 +3225,37 @@ const GoalEnginePage = () => {
         </div>
 
       </div>
+
+      {/* 🎓 Help Modal - Accessible anytime via ? button */}
+      {showOnboardingModal && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={(e) => {
+            // Close when clicking backdrop
+            if (e.target === e.currentTarget) {
+              setShowOnboardingModal(false);
+            }
+          }}
+        >
+          <div className="relative max-w-2xl w-full mx-4 animate-in slide-in-from-bottom-4 duration-300">
+            <button
+              onClick={() => setShowOnboardingModal(false)}
+              className="absolute -top-12 right-0 text-white hover:text-slate-200 transition-colors p-2 hover:bg-white/10 rounded-lg"
+              title="Close"
+            >
+              <X size={24} />
+            </button>
+            <OnboardingGuide 
+              mode="modal"
+              onClose={() => setShowOnboardingModal(false)}
+              onQuickStart={(prompt) => {
+                setShowOnboardingModal(false);
+                handleQuickStart(prompt);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </MainLayout>
   );
 };

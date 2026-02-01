@@ -44,7 +44,7 @@ const hashStringToSeed = (str = 'simulation_default') => {
   return (h >>> 0) || 1;
 };
 
-export const runMonteCarlo = (params, exposure, years, glidePathConfig = null, seed = null) => {
+export const runMonteCarlo = (params, exposure, years, glidePathConfig = null, seed = null, targetAmount = null) => {
   const iterations = 100;
   const allProjections = [];
   const rng = seed ? mulberry32(seed) : Math.random;
@@ -52,11 +52,24 @@ export const runMonteCarlo = (params, exposure, years, glidePathConfig = null, s
   const RETURNS = { growth: 0.08, defensive: 0.04, liquidity: 0.02 };
   const VOLATILITY = { growth: 0.18, defensive: 0.06, liquidity: 0.01 };
 
+  let successCount = 0; // 统计达到目标的次数
+
   for (let i = 0; i < iterations; i++) {
     let balance = (params.initialCapital || 0) + (params.lumpSum || 0);
     const yearlyData = [];
 
     for (let y = 0; y <= years; y++) {
+      // Year 0: Record initial state without any growth or contributions
+      if (y === 0) {
+        yearlyData.push({
+          year: 0,
+          balance: Math.round(balance),
+          contributions: balance, // Initial capital = contributions at start
+        });
+        continue;
+      }
+
+      // Year 1+: Apply contributions and growth
       let currentExposure = { ...exposure };
       if (glidePathConfig?.enabled && y > years - glidePathConfig.start_years_before_goal) {
         const progress =
@@ -96,6 +109,12 @@ export const runMonteCarlo = (params, exposure, years, glidePathConfig = null, s
           (params.initialCapital || 0) + (params.lumpSum || 0) + annualContribution * y,
       });
     }
+    
+    // 检查最终余额是否达到目标
+    if (targetAmount !== null && balance >= targetAmount) {
+      successCount++;
+    }
+    
     allProjections.push(yearlyData);
   }
 
@@ -121,7 +140,12 @@ export const runMonteCarlo = (params, exposure, years, glidePathConfig = null, s
     (exposure.defensive / 100) * VOLATILITY.defensive * 100 +
     (exposure.liquidity / 100) * VOLATILITY.liquidity * 100;
 
-  return { summaryData, expectedReturn, volatility, allProjections };
+  // 计算真实的蒙特卡洛成功概率
+  const realSuccessProbability = targetAmount !== null 
+    ? (successCount / iterations) * 100 
+    : null;
+
+  return { summaryData, expectedReturn, volatility, allProjections, realSuccessProbability };
 };
 
 const StageSimulation = ({ goalContext, isLoadingAI }) => {
@@ -190,13 +214,14 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
 
   const hasStrategy = Boolean(goalContext.ai_decision?.strategy_recommendation);
 
+  const targetAmount = goalContext.target_amount || 100000;
+
   // 所有hooks必须在条件return之前调用（React Hooks规则）
-  const { summaryData, expectedReturn, volatility } = useMemo(
-    () => runMonteCarlo(simParams, exposure, horizonYears, glidePath, simulationSeed),
-    [simParams, exposure, horizonYears, glidePath, simulationSeed],
+  const { summaryData, expectedReturn, volatility, realSuccessProbability } = useMemo(
+    () => runMonteCarlo(simParams, exposure, horizonYears, glidePath, simulationSeed, targetAmount),
+    [simParams, exposure, horizonYears, glidePath, simulationSeed, targetAmount],
   );
 
-  const targetAmount = goalContext.target_amount || 100000;
   const projectionSummary = goalContext?.simulation_data?.projection_summary;
 
   const successProbability = useMemo(() => {
@@ -204,12 +229,13 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
     if (projectionSummary?.success_probability_pct !== undefined) {
       return projectionSummary.success_probability_pct;
     }
-    // Fallback (should rarely be used): derive deterministic value, no randomness
-    if (!summaryData.length) return 0;
-    const finalYear = summaryData[summaryData.length - 1];
-    const ratio = targetAmount > 0 ? finalYear.median / targetAmount : 0;
-    return Math.min(97, Math.max(5, ratio * 90));
-  }, [summaryData, targetAmount, projectionSummary]);
+    // 使用真实的蒙特卡洛成功概率（如果可用）
+    if (realSuccessProbability !== null && realSuccessProbability !== undefined) {
+      return realSuccessProbability;
+    }
+    // Fallback: 如果没有成功概率数据，返回0
+    return 0;
+  }, [realSuccessProbability, projectionSummary]);
 
   const portfolioExposure = selectedPortfolio?.calculated_exposure || exposure;
 
@@ -299,8 +325,38 @@ const StageSimulation = ({ goalContext, isLoadingAI }) => {
                       boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)',
                       padding: '12px 20px',
                     }}
-                    formatter={(value) => [`$${value.toLocaleString()}`, '']}
-                    labelFormatter={(y) => `Year ${y}`}
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload || !payload.length) return null;
+                      const data = payload[0].payload;
+                      
+                      return (
+                        <div style={{
+                          borderRadius: '1.2rem',
+                          border: 'none',
+                          boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)',
+                          padding: '10px 16px',
+                          backgroundColor: 'white',
+                        }}>
+                          <p style={{ fontWeight: 600, marginBottom: '6px', color: '#64748b', fontSize: '11px' }}>
+                            Year {label}
+                          </p>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '11px' }}>
+                              <span style={{ color: '#a5b4fc', fontWeight: 500 }}>Upside (90th):</span>
+                              <span style={{ fontWeight: 700, color: '#334155' }}>${(data.high || 0).toLocaleString()}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '11px' }}>
+                              <span style={{ color: '#6366f1', fontWeight: 600 }}>Median (50th):</span>
+                              <span style={{ fontWeight: 700, color: '#334155' }}>${(data.median || 0).toLocaleString()}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '11px' }}>
+                              <span style={{ color: '#c7d2fe', fontWeight: 500 }}>Downside (10th):</span>
+                              <span style={{ fontWeight: 700, color: '#334155' }}>${(data.low || 0).toLocaleString()}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }}
                   />
                   <Legend 
                     wrapperStyle={{ paddingTop: '20px', fontSize: '11px', fontWeight: 600 }}

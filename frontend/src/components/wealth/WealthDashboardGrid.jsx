@@ -1,11 +1,12 @@
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from 'recharts';
-import { ArrowUpRight, TrendingUp, CreditCard, Wallet, DollarSign, ChevronDown } from 'lucide-react';
+import { ArrowUpRight, TrendingUp, CreditCard, Wallet, DollarSign, ChevronDown, Sparkles, Database } from 'lucide-react';
 import InfoTooltip from '../common/InfoTooltip'; // Import Tooltip
 import { HELP_ANCHORS } from '../../constants/helpAnchors'; // Import Registry
+import { getWealthHistory } from '../../services/snapshotService';
 
 // ============ FINSET STYLE CONSTANTS ============
 const COLORS = {
@@ -120,6 +121,61 @@ const KpiCard = ({ title, value, change, icon: Icon, breakdown, tooltipContent, 
 
 // ============ MAIN COMPONENT ============
 const WealthDashboardGrid = ({ assets, liabilities, summary, goals = [], cashFlows = [], onOpenLiquidity, onOpenDebt, onOpenAllocation }) => {
+  // Wealth Trend Data Mode State
+  const [dataMode, setDataMode] = useState('demo'); // 'demo' | 'real'
+  const [realTrendData, setRealTrendData] = useState([]);
+  const [loadingTrend, setLoadingTrend] = useState(false);
+  
+  // Fetch real trend data when switching to real mode or when summary changes
+  useEffect(() => {
+    if (dataMode === 'real') {
+      fetchRealTrendData();
+    }
+  }, [dataMode, summary]);
+  
+  const fetchRealTrendData = async () => {
+    setLoadingTrend(true);
+    try {
+      const response = await getWealthHistory('6m');
+      let formatted = [];
+      
+      if (response.data && response.data.length > 0) {
+        // Format historical data for BarChart
+        formatted = response.data.map(item => ({
+          month: new Date(item.date).toLocaleDateString('en-US', { month: 'short' }),
+          assets: item.assets,
+          liabilities: item.liabilities
+        }));
+      }
+      
+      // Always append current month's data as the latest point
+      if (summary.totalAssets > 0 || summary.totalLiabilities > 0) {
+        const currentMonth = new Date().toLocaleDateString('en-US', { month: 'short' });
+        formatted.push({
+          month: currentMonth,
+          assets: summary.totalAssets,
+          liabilities: summary.totalLiabilities
+        });
+      }
+      
+      setRealTrendData(formatted);
+    } catch (error) {
+      console.error('Failed to fetch wealth history:', error);
+      // Fallback: show at least current month
+      if (summary.totalAssets > 0 || summary.totalLiabilities > 0) {
+        const currentMonth = new Date().toLocaleDateString('en-US', { month: 'short' });
+        setRealTrendData([{
+          month: currentMonth,
+          assets: summary.totalAssets,
+          liabilities: summary.totalLiabilities
+        }]);
+      } else {
+        setRealTrendData([]);
+      }
+    } finally {
+      setLoadingTrend(false);
+    }
+  };
   
   // Data Logic (Updated to Industry Standard Tiers)
   const liquidityData = useMemo(() => {
@@ -228,7 +284,8 @@ const WealthDashboardGrid = ({ assets, liabilities, summary, goals = [], cashFlo
       });
   }, [goals]);
 
-  const trendData = useMemo(() => {
+  // Mock trend data (demo mode)
+  const mockTrendData = useMemo(() => {
     const baseAssets = summary.totalAssets || 500000;
     const baseLiabilities = summary.totalLiabilities || 200000;
     return [
@@ -241,6 +298,10 @@ const WealthDashboardGrid = ({ assets, liabilities, summary, goals = [], cashFlo
       { month: 'Jul', assets: baseAssets, liabilities: baseLiabilities },
     ];
   }, [summary]);
+  
+  const trendData = dataMode === 'real' ? realTrendData : mockTrendData;
+  const hasRealTrendData = realTrendData.length > 0;
+
 
   const liabilityBreakdown = useMemo(() => {
     const grouped = {};
@@ -306,6 +367,37 @@ const WealthDashboardGrid = ({ assets, liabilities, summary, goals = [], cashFlo
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-base font-bold text-slate-900">Wealth Trend</h3>
             <div className="flex items-center gap-4">
+              {/* Tab Switcher */}
+              <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+                <button
+                  onClick={() => setDataMode('demo')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all ${
+                    dataMode === 'demo'
+                      ? 'bg-white text-indigo-600 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <Sparkles size={12} />
+                  Demo
+                </button>
+                <button
+                  onClick={() => setDataMode('real')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all ${
+                    dataMode === 'real'
+                      ? 'bg-white text-emerald-600 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <Database size={12} />
+                  Real
+                  {!hasRealTrendData && dataMode === 'real' && (
+                    <span className="ml-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[9px] rounded">
+                      No Data
+                    </span>
+                  )}
+                </button>
+              </div>
+              
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS.chart1 }}></span>
                 <span className="text-xs font-medium text-slate-500">Assets</span>
@@ -314,13 +406,29 @@ const WealthDashboardGrid = ({ assets, liabilities, summary, goals = [], cashFlo
                 <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS.secondary }}></span>
                 <span className="text-xs font-medium text-slate-500">Liabilities</span>
               </div>
-              <button className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">
-                This year <ChevronDown size={12} />
-              </button>
             </div>
           </div>
           
-          <div className="h-[220px] min-w-0">
+          <div className="h-[220px] min-w-0 relative">
+            {loadingTrend && (
+              <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-10 rounded-lg">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-xs text-slate-500 font-medium">Loading...</span>
+                </div>
+              </div>
+            )}
+            
+            {dataMode === 'real' && !loadingTrend && trendData.length === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-50 rounded-lg z-10">
+                <div className="text-center px-6">
+                  <Database size={24} className="mx-auto text-slate-300 mb-2" />
+                  <p className="text-xs font-medium text-slate-600 mb-1">No Historical Data</p>
+                  <p className="text-[10px] text-slate-400">Snapshots will be created automatically</p>
+                </div>
+              </div>
+            )}
+            
             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
               <BarChart data={trendData} barGap={8} margin={{ top: 5, right: 0, left: -25, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -394,6 +502,7 @@ const WealthDashboardGrid = ({ assets, liabilities, summary, goals = [], cashFlo
             </div>
           </div>
         </div>
+
       </div>
 
       {/* === ROW 3: Allocations & Debt (Split into 3 Equal Cards) === */}

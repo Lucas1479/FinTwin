@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout';
 import {
@@ -37,7 +37,8 @@ import {
   Coins,
   Zap,
   Download,
-  FileText
+  FileText,
+  X
 } from 'lucide-react';
 import { getGoalWithPlan, getDecisionLogsForGoal, getDecisionLogsBySession, deleteGoal } from '../services/goalService';
 import { getAssets } from '../services/wealthService';
@@ -63,6 +64,278 @@ import {
   Line
 } from 'recharts';
 import DigitalTwinHouse from '../components/goals/DigitalTwinHouse';
+
+// --- Internal Component: GoalProductDetailModal (Mirrors StageProduct.jsx style) ---
+const GoalProductDetailModal = ({ product, open, onClose }) => {
+  const [detailTab, setDetailTab] = useState('overview');
+  const navigate = useNavigate();
+  
+  if (!open || !product) return null;
+
+  const allocation = normalizeAllocation(product.allocation || product.metrics?.allocation);
+  const holdings = Array.isArray(product.topHoldings) ? product.topHoldings : [];
+  const riskScore = typeof product.riskScore === 'number' ? product.riskScore : null;
+
+  const formatPct = (value) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '0';
+    const rounded = Math.round(num * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 animate-fade-in overflow-hidden">
+      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-slate-200">
+        {/* Header - More compact */}
+        <div className="px-5 py-4 flex items-center justify-between border-b border-slate-100 shrink-0 bg-white">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400 font-bold text-xs border border-slate-200 shrink-0 overflow-hidden">
+              {product.providerLogo ? (
+                <img src={product.providerLogo} alt={product.provider} className="w-full h-full object-cover" />
+              ) : (
+                (product.provider ?? 'PF').slice(0, 2).toUpperCase()
+              )}
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-base font-bold text-slate-900 truncate leading-tight">
+                {product.name}
+              </h2>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[10px] font-bold text-brand-600 uppercase tracking-tight">{product.provider}</span>
+                <span className="w-1 h-1 rounded-full bg-slate-300" />
+                <span className="text-[10px] font-medium text-slate-400 uppercase tracking-tight">{product.category || 'Fund'}</span>
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setDetailTab('overview');
+              onClose();
+            }}
+            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors shrink-0"
+          >
+            <span className="text-xl leading-none">×</span>
+          </button>
+        </div>
+
+        {/* Tabs - Compressed height */}
+        <div className="px-5 border-b border-slate-100 bg-white">
+          <div className="flex gap-6">
+            {[
+              { id: 'overview', label: 'OVERVIEW', icon: FileText },
+              { id: 'performance', label: 'METRICS', icon: TrendingUp },
+              { id: 'composition', label: 'ALLOCATION', icon: LucidePieChart },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setDetailTab(tab.id)}
+                className={`flex items-center gap-1.5 py-3 text-[10px] font-bold tracking-wider transition-all relative ${
+                  detailTab === tab.id ? 'text-brand-600' : 'text-slate-400 hover:text-slate-500'
+                }`}
+              >
+                <tab.icon size={12} />
+                {tab.label}
+                {detailTab === tab.id && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-600 rounded-full" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Content Area - Higher Density */}
+        <div className="flex-1 overflow-y-auto p-5 scrollbar-soft bg-slate-50/20 min-h-[320px]">
+          {detailTab === 'overview' && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-1 duration-200">
+              {/* Key Indicators Grid */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                  <div className="text-[9px] font-bold text-slate-400 uppercase mb-1">Annual Fee</div>
+                  <div className="text-sm font-bold text-slate-900">{product.fees ?? '0.00'}%</div>
+                </div>
+                <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                  <div className="text-[9px] font-bold text-slate-400 uppercase mb-1">5Y Return</div>
+                  <div className="text-sm font-bold text-emerald-600">
+                    {product.returns?.['5y'] !== null && product.returns?.['5y'] !== undefined
+                      ? `${product.returns['5y'].toFixed(1)}%` 
+                      : product.returns?.['1y'] !== null && product.returns?.['1y'] !== undefined
+                        ? `${product.returns['1y'].toFixed(1)}%` 
+                        : '—'}
+                  </div>
+                </div>
+                <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                  <div className="text-[9px] font-bold text-slate-400 uppercase mb-1">Risk RI</div>
+                  <div className="text-sm font-bold text-slate-900">{riskScore || 'N/A'}</div>
+                </div>
+              </div>
+
+              {/* Rationale - Professional Box */}
+              <div className="bg-brand-50/40 rounded-xl p-4 border border-brand-100/50">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Zap size={12} className="text-brand-600" />
+                  <span className="text-[10px] font-bold text-brand-700 uppercase tracking-wider">AI Recommendation</span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
+                  {product.rationale || 'Selected for its optimized fee-to-performance ratio and alignment with your target risk profile.'}
+                </p>
+              </div>
+
+              {/* Strategy */}
+              <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
+                <h3 className="text-[10px] font-bold text-slate-900 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                  <Target size={12} className="text-brand-500" />
+                  Objective & Strategy
+                </h3>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  {product.strategy || product.description || 'Data unavailable.'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {detailTab === 'performance' && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-1 duration-200">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                  <h3 className="text-[10px] font-bold text-slate-900 mb-3 uppercase tracking-wider">Risk Assessment</h3>
+                  <div className="space-y-3">
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4, 5, 6, 7].map((val) => (
+                        <div key={val} className={`flex-1 h-1.5 rounded-full ${riskScore && riskScore >= val ? 'bg-brand-500' : 'bg-slate-100'}`} />
+                      ))}
+                    </div>
+                    <div className="flex justify-between items-center text-[9px] font-bold text-slate-400">
+                      <span>CONSERVATIVE</span>
+                      <span className="text-brand-600">{riskScore || 'N/A'}</span>
+                      <span>AGGRESSIVE</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                  <h3 className="text-[10px] font-bold text-slate-900 mb-3 uppercase tracking-wider">Historical Return</h3>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-lg font-bold text-emerald-600">
+                      {product.returns?.['5y'] !== null && product.returns?.['5y'] !== undefined
+                        ? `+${product.returns['5y'].toFixed(1)}%` 
+                        : product.returns?.['1y'] !== null && product.returns?.['1y'] !== undefined
+                          ? `+${product.returns['1y'].toFixed(1)}%` 
+                          : '—'}
+                    </span>
+                    <span className="text-[9px] text-slate-400 font-bold uppercase">
+                      {product.returns?.['5y'] !== null && product.returns?.['5y'] !== undefined ? '5Y AVG' : '1Y AVG'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Projection Chart - Compact */}
+              <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-[10px] font-bold text-slate-900 uppercase tracking-wider">Growth Projection</h3>
+                  <span className="text-[9px] font-medium text-slate-400">Compounded 5Y Rate</span>
+                </div>
+                <div className="h-32 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={[
+                      { m: 0, v: 100 },
+                      { m: 12, v: 100 * Math.pow(1 + ((product.returns?.['5y'] ?? product.returns?.['1y'] ?? 6) / 100), 1) },
+                      { m: 36, v: 100 * Math.pow(1 + ((product.returns?.['5y'] ?? product.returns?.['1y'] ?? 6) / 100), 3) },
+                      { m: 60, v: 100 * Math.pow(1 + ((product.returns?.['5y'] ?? product.returns?.['1y'] ?? 6) / 100), 5) },
+                    ]}>
+                      <defs>
+                        <linearGradient id="brandGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.1} />
+                          <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <Area type="monotone" dataKey="v" stroke="#7c3aed" strokeWidth={2} fill="url(#brandGradient)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {detailTab === 'composition' && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-1 duration-200">
+              <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                <h3 className="text-[10px] font-bold text-slate-900 mb-4 uppercase tracking-wider">Asset Allocation</h3>
+                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden flex mb-4">
+                  <div style={{ width: `${allocation.growth}%` }} className="h-full bg-brand-500" />
+                  <div style={{ width: `${allocation.defensive}%` }} className="h-full bg-sky-400" />
+                  <div style={{ width: `${allocation.cash}%` }} className="h-full bg-slate-300" />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {['Growth', 'Defensive', 'Cash'].map((label, i) => (
+                    <div key={label} className="text-center">
+                      <div className="text-[8px] font-bold text-slate-400 uppercase mb-0.5">{label}</div>
+                      <div className="text-[11px] font-bold text-slate-700">
+                        {i === 0 ? formatPct(allocation.growth) : i === 1 ? formatPct(allocation.defensive) : formatPct(allocation.cash)}%
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                <h3 className="text-[10px] font-bold text-slate-900 mb-3 uppercase tracking-wider">Key Holdings</h3>
+                <div className="space-y-3">
+                  {holdings.length > 0 ? (
+                    holdings.slice(0, 5).map((h, i) => {
+                      const name = h?.name || h || "Unknown";
+                      const pct = typeof h?.percent === "number" ? h.percent : 0;
+                      return (
+                        <div key={i}>
+                          <div className="flex justify-between items-center mb-1 text-[10px]">
+                            <span className="font-bold text-slate-600 truncate mr-4">{name}</span>
+                            <span className="font-black text-slate-900 shrink-0">{pct.toFixed(1)}%</span>
+                          </div>
+                          <div className="h-1 w-full bg-slate-50 rounded-full overflow-hidden">
+                            <div className="h-full bg-brand-400 opacity-60 rounded-full" style={{ width: `${Math.max(pct, 1)}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="text-[10px] text-slate-400 py-4 text-center">Holding data not available</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer - Compact */}
+        <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-1.5 text-slate-400">
+            <Clock size={12} />
+            <span className="text-[9px] font-bold uppercase tracking-widest">Verified 2026</span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setDetailTab('overview');
+                onClose();
+              }}
+              className="px-4 py-2 rounded-lg text-[10px] font-bold text-slate-500 hover:bg-slate-50"
+            >
+              CLOSE
+            </button>
+            <button
+              onClick={() => {
+                onClose();
+                navigate(`/marketplace?search=${encodeURIComponent(product.name)}`);
+              }}
+              className="px-4 py-2 bg-brand-600 text-white rounded-lg text-[10px] font-bold flex items-center gap-2 hover:bg-brand-700 transition-all shadow-lg shadow-brand-100"
+            >
+              MARKETPLACE <ExternalLink size={12} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // ================== Helpers ==================
 const formatCurrency = (amount) => {
@@ -341,24 +614,24 @@ const PortfolioProductCard = ({ item, index, onClick, currentBalance }) => {
   return (
     <div 
       onClick={() => onClick({ ...product, weight_pct: item.weight_pct, rationale: item.rationale })}
-      className="flex items-center gap-4 p-5 bg-white rounded-2xl border border-slate-100 hover:shadow-lg hover:border-brand-200 transition-all group relative overflow-hidden cursor-pointer active:scale-[0.98]"
+      className="flex items-center gap-4 p-4 bg-white rounded-2xl border border-slate-100 hover:shadow-lg hover:border-indigo-200 transition-all group relative overflow-hidden cursor-pointer active:scale-[0.98]"
     >
       {isKiwiSaver && (
-        <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500" title="KiwiSaver Product" />
+        <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500" title="KiwiSaver Product" />
       )}
-      <div className="w-11 h-11 rounded-xl bg-brand-500 text-white flex items-center justify-center font-bold shadow-lg shadow-brand-100 shrink-0">
+      <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-xs font-black shadow-lg shadow-indigo-100 shrink-0">
         {index + 1}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <div className="font-bold text-slate-900 text-sm md:text-base truncate group-hover:text-brand-600 transition-colors">
+          <div className="font-black text-slate-900 text-xs md:text-sm truncate group-hover:text-indigo-600 transition-colors">
             {product.name || product.product_name || `Asset ${index + 1}`}
           </div>
-          <ExternalLink size={12} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <ExternalLink size={10} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
-        <div className="text-[10px] md:text-xs text-slate-500 font-semibold uppercase tracking-wider flex items-center gap-2 mt-0.5">
+        <div className="text-[9px] text-slate-400 font-black uppercase tracking-widest flex items-center gap-1.5 mt-0.5">
           <span className={`px-1.5 py-0.5 rounded ${
-            isKiwiSaver ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-slate-100 text-slate-600'
+            isKiwiSaver ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-slate-50 text-slate-500'
           }`}>
             {category.toUpperCase()}
           </span>
@@ -369,11 +642,11 @@ const PortfolioProductCard = ({ item, index, onClick, currentBalance }) => {
       
       {/* Current Balance Display */}
       <div className="text-right shrink-0 ml-4 flex flex-col items-end">
-        <div className="text-lg md:text-xl font-black text-slate-900 leading-none mb-1">
+        <div className="text-sm md:text-base font-black text-slate-900 leading-none mb-1">
           {formatCurrency(currentBalance)}
         </div>
         <div className="flex items-center gap-1.5">
-           <span className="text-xs font-bold text-brand-600 bg-brand-50 px-1.5 py-0.5 rounded">
+           <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
              {item.weight_pct?.toFixed(1) || '0.0'}%
            </span>
         </div>
@@ -798,45 +1071,38 @@ const DecisionLogItem = ({ log, isLast }) => {
 const ContributionStrategyCard = ({ strategy, contribution }) => {
   if (!strategy && !contribution) return null;
   
-  const mode = strategy?.mode || contribution?.frequency || 'recurring';
   const monthlyAmount = strategy?.monthly_amount || contribution?.amount || 0;
   const lumpSum = strategy?.lump_sum_amount || 0;
   
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-5">
-      <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+    <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm">
+      <div className="flex items-center gap-2.5 mb-6">
         <DollarSign size={18} className="text-emerald-500" />
-        Contribution Strategy
-      </h3>
+        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Contribution Strategy</h3>
+      </div>
       
-      <div className="space-y-4">
-        <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-xl">
-          <div className="flex items-center gap-2">
-            <RefreshCw size={16} className="text-emerald-600" />
-            <span className="text-sm text-emerald-800">Monthly Contribution</span>
-          </div>
-          <span className="font-bold text-emerald-700">{formatCurrency(monthlyAmount)}</span>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Monthly Flow</span>
+          <span className="text-lg font-black text-slate-900">{formatCurrency(monthlyAmount)}</span>
         </div>
         
         {lumpSum > 0 && (
-          <div className="flex items-center justify-between p-3 bg-blue-50 rounded-xl">
-            <div className="flex items-center gap-2">
-              <DollarSign size={16} className="text-blue-600" />
-              <span className="text-sm text-blue-800">Initial Lump Sum</span>
-            </div>
-            <span className="font-bold text-blue-700">{formatCurrency(lumpSum)}</span>
+          <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Initial Deposit</span>
+            <span className="text-lg font-black text-slate-900">{formatCurrency(lumpSum)}</span>
           </div>
         )}
         
-        <div className="flex items-center gap-4 pt-2 border-t border-slate-100">
+        <div className="flex items-center gap-4 pt-3 px-1">
           <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${strategy?.income_linked ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
-            <span className="text-xs text-slate-500">Income Linked</span>
+            <div className={`w-1.5 h-1.5 rounded-full ${strategy?.income_linked ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Income Linked</span>
           </div>
           {strategy?.escalation_rate_pct > 0 && (
             <div className="flex items-center gap-2">
-              <TrendingUp size={12} className="text-brand-500" />
-              <span className="text-xs text-slate-500">{strategy.escalation_rate_pct}% annual escalation</span>
+              <TrendingUp size={12} className="text-slate-400" />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{strategy.escalation_rate_pct}% Annual Escalation</span>
             </div>
           )}
         </div>
@@ -847,39 +1113,38 @@ const ContributionStrategyCard = ({ strategy, contribution }) => {
 
 // Glide Path Card
 const GlidePathCard = ({ glidePath }) => {
-  if (!glidePath?.enabled) return null;
-  
-  const endState = glidePath.end_state || { growth: 30, defensive: 50, liquidity: 20 };
+  const isEnabled = glidePath?.enabled;
+  const endState = glidePath?.end_state || { growth: 30, defensive: 50, liquidity: 20 };
   
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-5">
-      <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-        <TrendingUp size={18} className="text-blue-500" />
-        Glide Path (De-risking)
-      </h3>
+    <div className={`bg-white rounded-3xl border border-slate-100 p-6 shadow-sm flex flex-col ${!isEnabled ? 'opacity-60' : ''}`}>
+      <div className="flex items-center gap-2.5 mb-6">
+        <TrendingUp size={18} className={isEnabled ? 'text-blue-500' : 'text-slate-400'} />
+        <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Glide Path</h3>
+        {!isEnabled && (
+          <span className="ml-auto text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded uppercase tracking-widest">Disabled</span>
+        )}
+      </div>
       
-      <div className="space-y-3">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-500">Starts</span>
-          <span className="font-semibold text-slate-900">{glidePath.start_years_before_goal || 10} years before goal</span>
+      <div className="flex-1 flex flex-col justify-center space-y-5">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">De-risking Strategy</span>
+          <span className="text-xs font-black text-slate-900">
+            {isEnabled ? `${glidePath.start_years_before_goal || 10}Y Before Target` : 'Static Allocation'}
+          </span>
         </div>
         
-        <div className="pt-3 border-t border-slate-100">
-          <div className="text-xs text-slate-500 mb-2">Target allocation at goal date:</div>
-          <div className="grid grid-cols-3 gap-2">
-            <div className="text-center p-2 bg-emerald-50 rounded-lg">
-              <div className="text-lg font-bold text-emerald-600">{endState.growth}%</div>
-              <div className="text-xs text-emerald-600">Growth</div>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: 'Growth', value: endState.growth, color: isEnabled ? 'text-indigo-600' : 'text-slate-400', bg: 'bg-slate-50' },
+            { label: 'Defensive', value: endState.defensive, color: isEnabled ? 'text-sky-600' : 'text-slate-400', bg: 'bg-slate-50' },
+            { label: 'Cash', value: endState.liquidity, color: isEnabled ? 'text-fuchsia-600' : 'text-slate-400', bg: 'bg-slate-50' }
+          ].map((item, idx) => (
+            <div key={idx} className={`text-center p-3 ${item.bg} rounded-xl border border-slate-100/50`}>
+              <div className={`text-base font-black ${item.color}`}>{isEnabled ? `${item.value}%` : '—'}</div>
+              <div className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{item.label}</div>
             </div>
-            <div className="text-center p-2 bg-blue-50 rounded-lg">
-              <div className="text-lg font-bold text-blue-600">{endState.defensive}%</div>
-              <div className="text-xs text-blue-600">Defensive</div>
-            </div>
-            <div className="text-center p-2 bg-amber-50 rounded-lg">
-              <div className="text-lg font-bold text-amber-600">{endState.liquidity}%</div>
-              <div className="text-xs text-amber-600">Liquidity</div>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     </div>
@@ -940,6 +1205,7 @@ const GoalDetailPage = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [associatedAssets, setAssociatedAssets] = useState([]);
   const [cashFlows, setCashFlows] = useState([]);
   const { timeOffset, marketMode } = useSimulation();
@@ -952,6 +1218,83 @@ const GoalDetailPage = () => {
     
     setIsExporting(true);
     try {
+      // ✅ 使用原生浏览器打印 (支持所有现代CSS)
+      const currentTab = activeTab;
+      const allTabs = [
+        { id: 'overview', label: 'Overview' },
+        { id: 'portfolio', label: 'Plan Holdings' },
+        { id: 'strategy', label: 'Strategy' },
+        { id: 'decisions', label: 'Decision History' }
+      ];
+      
+      const printWindow = window.open('', '_blank', 'width=1200,height=800');
+      
+      const styles = Array.from(document.styleSheets)
+        .map(sheet => {
+          try {
+            return Array.from(sheet.cssRules).map(rule => rule.cssText).join('\n');
+          } catch (e) {
+            return '';
+          }
+        })
+        .join('\n');
+      
+      const tabSections = [];
+      
+      for (let i = 0; i < allTabs.length; i++) {
+        const tab = allTabs[i];
+        setActiveTab(tab.id);
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        const clonedContent = reportRef.current.cloneNode(true);
+        clonedContent.querySelectorAll('[data-export-ignore="true"]').forEach(el => el.remove());
+        
+        const sectionHTML = i === 0 
+          ? clonedContent.innerHTML 
+          : `<div style="page-break-before: always; padding-top: 30px;">
+              <h2 style="font-size: 24px; font-weight: bold; color: #1e293b; margin-bottom: 30px; padding-bottom: 12px; border-bottom: 3px solid #6366f1;">
+                ${tab.label}
+              </h2>
+              ${clonedContent.innerHTML}
+            </div>`;
+        
+        tabSections.push(sectionHTML);
+      }
+      
+      setActiveTab(currentTab);
+      
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>${goal.goal_name} - Complete Report</title>
+            <meta charset="UTF-8">
+            <style>
+              ${styles}
+              @media print {
+                body { margin: 0; padding: 20px; background: white; }
+                button { display: none !important; }
+                [data-export-ignore="true"] { display: none !important; }
+                @page { margin: 1.5cm; size: A4; }
+                h1, h2, h3 { page-break-after: avoid; }
+                * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                line-height: 1.6;
+                color: #1e293b;
+              }
+            </style>
+          </head>
+          <body>${tabSections.join('\n')}</body>
+        </html>
+      `);
+      
+      printWindow.document.close();
+      setTimeout(() => { printWindow.print(); }, 1000);
+      setIsExporting(false);
+      return; // ✅ 直接返回，不执行下面的html2canvas代码
+      
       const element = reportRef.current;
       
       // html2canvas v1.4.1 has major issues with Tailwind v4's oklch() and oklab() colors.
@@ -966,13 +1309,118 @@ const GoalDetailPage = () => {
           return el.getAttribute('data-export-ignore') === 'true';
         },
         onclone: (clonedDoc) => {
-          // Find all elements in the cloned document
-          const elements = clonedDoc.getElementsByTagName('*');
+          // CRITICAL FIX: Tailwind v4 uses oklch()/oklab() which html2canvas cannot parse
+          // Solution: Replace ALL Tailwind color utilities with RGB equivalents
           
-          // Pre-define common safe colors
-          const SAFE_TEXT = '#1e293b'; // slate-800
-          const SAFE_BORDER = '#e2e8f0'; // slate-200
-          const SAFE_BRAND = '#6366f1'; // indigo-500
+          // 1. Inject comprehensive color override stylesheet
+          const colorOverrideCSS = `
+            /* Text Colors - RGB overrides */
+            .text-slate-50 { color: rgb(248, 250, 252) !important; }
+            .text-slate-100 { color: rgb(241, 245, 249) !important; }
+            .text-slate-200 { color: rgb(226, 232, 240) !important; }
+            .text-slate-300 { color: rgb(203, 213, 225) !important; }
+            .text-slate-400 { color: rgb(148, 163, 184) !important; }
+            .text-slate-500 { color: rgb(100, 116, 139) !important; }
+            .text-slate-600 { color: rgb(71, 85, 105) !important; }
+            .text-slate-700 { color: rgb(51, 65, 85) !important; }
+            .text-slate-800 { color: rgb(30, 41, 59) !important; }
+            .text-slate-900 { color: rgb(15, 23, 42) !important; }
+            
+            .text-indigo-50 { color: rgb(238, 242, 255) !important; }
+            .text-indigo-100 { color: rgb(224, 231, 255) !important; }
+            .text-indigo-200 { color: rgb(199, 210, 254) !important; }
+            .text-indigo-300 { color: rgb(165, 180, 252) !important; }
+            .text-indigo-400 { color: rgb(129, 140, 248) !important; }
+            .text-indigo-500 { color: rgb(99, 102, 241) !important; }
+            .text-indigo-600 { color: rgb(79, 70, 229) !important; }
+            .text-indigo-700 { color: rgb(67, 56, 202) !important; }
+            .text-indigo-800 { color: rgb(55, 48, 163) !important; }
+            .text-indigo-900 { color: rgb(49, 46, 129) !important; }
+            
+            .text-emerald-50 { color: rgb(236, 253, 245) !important; }
+            .text-emerald-100 { color: rgb(209, 250, 229) !important; }
+            .text-emerald-200 { color: rgb(167, 243, 208) !important; }
+            .text-emerald-300 { color: rgb(110, 231, 183) !important; }
+            .text-emerald-400 { color: rgb(52, 211, 153) !important; }
+            .text-emerald-500 { color: rgb(16, 185, 129) !important; }
+            .text-emerald-600 { color: rgb(5, 150, 105) !important; }
+            .text-emerald-700 { color: rgb(4, 120, 87) !important; }
+            .text-emerald-800 { color: rgb(6, 95, 70) !important; }
+            .text-emerald-900 { color: rgb(6, 78, 59) !important; }
+            
+            .text-rose-50 { color: rgb(255, 241, 242) !important; }
+            .text-rose-100 { color: rgb(255, 228, 230) !important; }
+            .text-rose-200 { color: rgb(254, 205, 211) !important; }
+            .text-rose-300 { color: rgb(253, 164, 175) !important; }
+            .text-rose-400 { color: rgb(251, 113, 133) !important; }
+            .text-rose-500 { color: rgb(244, 63, 94) !important; }
+            .text-rose-600 { color: rgb(225, 29, 72) !important; }
+            .text-rose-700 { color: rgb(190, 18, 60) !important; }
+            .text-rose-800 { color: rgb(159, 18, 57) !important; }
+            .text-rose-900 { color: rgb(136, 19, 55) !important; }
+            
+            .text-amber-400 { color: rgb(251, 191, 36) !important; }
+            .text-amber-500 { color: rgb(245, 158, 11) !important; }
+            .text-amber-600 { color: rgb(217, 119, 6) !important; }
+            .text-amber-700 { color: rgb(180, 83, 9) !important; }
+            
+            /* Background Colors */
+            .bg-slate-50 { background-color: rgb(248, 250, 252) !important; }
+            .bg-slate-100 { background-color: rgb(241, 245, 249) !important; }
+            .bg-slate-200 { background-color: rgb(226, 232, 240) !important; }
+            .bg-slate-300 { background-color: rgb(203, 213, 225) !important; }
+            .bg-slate-800 { background-color: rgb(30, 41, 59) !important; }
+            .bg-slate-900 { background-color: rgb(15, 23, 42) !important; }
+            
+            .bg-white { background-color: rgb(255, 255, 255) !important; }
+            
+            .bg-indigo-50 { background-color: rgb(238, 242, 255) !important; }
+            .bg-indigo-100 { background-color: rgb(224, 231, 255) !important; }
+            .bg-indigo-500 { background-color: rgb(99, 102, 241) !important; }
+            .bg-indigo-600 { background-color: rgb(79, 70, 229) !important; }
+            
+            .bg-emerald-50 { background-color: rgb(236, 253, 245) !important; }
+            .bg-emerald-100 { background-color: rgb(209, 250, 229) !important; }
+            .bg-emerald-500 { background-color: rgb(16, 185, 129) !important; }
+            .bg-emerald-600 { background-color: rgb(5, 150, 105) !important; }
+            
+            .bg-rose-50 { background-color: rgb(255, 241, 242) !important; }
+            .bg-rose-100 { background-color: rgb(255, 228, 230) !important; }
+            .bg-rose-500 { background-color: rgb(244, 63, 94) !important; }
+            .bg-rose-600 { background-color: rgb(225, 29, 72) !important; }
+            
+            .bg-amber-50 { background-color: rgb(255, 251, 235) !important; }
+            .bg-amber-100 { background-color: rgb(254, 243, 199) !important; }
+            
+            /* Border Colors */
+            .border-slate-100 { border-color: rgb(241, 245, 249) !important; }
+            .border-slate-200 { border-color: rgb(226, 232, 240) !important; }
+            .border-slate-300 { border-color: rgb(203, 213, 225) !important; }
+            
+            .border-indigo-100 { border-color: rgb(224, 231, 255) !important; }
+            .border-indigo-200 { border-color: rgb(199, 210, 254) !important; }
+            .border-indigo-500 { border-color: rgb(99, 102, 241) !important; }
+            
+            .border-emerald-100 { border-color: rgb(209, 250, 229) !important; }
+            .border-emerald-200 { border-color: rgb(167, 243, 208) !important; }
+            
+            .border-rose-100 { border-color: rgb(255, 228, 230) !important; }
+            .border-rose-200 { border-color: rgb(254, 205, 211) !important; }
+            
+            /* Ring/Shadow colors */
+            * { 
+              --tw-ring-color: rgba(99, 102, 241, 0.5) !important;
+              --tw-shadow-color: rgba(0, 0, 0, 0.1) !important;
+              --tw-outline-color: rgb(99, 102, 241) !important;
+            }
+          `;
+          
+          const styleTag = clonedDoc.createElement('style');
+          styleTag.textContent = colorOverrideCSS;
+          clonedDoc.head.appendChild(styleTag);
+          
+          // 2. Also process inline styles (backup)
+          const elements = clonedDoc.getElementsByTagName('*');
           
           for (let i = 0; i < elements.length; i++) {
             const el = elements[i];
@@ -988,40 +1436,27 @@ const GoalDetailPage = () => {
             colorProps.forEach(prop => {
               const val = style[prop];
               if (val && (val.includes('oklch') || val.includes('oklab'))) {
-                if (prop === 'backgroundColor') el.style.backgroundColor = '#ffffff';
-                else if (prop === 'color') el.style.color = SAFE_TEXT;
-                else if (prop.includes('Color')) el.style[prop] = SAFE_BORDER;
-                else if (prop === 'fill' || prop === 'stroke') el.style[prop] = SAFE_BRAND;
+                if (prop === 'backgroundColor') el.style.backgroundColor = 'rgb(255, 255, 255)';
+                else if (prop === 'color') el.style.color = 'rgb(30, 41, 59)'; // slate-800
+                else if (prop.includes('Color')) el.style[prop] = 'rgb(226, 232, 240)'; // slate-200
+                else if (prop === 'fill' || prop === 'stroke') el.style[prop] = 'rgb(99, 102, 241)'; // indigo-500
               }
             });
 
             // 2. Fix backgroundImage (gradients often use oklch in Tailwind v4)
-            if (style.backgroundImage.includes('oklch') || style.backgroundImage.includes('oklab')) {
+            if (style.backgroundImage && (style.backgroundImage.includes('oklch') || style.backgroundImage.includes('oklab'))) {
               el.style.backgroundImage = 'none';
-              // If it was a brand gradient, give it a solid brand color instead
+              // If it was a brand gradient, use solid indigo
               if (el.className.includes('brand') || el.className.includes('indigo')) {
-                el.style.backgroundColor = SAFE_BRAND;
+                el.style.backgroundColor = 'rgb(99, 102, 241)';
               }
             }
 
             // 3. Fix box-shadow (Tailwind v4 shadows often use oklch)
-            if (style.boxShadow.includes('oklch') || style.boxShadow.includes('oklab')) {
-              el.style.boxShadow = 'none';
+            if (style.boxShadow && (style.boxShadow.includes('oklch') || style.boxShadow.includes('oklab'))) {
+              el.style.boxShadow = '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)';
             }
           }
-
-          // 4. Inject a style tag to clear out any remaining oklch/oklab from CSS variables
-          // html2canvas sometimes parses the stylesheets/variables directly.
-          const styleTag = clonedDoc.createElement('style');
-          styleTag.innerHTML = `
-            * { 
-              --tw-ring-color: rgba(99, 102, 241, 0.5) !important;
-              --tw-shadow-color: rgba(0, 0, 0, 0.1) !important;
-              --tw-outline-color: #6366f1 !important;
-              border-color: #e2e8f0 !important;
-            }
-          `;
-          clonedDoc.head.appendChild(styleTag);
         }
       });
       
@@ -1036,7 +1471,7 @@ const GoalDetailPage = () => {
       pdf.save(`FinTwin_Report_${goal.goal_name.replace(/\s+/g, '_')}.pdf`);
     } catch (err) {
       console.error('Export failed:', err);
-      alert('PDF generation failed. Tailwind v4 uses modern color formats (oklch/oklab) that the PDF generator cannot yet parse. Please use the Markdown export as a reliable alternative.');
+      alert(`PDF generation failed: ${err.message || 'Unknown error'}. Please try the Markdown export as an alternative.`);
     } finally {
       setIsExporting(false);
     }
@@ -1191,7 +1626,8 @@ ${productList}
   }, [goal]);
   
   const selectedPortfolio = plan?.selected_portfolio;
-  const targetExposure = plan?.target_exposure || selectedPortfolio?.calculated_exposure;
+  // Use actual portfolio exposure instead of target for consistency with Holdings tab
+  const targetExposure = selectedPortfolio?.calculated_exposure || plan?.target_exposure;
   
   const categoryAllocation = useMemo(() => {
     if (!selectedPortfolio?.products) return [];
@@ -1271,40 +1707,36 @@ ${productList}
     <MainLayout>
       <div className="max-w-7xl mx-auto p-4 md:p-6 animate-fade-in" ref={reportRef}>
         
-        {/* Back Button & Header */}
-        <div className="mb-6" data-export-ignore="true">
+        {/* Back Button & Header - Refactored */}
+        <div className="mb-8" data-export-ignore="true">
           <button 
             onClick={() => navigate('/goals')}
-            className="flex items-center gap-2 text-slate-500 hover:text-slate-700 transition-colors mb-4"
+            className="group flex items-center gap-2 text-slate-500 hover:text-indigo-600 transition-colors mb-6"
           >
-            <ArrowLeft size={18} />
-            <span className="text-sm font-medium">Back to Goals</span>
+            <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center group-hover:border-indigo-200 group-hover:shadow-sm transition-all">
+              <ArrowLeft size={14} />
+            </div>
+            <span className="text-sm font-semibold">Back to Goals</span>
           </button>
           
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-500 to-indigo-500 flex items-center justify-center text-white shadow-lg">
-                <Target size={28} />
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
+            <div className="flex items-center gap-5">
+              <div className="w-16 h-16 rounded-[1.25rem] bg-gradient-to-br from-brand-600 to-indigo-600 flex items-center justify-center text-white shadow-xl shadow-indigo-100 ring-4 ring-white">
+                <Target size={32} />
               </div>
-              <div>
-                <div className="flex items-center gap-3">
-                  <h1 className="text-2xl md:text-3xl font-bold text-slate-900">{goal.goal_name}</h1>
-                  {timeOffset > 0 && (
-                    <div className="bg-indigo-600 text-white text-[10px] font-black uppercase px-2 py-1 rounded flex items-center gap-1 shadow-sm animate-pulse">
-                      <Zap size={12} fill="currentColor" /> Simulation Mode
-                    </div>
-                  )}
-                </div>
-                <div className="flex flex-col gap-2 mt-1">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-slate-500 capitalize">{goal.category}</span>
-                    <StatusBadge status={goal.status} />
-                    {timeOffset > 0 && (
-                       <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                          +{timeOffset}y ({marketMode})
-                       </span>
-                    )}
+              <div className="pt-1">
+                <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-2 leading-none">{goal.goal_name}</h1>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="px-2.5 py-0.5 rounded-md bg-slate-100 border border-slate-200/50 text-slate-600 text-[11px] font-bold uppercase tracking-wider">
+                    {goal.category}
                   </div>
+                  <StatusBadge status={goal.status} />
+                  {timeOffset > 0 && (
+                     <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 border border-indigo-100">
+                        <Zap size={10} fill="currentColor" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider">Sim Mode (+{timeOffset}y)</span>
+                     </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1312,42 +1744,46 @@ ${productList}
             <div className="flex items-center gap-2" data-export-ignore="true">
               <div className="relative group">
                 <button 
-                  className="px-4 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition-all flex items-center gap-2 text-sm font-medium shadow-lg shadow-slate-200"
+                  className="h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm flex items-center gap-2"
                 >
-                  <Download size={16} />
-                  Export
+                  <Download size={16} className="text-slate-400" />
+                  <span>Export</span>
                 </button>
-                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-2">
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-1.5 transform origin-top-right scale-95 group-hover:scale-100">
                   <button 
                     onClick={handleExportPDF}
                     disabled={isExporting}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-xl transition-colors"
+                    className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors"
                   >
                     <Download size={14} className="text-brand-500" />
                     {isExporting ? 'Generating...' : 'Download PDF Report'}
                   </button>
                   <button 
                     onClick={handleExportMarkdown}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-xl transition-colors"
+                    className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors"
                   >
                     <FileText size={14} className="text-emerald-500" />
                     Download Markdown
                   </button>
                 </div>
               </div>
+
               <button 
                 onClick={() => navigate(`/goals/${id}/edit`)}
-                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-2 text-sm font-medium"
+                className="h-10 px-4 rounded-xl bg-white border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm flex items-center gap-2"
               >
-                <Edit3 size={16} />
-                Edit
+                <Edit3 size={16} className="text-slate-400" />
+                <span>Edit</span>
               </button>
+              
+              <div className="w-px h-6 bg-slate-200 mx-1"></div>
+
               <button 
                 onClick={() => setShowDeleteConfirm(true)}
-                className="px-4 py-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2 text-sm font-medium"
+                className="h-10 w-10 flex items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition-all shadow-sm group/delete"
+                title="Delete Goal"
               >
-                <Trash2 size={16} />
-                Delete
+                <Trash2 size={16} className="group-hover/delete:animate-bounce" />
               </button>
             </div>
           </div>
@@ -1371,87 +1807,132 @@ ${productList}
         
         {/* Progress Hero Card */}
         <div className="bg-white rounded-[2rem] border border-slate-100 p-6 md:p-8 mb-8 shadow-sm relative overflow-hidden group">
-          {/* Ambient Background Effect */}
-          <div className="absolute -top-12 -right-12 w-64 h-64 bg-indigo-50/50 rounded-full blur-3xl opacity-50 pointer-events-none group-hover:bg-indigo-50 transition-colors duration-1000"></div>
+            {/* Background Effects */}
+            <div className="absolute right-0 top-0 w-1/3 h-full bg-gradient-to-l from-indigo-50/40 to-transparent pointer-events-none"></div>
+            <div className="absolute -bottom-12 -right-12 w-48 h-48 bg-purple-50 rounded-full blur-3xl opacity-60 pointer-events-none"></div>
 
-          <div className="relative z-10 flex flex-col lg:flex-row lg:items-center gap-8">
-            {/* Digital Twin (Left) */}
-            <div className="hidden md:flex shrink-0 items-center justify-center p-2 mr-4">
-              <DigitalTwinHouse progress={progress} />
-            </div>
+            <div className="relative z-10 flex flex-col lg:flex-row gap-8 items-center">
+               {/* 1. Digital Twin (Visual Anchor) */}
+               <div className="hidden lg:block shrink-0 transform hover:scale-105 transition-transform duration-500">
+                  <DigitalTwinHouse progress={progress} />
+               </div>
 
-            {/* Amounts & Progress (Middle) */}
-            <div className="flex-1 min-w-0">
-              <div className="flex flex-col md:flex-row md:items-baseline md:justify-between gap-2 mb-2">
-                <div className="flex items-baseline gap-3">
-                  <span className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight">{formatCurrency(totalAssociatedValue)}</span>
-                  <span className="text-lg font-bold text-slate-400">/ {formatCurrency(goal.target_amount)}</span>
-                </div>
-                {/* Mobile Twin */}
-                <div className="md:hidden self-end -mt-16 mb-4">
-                   <DigitalTwinHouse progress={progress} />
-                </div>
-              </div>
-              
-              <p className="text-sm font-medium text-slate-500 mb-6 flex items-center gap-2">
-                <span className="font-semibold text-slate-600">{formatCurrency(goal.target_amount - goal.current_amount)}</span> remaining
-                <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                <span className={`${timeRemaining.isOverdue ? 'text-red-500 font-bold' : 'text-slate-500'}`}>
-                   {timeRemaining.text}
-                </span>
-              </p>
-              
-              <div className="relative h-5 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-100/50">
-                <div 
-                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-brand-500 via-indigo-500 to-purple-500 rounded-full transition-all duration-1000 ease-out"
-                  style={{ width: `${progress}%` }}
-                >
-                  <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]"></div>
-                </div>
-              </div>
-              
-              <div className="flex justify-between items-center mt-3">
-                <span className="text-sm font-bold text-brand-600 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></span>
-                  {progress.toFixed(1)}% complete
-                </span>
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Calendar size={12} />
-                  Target: {formatDate(goal.due_date)}
-                </span>
-              </div>
-            </div>
-            
-            {/* Key Stats (Right) */}
-            <div className="lg:w-72 lg:border-l lg:border-slate-100 lg:pl-8 flex flex-col gap-3">
-              {plan?.contribution ? (
-                 <div className="p-5 bg-emerald-50/50 rounded-2xl border border-emerald-100/50 hover:bg-emerald-50 transition-colors">
-                  <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                    <RefreshCw size={10} /> Monthly Save
+               {/* 2. Main Metrics (Expanded) */}
+               <div className="flex-1 w-full space-y-7">
+                  {/* Top Row: Financials */}
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+                     {/* Current vs Target */}
+                     <div>
+                        <div className="flex items-center gap-2 mb-2">
+                           <div className="bg-indigo-100 text-indigo-600 p-1.5 rounded-lg">
+                              <Target size={14} /> 
+                           </div>
+                           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Goal Progress</span>
+                           {timeRemaining.isOverdue && (
+                              <span className="bg-rose-100 text-rose-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-rose-200">Overdue</span>
+                           )}
+                        </div>
+                        <div className="flex items-baseline gap-3">
+                           <span className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight">
+                              {formatCurrency(totalAssociatedValue)}
+                           </span>
+                           <span className="text-lg font-bold text-slate-400">
+                              / {formatCurrency(goal.target_amount)}
+                           </span>
+                        </div>
+                     </div>
+
+                     {/* Monthly Save (Compact Card) */}
+                     <div className="w-full md:w-auto md:min-w-[180px] bg-slate-50/80 rounded-2xl p-4 border border-slate-100 group/save hover:bg-white hover:shadow-md transition-all">
+                        <div className="flex items-center justify-between mb-1">
+                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                              Monthly Save
+                           </span>
+                           <div className={`w-1.5 h-1.5 rounded-full ${plan?.contribution ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></div>
+                        </div>
+                        <div className="text-xl font-bold text-emerald-600 flex items-center gap-1.5">
+                           {plan?.contribution ? (
+                              <>
+                                 <TrendingUp size={18} />
+                                 {formatCurrency(plan.contribution.amount || plan.contribution_strategy?.monthly_amount)}
+                              </>
+                           ) : (
+                              <span className="text-slate-400 text-base italic">Not setup</span>
+                           )}
+                        </div>
+                     </div>
                   </div>
-                  <div className="text-2xl font-black text-emerald-700 tracking-tight">
-                    {formatCurrency(plan.contribution.amount || plan.contribution_strategy?.monthly_amount)}
+
+                  {/* Middle: Progress Bar */}
+                  <div>
+                     <div className="flex justify-between text-xs font-bold text-slate-500 mb-2.5 px-1">
+                        <span className="text-indigo-600 flex items-center gap-1.5">
+                           <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>
+                           {progress.toFixed(1)}% Complete
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                           <Calendar size={12} />
+                           Target: {formatDate(goal.due_date)}
+                        </span>
+                     </div>
+                     <div className="h-3.5 w-full bg-slate-100 rounded-full overflow-hidden shadow-inner ring-1 ring-slate-100">
+                        <div 
+                           className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 rounded-full transition-all duration-1000 relative bg-[length:200%_100%] animate-[shimmer_3s_infinite]"
+                           style={{ width: `${progress}%` }}
+                        >
+                           <div className="absolute inset-0 bg-white/20"></div>
+                        </div>
+                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
-                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Est. Completion</div>
-                   <div className="text-lg font-bold text-slate-700">{formatDate(goal.due_date)}</div>
-                </div>
-              )}
-              
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
-                  <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Priority</div>
-                  <div className="text-xs font-bold text-slate-700 capitalize">{goal.priority || 'Medium'}</div>
-                </div>
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
-                  <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Risk</div>
-                  <div className="text-xs font-bold text-slate-700 capitalize">{goal.riskTolerance || 'Balanced'}</div>
-                </div>
-              </div>
+
+                  {/* Bottom: Meta Stats (Grid) */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                     {/* Remaining */}
+                     <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center text-slate-400">
+                           <Coins size={14} />
+                        </div>
+                        <div>
+                           <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Remaining</span>
+                           <span className="text-sm font-bold text-slate-700">{formatCurrency(Math.max(0, goal.target_amount - totalAssociatedValue))}</span>
+                        </div>
+                     </div>
+
+                     {/* Time Left */}
+                     <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center ${timeRemaining.isOverdue ? 'text-rose-500' : 'text-slate-400'}`}>
+                           <Clock size={14} />
+                        </div>
+                        <div>
+                           <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Time Left</span>
+                           <span className={`text-sm font-bold ${timeRemaining.isOverdue ? 'text-rose-600' : 'text-slate-700'}`}>{timeRemaining.text}</span>
+                        </div>
+                     </div>
+
+                     {/* Priority */}
+                     <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center text-amber-500">
+                           <AlertCircle size={14} />
+                        </div>
+                        <div>
+                           <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Priority</span>
+                           <span className="text-sm font-bold text-slate-700 capitalize">{goal.priority || 'Medium'}</span>
+                        </div>
+                     </div>
+
+                     {/* Risk */}
+                     <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center text-blue-500">
+                           <Shield size={14} />
+                        </div>
+                        <div>
+                           <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Risk</span>
+                           <span className="text-sm font-bold text-slate-700 capitalize">{goal.riskTolerance || 'Balanced'}</span>
+                        </div>
+                     </div>
+                  </div>
+               </div>
             </div>
-          </div>
         </div>
         
         {/* Tabs */}
@@ -1520,7 +2001,7 @@ ${productList}
                     <div className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-50 rounded-full blur-3xl opacity-50 group-hover:opacity-80 transition-opacity duration-700" />
                     
                     <div className="relative z-10">
-                      <div className="flex items-center justify-between mb-8">
+                      <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-100">
                             <Brain size={20} />
@@ -1538,64 +2019,140 @@ ${productList}
                         </div>
                       </div>
 
-                      <div className="prose prose-slate prose-sm max-w-none mb-10 text-slate-600 leading-relaxed font-medium">
+                      <div className="prose prose-slate prose-sm max-w-none text-slate-600 leading-relaxed font-medium">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
                           {plan?.ai_rationale || goal.notes || "This goal is currently following a standard growth path. Our AI recommends periodic reviews to ensure alignment with market volatility."}
                         </ReactMarkdown>
                       </div>
-                      
-                      {plan?.strategy_profile && (
-                        <div className="flex flex-wrap items-center gap-4 pt-8 border-t border-slate-50">
-                          <div className="flex flex-col gap-1.5 px-5 py-3 bg-slate-50 rounded-2xl border border-slate-100 transition-all group-hover:bg-white group-hover:shadow-md">
-                            <span className="text-[9px] text-slate-400 uppercase font-black tracking-[0.2em]">Active Strategy</span>
-                            <span className="font-bold text-slate-900 capitalize text-sm">{plan.strategy_profile}</span>
-                          </div>
-                          
-                          {plan?.settings?.inflation_adjusted && (
-                            <div className="flex items-center gap-2.5 px-5 py-3 bg-emerald-50 rounded-2xl border border-emerald-100/50 text-xs font-bold text-emerald-700 transition-all group-hover:bg-white group-hover:shadow-md">
-                              <CheckCircle2 size={16} className="text-emerald-500" /> 
-                              Inflation Protected
-                            </div>
-                          )}
-                          
-                          <div className="flex items-center gap-2.5 px-5 py-3 bg-brand-50 rounded-2xl border border-brand-100/50 text-xs font-bold text-brand-700 transition-all group-hover:bg-white group-hover:shadow-md">
-                            <Sparkles size={16} className="text-brand-500" /> 
-                            AI Optimized
-                          </div>
-                        </div>
-                      )}
                     </div>
+                    
+                    {plan?.strategy_profile && (
+                      <div className="relative z-10 flex flex-wrap items-center gap-4 pt-6 border-t border-slate-50 mt-6">
+                        <div className="flex flex-col gap-1.5 px-5 py-3 bg-slate-50 rounded-2xl border border-slate-100 transition-all group-hover:bg-white group-hover:shadow-md">
+                          <span className="text-[9px] text-slate-400 uppercase font-black tracking-[0.2em]">Active Strategy</span>
+                          <span className="font-bold text-slate-900 capitalize text-sm">{plan.strategy_profile}</span>
+                        </div>
+                        
+                        {plan?.settings?.inflation_adjusted && (
+                          <div className="flex items-center gap-2.5 px-5 py-3 bg-emerald-50 rounded-2xl border border-emerald-100/50 text-xs font-bold text-emerald-700 transition-all group-hover:bg-white group-hover:shadow-md">
+                            <CheckCircle2 size={16} className="text-emerald-500" /> 
+                            Inflation Protected
+                          </div>
+                        )}
+                        
+                        <div className="flex items-center gap-2.5 px-5 py-3 bg-brand-50 rounded-2xl border border-brand-100/50 text-xs font-bold text-brand-700 transition-all group-hover:bg-white group-hover:shadow-md">
+                          <Sparkles size={16} className="text-brand-500" /> 
+                          AI Optimized
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Next Steps / Actions (New Section) */}
-                  <div className="bg-white rounded-3xl border border-slate-100 p-8 shadow-sm">
-                    <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
-                      <CheckCircle2 size={20} className="text-brand-500" /> Next Actions
-                    </h3>
-                    <div className="space-y-4">
-                      {goal.actions?.length > 0 ? (
-                        goal.actions.map((action, idx) => (
-                          <div key={action._id || idx} className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:bg-white hover:border-brand-200 transition-all">
-                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${action.is_completed ? 'bg-brand-500 border-brand-500 text-white' : 'border-slate-300'}`}>
-                              {action.is_completed && <Check size={12} strokeWidth={4} />}
-                            </div>
-                            <span className={`flex-1 text-sm font-medium ${action.is_completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
-                              {action.action_text}
-                            </span>
-                            {action.reminder_date && (
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                Due {formatDate(action.reminder_date)}
-                              </span>
-                            )}
+                  {/* Goal Details Card - Multi-column Layout */}
+                  {goal.goal_details && (() => {
+                    const allCategories = {
+                      "Financial Metrics": ["price", "cost", "amount", "budget", "income", "expense", "value", "rate", "percent", "pct", "tax", "fee", "liquid", "invest", "debt", "balance", "contribution", "return", "inflation", "appreciation", "term", "deposit", "savings", "down_payment", "mortgage", "loan"],
+                      "Temporal Info": ["date", "year", "month", "duration", "period", "frequency", "horizon", "timeline"],
+                      "Status & Type": ["status", "type", "category", "method", "mode", "is_", "has_", "condition", "attitude", "location", "first_home", "buyer", "owner"],
+                      "Other Details": []
+                    };
+
+                    // Categorize all items
+                    const categorizedItems = {
+                      "Financial Metrics": [],
+                      "Temporal Info": [],
+                      "Status & Type": [],
+                      "Other Details": []
+                    };
+
+                    Object.entries(goal.goal_details).forEach(([key, value]) => {
+                      if (value === null || value === undefined || value === '') return;
+                      
+                      let categorized = false;
+                      for (const [catName, keywords] of Object.entries(allCategories)) {
+                        if (catName !== "Other Details" && keywords.some(k => key.toLowerCase().includes(k))) {
+                          categorizedItems[catName].push([key, value]);
+                          categorized = true;
+                          break;
+                        }
+                      }
+                      
+                      if (!categorized) {
+                        categorizedItems["Other Details"].push([key, value]);
+                      }
+                    });
+
+                    // Check if there's any data to display
+                    const hasData = Object.values(categorizedItems).some(items => items.length > 0);
+                    if (!hasData) return null;
+
+                    return (
+                      <div className="bg-white rounded-3xl border border-slate-100 p-8 shadow-sm">
+                        <div className="flex items-center gap-3 mb-8">
+                          <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center text-brand-600">
+                            <FileText size={20} />
                           </div>
-                        ))
-                      ) : (
-                        <div className="flex items-center gap-4 p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center justify-center italic text-slate-400 text-sm">
-                          AI is analyzing your path... No immediate actions required.
+                          <div>
+                            <h3 className="text-slate-900 font-bold text-sm uppercase tracking-[0.15em]">
+                              Goal Details
+                            </h3>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5 tracking-wider">Comprehensive Information</p>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                          {Object.entries(categorizedItems).map(([catName, items]) => {
+                            if (items.length === 0) return null;
+                            return (
+                              <div key={catName} className="space-y-4">
+                                <div className="flex items-center gap-2 pb-3 border-b-2 border-brand-100">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-brand-500"></div>
+                                  <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest">
+                                    {catName}
+                                  </h4>
+                                </div>
+                                <div className="space-y-3">
+                                  {items.map(([key, value]) => {
+                                    const label = key.replace(/_/g, ' ');
+                                    const isDate = key.toLowerCase().includes('date') && !isNaN(Date.parse(value));
+                                    const isCurrency = key.toLowerCase().includes('price') || 
+                                                      key.toLowerCase().includes('cost') || 
+                                                      key.toLowerCase().includes('amount') ||
+                                                      key.toLowerCase().includes('budget') ||
+                                                      key.toLowerCase().includes('income') ||
+                                                      key.toLowerCase().includes('deposit') ||
+                                                      key.toLowerCase().includes('payment');
+                                    
+                                    let displayValue = value;
+                                    if (typeof value === 'boolean') {
+                                      displayValue = value ? 'Yes' : 'No';
+                                    } else if (isDate) {
+                                      displayValue = formatDate(value);
+                                    } else if (isCurrency && typeof value === 'number') {
+                                      displayValue = formatCurrency(value);
+                                    } else {
+                                      displayValue = String(value);
+                                    }
+                                    
+                                    return (
+                                      <div key={key} className="space-y-1">
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide leading-tight">
+                                          {label}
+                                        </div>
+                                        <div className="text-sm font-bold text-slate-900 leading-tight">
+                                          {displayValue}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Right Side: Allocation & Progress */}
@@ -1611,28 +2168,6 @@ ${productList}
                       <PortfolioAllocationChart exposure={targetExposure} />
                     </div>
                   ) : null}
-
-                  {/* Goal Attributes (Detailed) */}
-                  {goal.goal_details && Object.keys(goal.goal_details).length > 0 && (
-                    <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm">
-                      <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2 text-sm uppercase tracking-wider">
-                        <Info size={16} className="text-slate-400" /> Context Details
-                      </h3>
-                      <div className="space-y-4">
-                        {Object.entries(goal.goal_details).map(([key, value]) => (
-                          <div key={key} className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0">
-                            <span className="text-xs text-slate-500 font-medium capitalize">{key.replace(/_/g, ' ')}</span>
-                            <span className="text-sm font-bold text-slate-900">
-                              {typeof value === 'boolean' ? (value ? 'Yes' : 'No') : 
-                               typeof value === 'number' && key.includes('price') ? formatCurrency(value) :
-                               typeof value === 'number' && key.includes('rate') ? `${value}%` :
-                               String(value)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Time Horizon - Simplified Abstract Design */}
                   <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm relative overflow-hidden flex flex-col items-center">
@@ -1664,6 +2199,54 @@ ${productList}
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Progress</span>
                       </div>
                       <span className="text-xs font-black text-slate-900">{timeProgress.toFixed(1)}%</span>
+                    </div>
+                  </div>
+
+                  {/* Next Steps / Actions (Moved to bottom of right column) */}
+                  <div className="bg-white rounded-3xl border border-slate-100 p-8 shadow-sm">
+                    <div className="flex items-center justify-between mb-8">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center text-brand-600">
+                          <CheckCircle2 size={20} />
+                        </div>
+                        <div>
+                          <h3 className="text-slate-900 font-bold text-sm uppercase tracking-[0.15em]">
+                            Next Actions
+                          </h3>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5 tracking-wider">Your Roadmap</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      {goal.actions?.length > 0 ? (
+                        goal.actions.map((action, idx) => (
+                          <div key={action._id || idx} className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:bg-white hover:border-brand-200 transition-all">
+                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${action.is_completed ? 'bg-brand-500 border-brand-500 text-white' : 'border-slate-300'}`}>
+                              {action.is_completed && <Check size={12} strokeWidth={4} />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-medium truncate ${action.is_completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+                                {action.action_text}
+                              </p>
+                              {action.reminder_date && (
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                                  Due {formatDate(action.reminder_date)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="flex flex-col items-center justify-center p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center space-y-3">
+                          <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-slate-300">
+                            <Sparkles size={24} />
+                          </div>
+                          <p className="italic text-slate-400 text-xs leading-relaxed">
+                            AI is analyzing your path...<br/>No immediate actions required.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1759,10 +2342,13 @@ ${productList}
                             
                             return (
                               <PortfolioProductCard 
-                                key={item._id || item.product_id || idx} 
+                                key={item._id || (item.product_id ? (item.product_id._id || item.product_id.id || item.product_id) : null) || `product-${category}-${idx}`} 
                                 item={item} 
                                 index={idx} 
-                                onClick={setSelectedProduct}
+                                onClick={(p) => {
+                                  setSelectedProduct(p);
+                                  setIsProductModalOpen(true);
+                                }}
                                 currentBalance={asset ? asset.value : 0}
                               />
                             );
@@ -1787,59 +2373,69 @@ ${productList}
           
           {/* Strategy Tab */}
           {activeTab === 'strategy' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <ContributionStrategyCard 
-                strategy={plan?.contribution_strategy} 
-                contribution={plan?.contribution}
-              />
-              <GlidePathCard glidePath={plan?.glide_path} />
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <ContributionStrategyCard 
+                  strategy={plan?.contribution_strategy} 
+                  contribution={plan?.contribution}
+                />
+                <GlidePathCard glidePath={plan?.glide_path} />
+              </div>
               
-              {/* Plan Settings */}
-              {plan?.settings && (
-                <div className="bg-white rounded-2xl border border-slate-100 p-5">
-                  <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-                    <Settings2 size={18} className="text-slate-400" />
-                    Plan Settings
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                      <span className="text-sm text-slate-600">Inflation Adjusted</span>
-                      <span className={`text-sm font-bold ${plan.settings.inflation_adjusted ? 'text-emerald-600' : 'text-slate-400'}`}>
-                        {plan.settings.inflation_adjusted ? 'Yes' : 'No'}
-                      </span>
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Plan Settings */}
+                {plan?.settings && (
+                  <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-100 p-6 shadow-sm">
+                    <div className="flex items-center gap-2.5 mb-6">
+                      <Settings2 size={18} className="text-slate-400" />
+                      <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Plan Settings</h3>
                     </div>
-                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                      <span className="text-sm text-slate-600">Tax Optimized</span>
-                      <span className={`text-sm font-bold ${plan.settings.tax_optimized ? 'text-emerald-600' : 'text-slate-400'}`}>
-                        {plan.settings.tax_optimized ? 'Yes' : 'No'}
-                      </span>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {[
+                        { label: 'Inflation Adjusted', value: plan.settings.inflation_adjusted, icon: TrendingUp },
+                        { label: 'Tax Optimized', value: plan.settings.tax_optimized, icon: Shield },
+                        { label: 'Reinvest Dividends', value: plan.settings.reinvest_dividends, icon: RefreshCw },
+                        { label: 'Liquidity Preference', value: plan.settings.liquidity_preference || 'Flexible', icon: Wallet, isText: true }
+                      ].map((item, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                          <div className="flex items-center gap-2.5">
+                            <item.icon size={13} className="text-slate-400" />
+                            <span className="text-xs font-semibold text-slate-600">{item.label}</span>
+                          </div>
+                          {item.isText ? (
+                            <span className="text-xs font-bold text-slate-900 uppercase">{item.value}</span>
+                          ) : (
+                            <span className={`text-[10px] font-black uppercase ${item.value ? 'text-emerald-600' : 'text-slate-400'}`}>
+                              {item.value ? 'Active' : 'Off'}
+                            </span>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                      <span className="text-sm text-slate-600">Reinvest Dividends</span>
-                      <span className={`text-sm font-bold ${plan.settings.reinvest_dividends ? 'text-emerald-600' : 'text-slate-400'}`}>
-                        {plan.settings.reinvest_dividends ? 'Yes' : 'No'}
-                      </span>
+                  </div>
+                )}
+                
+                {/* Strategy Profile */}
+                <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-100 p-6 shadow-sm">
+                  <div className="flex items-center gap-2.5 mb-6">
+                    <Shield size={18} className="text-indigo-500" />
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Strategy Profile</h3>
+                  </div>
+
+                  <div className="flex flex-col justify-center h-[calc(100%-4rem)]">
+                    <div className="text-3xl font-black text-indigo-600 tracking-tighter mb-2 uppercase">
+                      {plan?.strategy_profile || 'Balanced'}
                     </div>
-                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                      <span className="text-sm text-slate-600">Liquidity</span>
-                      <span className="text-sm font-bold text-slate-700 capitalize">{plan.settings.liquidity_preference || 'Flexible'}</span>
+                    <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                      Automated asset allocation and rebalancing logic to maintain your target risk-return trajectory.
+                    </p>
+                    <div className="mt-6 flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                      AI Engine Monitored
                     </div>
                   </div>
                 </div>
-              )}
-              
-              {/* Strategy Profile */}
-              <div className="bg-white rounded-2xl border border-slate-100 p-5">
-                <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-                  <Shield size={18} className="text-blue-500" />
-                  Strategy Profile
-                </h3>
-                <div className="text-3xl font-bold text-blue-600 capitalize mb-2">
-                  {plan?.strategy_profile || 'Balanced'}
-                </div>
-                <p className="text-sm text-slate-500">
-                  This profile determines the overall risk and return balance for your investment strategy.
-                </p>
               </div>
             </div>
           )}
@@ -1902,13 +2498,15 @@ ${productList}
           </div>
         )}
 
-        {/* Product Detail Side Panel */}
-        {selectedProduct && (
-          <ProductDetailPanel 
-            product={selectedProduct} 
-            onClose={() => setSelectedProduct(null)} 
-          />
-        )}
+        {/* Product Detail Modal (Mirrors Stage 3 style) */}
+        <GoalProductDetailModal 
+          product={selectedProduct}
+          open={isProductModalOpen}
+          onClose={() => {
+            setIsProductModalOpen(false);
+            setSelectedProduct(null);
+          }}
+        />
 
         {/* PDF Footer */}
         <div className="hidden pt-8 mt-12 border-t border-slate-50 flex items-center justify-between opacity-50" style={{ display: isExporting ? 'flex' : 'none' }}>
@@ -1927,5 +2525,7 @@ ${productList}
 };
 
 export default GoalDetailPage;
+
+
 
 

@@ -8,46 +8,6 @@ import SavingsOverviewWidget from '../../components/goals/SavingsOverviewWidget'
 import GoalFilters from '../../components/goals/GoalFilters';
 import GoalDetailModal from '../../components/goals/GoalDetailModal';
 
-// Mock data to match the design
-const MOCK_GOALS = [
-  {
-    _id: 'mock-1',
-    title: 'MacBook Pro',
-    target_date: '2025-10-07',
-    current_amount: 412.50,
-    target_amount: 1650,
-    status: 'In Progress',
-    category: 'Purchase',
-  },
-  {
-    _id: 'mock-2',
-    title: 'New car',
-    target_date: '2025-09-25',
-    current_amount: 25000.50,
-    target_amount: 60000,
-    status: 'In Progress',
-    category: 'Purchase',
-  },
-  {
-    _id: 'mock-3',
-    title: 'New house',
-    target_date: '2027-04-20',
-    current_amount: 5000.00,
-    target_amount: 150000,
-    status: 'Not Started',
-    category: 'Housing',
-  },
-  {
-    _id: 'mock-4',
-    title: 'Vacation',
-    target_date: '2025-12-01',
-    current_amount: 2500.00,
-    target_amount: 3500,
-    status: 'Finished',
-    category: 'Travel',
-  }
-];
-
 const GoalsOverview = ({ displayGoals, isLoading, onRefresh }) => {
   const [selectedGoal, setSelectedGoal] = useState(null);
 
@@ -146,13 +106,6 @@ const GoalsOverview = ({ displayGoals, isLoading, onRefresh }) => {
 
   const handleSaveGoal = async (updatedGoal) => {
     try {
-      // If it's a mock goal (starts with 'mock-'), we can't save to backend. 
-      if (updatedGoal._id.startsWith('mock-')) {
-        alert('Mock goal - cannot save to backend.');
-        handleCloseModal();
-        return;
-      }
-
       await updateGoal(updatedGoal._id, updatedGoal);
       onRefresh?.();
       handleCloseModal();
@@ -166,12 +119,6 @@ const GoalsOverview = ({ displayGoals, isLoading, onRefresh }) => {
     if (!window.confirm('Are you sure you want to delete this goal?')) return;
 
     try {
-      if (goalId.startsWith('mock-')) {
-        alert('Mock goal - cannot delete from backend.');
-        handleCloseModal();
-        return;
-      }
-
       await deleteGoal(goalId);
       onRefresh?.();
       handleCloseModal();
@@ -204,9 +151,39 @@ const GoalsOverview = ({ displayGoals, isLoading, onRefresh }) => {
           ) : (
             <>
               {processedGoals.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-60 bg-white rounded-3xl border border-dashed border-slate-200 text-slate-400">
-                  <p>No goals found matching filters.</p>
-                  <button onClick={handleReset} className="text-brand-600 font-bold text-sm mt-2 hover:underline">Clear filters</button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* Empty Slot / Guide Card */}
+                  <Link 
+                    to="/goals/new/ai"
+                    className="group relative flex flex-col items-center justify-center h-64 bg-white rounded-[2.5rem] border-2 border-dashed border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 transition-all duration-500 overflow-hidden"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-slate-50/50 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    
+                    <div className="relative flex flex-col items-center text-center px-8">
+                      <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-500">
+                        <Plus className="text-indigo-600 w-8 h-8" strokeWidth={2.5} />
+                      </div>
+                      
+                      <h3 className="text-lg font-black text-slate-900 mb-2">Create Your First Goal</h3>
+                      <p className="text-xs font-bold text-slate-400 leading-relaxed max-w-[200px]">
+                        Talk to our AI advisor to define your financial aspirations.
+                      </p>
+                      
+                      <div className="mt-6 flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100">
+                        Start AI Conversation
+                      </div>
+                    </div>
+
+                    {/* Decorative Sparkles */}
+                    <div className="absolute top-6 right-6 opacity-20 group-hover:opacity-100 transition-opacity">
+                      <div className="w-2 h-2 bg-indigo-400 rounded-full animate-ping" />
+                    </div>
+                  </Link>
+
+                  {/* Placeholder for second column if needed, or just leave it for a cleaner look */}
+                  <div className="hidden md:flex flex-col items-center justify-center h-64 bg-slate-50/30 rounded-[2.5rem] border border-slate-100 opacity-50">
+                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">Empty Slot</p>
+                  </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -218,6 +195,19 @@ const GoalsOverview = ({ displayGoals, isLoading, onRefresh }) => {
                       />
                     </div>
                   ))}
+                  
+                  {/* Add an extra "Quick Add" slot at the end of the list if there are few goals */}
+                  {processedGoals.length < 4 && (
+                    <Link 
+                      to="/goals/new/ai"
+                      className="group flex flex-col items-center justify-center h-full min-h-[240px] bg-slate-50/50 rounded-[2.5rem] border border-dashed border-slate-200 hover:border-indigo-300 hover:bg-white transition-all duration-300"
+                    >
+                      <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center mb-3 shadow-sm group-hover:scale-110 transition-transform">
+                        <Plus className="text-slate-400 group-hover:text-indigo-600 w-5 h-5" />
+                      </div>
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-indigo-600">Add Another Goal</span>
+                    </Link>
+                  )}
                 </div>
               )}
             </>

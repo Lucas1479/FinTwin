@@ -54,7 +54,15 @@ This is the ONLY tool you need for most cases. Just call it once and use the res
                 },
                 is_retirement_goal: {
                     type: 'boolean',
-                    description: 'If true, includes KiwiSaver products. If false, excludes locked products.'
+                    description: 'If true, prioritizes KiwiSaver products for retirement savings.'
+                },
+                is_home_goal: {
+                    type: 'boolean',
+                    description: 'If true, indicates a home purchase goal (first home or investment property).'
+                },
+                has_employment_income: {
+                    type: 'boolean',
+                    description: 'If true, user has employment income and can access KiwiSaver employer contributions.'
                 },
                 user_preferences: {
                     type: 'object',
@@ -213,8 +221,8 @@ This is more accurate than manual calculation and guarantees the best possible f
                     type: 'object',
                     description: 'Optional constraints on weights',
                     properties: {
-                        min_weight_per_product: { type: 'number', description: 'Minimum weight per product (default 5)' },
-                        max_weight_per_product: { type: 'number', description: 'Maximum weight per product (default 70)' }
+                        min_weight_per_product: { type: 'number', description: 'Minimum weight per product (default 5%)' },
+                        max_weight_per_product: { type: 'number', description: 'Maximum weight per product (default 70%)' }
                     }
                 }
             },
@@ -248,10 +256,12 @@ export async function buildOptimizedPortfolios(params = {}) {
         target_liquidity_pct = 10,
         max_fees,
         is_retirement_goal = false,
+        is_home_goal = false,
+        has_employment_income = false,
         user_preferences = {}
     } = params;
 
-    console.log(`[ProductTools] buildOptimizedPortfolios: target=${target_growth_pct}/${target_defensive_pct}/${target_liquidity_pct}`);
+    console.log(`[ProductTools] buildOptimizedPortfolios: target=${target_growth_pct}/${target_defensive_pct}/${target_liquidity_pct}, retirement=${is_retirement_goal}, home=${is_home_goal}, employment=${has_employment_income}`);
 
     // Step 1: 获取候选产品
     const candidates = await searchPortfolioCandidates({
@@ -259,7 +269,8 @@ export async function buildOptimizedPortfolios(params = {}) {
         target_defensive_pct,
         target_liquidity_pct,
         max_fees,
-        is_retirement_goal
+        is_retirement_goal,
+        is_home_goal
     });
 
     if (candidates.summary.total_candidates < 3) {
@@ -271,6 +282,27 @@ export async function buildOptimizedPortfolios(params = {}) {
         ...candidates.candidates.defensive,
         ...candidates.candidates.liquidity
     ];
+
+    // === 强制 KiwiSaver 检查（方案 A）===
+    // 对于有就业收入的退休或购房目标，强制至少包含一个 KiwiSaver 产品
+    const requiresKiwiSaver = (is_retirement_goal || is_home_goal) && has_employment_income;
+    if (requiresKiwiSaver) {
+        const kiwiSaverProducts = allProducts.filter(p => 
+            p.category?.toLowerCase().includes('kiwisaver')
+        );
+        
+        if (kiwiSaverProducts.length === 0) {
+            const goalType = is_retirement_goal ? 'retirement' : 'home purchase';
+            console.warn(`[ProductTools] ⚠️ No KiwiSaver products in candidate pool for ${goalType} goal with employment income`);
+            return { 
+                error: `No suitable KiwiSaver products available. For ${goalType} goals with employment income, KiwiSaver is strongly recommended due to employer contribution (3%) and government contribution benefits ($521/year).`,
+                suggestion: 'Please ensure KiwiSaver products are active in the system.',
+                candidates_found: candidates.summary.total_candidates,
+                kiwisaver_found: 0
+            };
+        }
+        console.log(`[ProductTools] ✅ Found ${kiwiSaverProducts.length} KiwiSaver products for ${is_retirement_goal ? 'retirement' : 'home'} goal`);
+    }
 
     // 创建产品查找映射
     const productMap = new Map(allProducts.map(p => [p.id, p]));
@@ -296,31 +328,58 @@ export async function buildOptimizedPortfolios(params = {}) {
             name: 'Lowest Cost Portfolio',
             description: 'Minimizes fees to maximize long-term compound returns',
             selectProducts: (growth, defensive, liquidity) => {
-                // 按费率排序，选最便宜的
-                const growthPool = topByAlignment(growth);
-                const defensivePool = topByAlignment(defensive);
-                const liquidityPool = topByAlignment(liquidity);
-                const sorted = [...growthPool, ...defensivePool, ...liquidityPool]
-                    .sort((a, b) => (a.fees || 0) - (b.fees || 0));
-                // 确保每个类别至少有一个
+                // 纯粹追求最低费率：直接选费率最低的产品
+                const growthPool = topByAlignment(growth).sort((a, b) => (a.fees || 0) - (b.fees || 0));
+                const defensivePool = topByAlignment(defensive).sort((a, b) => (a.fees || 0) - (b.fees || 0));
+                const liquidityPool = topByAlignment(liquidity).sort((a, b) => (a.fees || 0) - (b.fees || 0));
+                const allProducts = [...growthPool, ...defensivePool, ...liquidityPool];
+                
+                // 按费率排序所有产品
+                const sorted = [...allProducts].sort((a, b) => (a.fees || 0) - (b.fees || 0));
+                
+                // 如果需要 KiwiSaver，找到费率最低的 KiwiSaver
+                const requiresKS = is_retirement_goal || is_home_goal;
+                const ksProducts = requiresKS ? sorted.filter(p => p.category?.toLowerCase().includes('kiwisaver')) : [];
+                
                 const selected = [];
                 const usedIds = new Set();
                 
-                // 从每个类别选一个最便宜的
-                for (const cat of [growthPool, defensivePool, liquidityPool]) {
-                    if (cat.length > 0) {
-                        selected.push(cat[0]);
-                        usedIds.add(cat[0].id);
-                    }
+                // 策略：选3个费率最低的产品（降低优化难度）
+                if (requiresKS && ksProducts.length > 0) {
+                    // 先加入费率最低的 KiwiSaver
+                    selected.push(ksProducts[0]);
+                    usedIds.add(ksProducts[0].id);
                 }
-                // 补充到4个
+                
+                // 然后选费率最低的产品，确保包含各个资产类别
+                // 优先从每个类别选至少一个
+                const addFromPool = (pool, count = 1) => {
+                    let added = 0;
+                    for (const p of pool) {
+                        if (selected.length >= 3) break;
+                        if (!usedIds.has(p.id)) {
+                            selected.push(p);
+                            usedIds.add(p.id);
+                            added++;
+                            if (added >= count) break;
+                        }
+                    }
+                };
+                
+                // 从每个类别至少选一个（最便宜的）
+                if (selected.length < 3) addFromPool(growthPool, 1);
+                if (selected.length < 3) addFromPool(defensivePool, 1);
+                if (selected.length < 3) addFromPool(liquidityPool, 1);
+                
+                // 补充到3个（从全局最便宜的产品中选）
                 for (const p of sorted) {
-                    if (selected.length >= 4) break;
+                    if (selected.length >= 3) break;
                     if (!usedIds.has(p.id)) {
                         selected.push(p);
                         usedIds.add(p.id);
                     }
                 }
+                
                 return selected;
             }
         },
@@ -329,15 +388,16 @@ export async function buildOptimizedPortfolios(params = {}) {
             name: 'Diversified Portfolio',
             description: 'Spreads risk across multiple providers and asset classes',
             selectProducts: (growth, defensive, liquidity) => {
-                // 选择不同 provider 的产品
+                // 选择不同 provider 的产品 - 目标4个产品以实现更好的分散
+                // 关键：确保每个资产类别都有代表，然后才考虑供应商分散
                 const selected = [];
                 const usedProviders = new Set();
                 const growthPool = rankByAlignment(growth);
                 const defensivePool = rankByAlignment(defensive);
                 const liquidityPool = rankByAlignment(liquidity);
                 
-                // For retirement, try to ensure at least one KiwiSaver for its unique benefits (Employer match/Govt credit)
-                if (is_retirement_goal) {
+                // === 强制 KiwiSaver 逻辑 ===
+                if (is_retirement_goal || is_home_goal) {
                     const ksCandidate = [...growthPool, ...defensivePool, ...liquidityPool]
                         .find(p => p.category?.toLowerCase().includes('kiwisaver'));
                     if (ksCandidate) {
@@ -346,21 +406,50 @@ export async function buildOptimizedPortfolios(params = {}) {
                     }
                 }
 
-                for (const cat of [growthPool, defensivePool, liquidityPool]) {
-                    for (const p of cat) {
-                        if (!usedProviders.has(p.provider) && selected.length < 4) {
+                // **改进逻辑**：先从每个资产类别选一个不同provider的产品（确保资产配置覆盖）
+                const pools = [
+                    { name: 'growth', pool: growthPool },
+                    { name: 'defensive', pool: defensivePool },
+                    { name: 'liquidity', pool: liquidityPool }
+                ];
+                
+                for (const { pool } of pools) {
+                    if (selected.length >= 4) break;
+                    // 从这个类别中找一个不同provider的产品
+                    for (const p of pool) {
+                        if (!usedProviders.has(p.provider) && !selected.find(s => s.id === p.id)) {
                             selected.push(p);
                             usedProviders.add(p.provider);
+                            break; // 找到一个就停止，继续下一个类别
                         }
                     }
                 }
-                // 如果不够，补充
-                for (const p of [...growthPool, ...defensivePool, ...liquidityPool]) {
+                
+                // 如果还不够4个，从剩余产品中选择不同provider的
+                for (const { pool } of pools) {
                     if (selected.length >= 4) break;
-                    if (!selected.find(s => s.id === p.id)) {
-                        selected.push(p);
+                    for (const p of pool) {
+                        if (!usedProviders.has(p.provider) && !selected.find(s => s.id === p.id)) {
+                            selected.push(p);
+                            usedProviders.add(p.provider);
+                            if (selected.length >= 4) break;
+                        }
                     }
                 }
+                
+                // 如果还不够，放宽provider限制，只要产品不重复即可
+                if (selected.length < 4) {
+                    for (const { pool } of pools) {
+                        if (selected.length >= 4) break;
+                        for (const p of pool) {
+                    if (!selected.find(s => s.id === p.id)) {
+                        selected.push(p);
+                                if (selected.length >= 4) break;
+                    }
+                }
+                    }
+                }
+                
                 return selected;
             }
         },
@@ -369,32 +458,43 @@ export async function buildOptimizedPortfolios(params = {}) {
             name: 'Balanced Portfolio',
             description: 'Balances cost, diversification, and historical performance',
             selectProducts: (growth, defensive, liquidity) => {
-                // 综合评分：费率低 + 回报高 + 风险适中
+                // 综合评分：费率低 + 回报高 + 风险配置适中
+                // 让 KiwiSaver 和 Fund 产品公平竞争，基于实际表现评分
                 const score = (p) => {
                     const feeScore = 1 / (1 + (p.fees || 0.5));  // 费率越低分越高
                     const returnScore = (p.return_5yr || 0) / 10;  // 回报越高分越高
-                    // KiwiSaver Boost for retirement: compensates for slightly higher fees due to NZ policy benefits
-                    const ksBoost = (is_retirement_goal && p.category?.toLowerCase().includes('kiwisaver')) ? 1.0 : 0;
                     const alignBoost = alignmentScore(p) / 100;
-                    return feeScore + returnScore + ksBoost + alignBoost;
+                    return feeScore + returnScore + alignBoost;
                 };
 
                 const all = [...growth, ...defensive, ...liquidity]
                     .map(p => ({ ...p, score: score(p) }))
                     .sort((a, b) => b.score - a.score);
                 
-                // 确保每个类别至少有一个
+                // === 强制 KiwiSaver 逻辑 ===
+                // 确保至少包含一个 KiwiSaver（如果是退休或购房目标）
                 const selected = [];
                 const usedIds = new Set();
                 
+                if (is_retirement_goal || is_home_goal) {
+                    const ksProduct = all.find(p => p.category?.toLowerCase().includes('kiwisaver'));
+                    if (ksProduct) {
+                        selected.push(ksProduct);
+                        usedIds.add(ksProduct.id);
+                    }
+                }
+                
+                // 从每个类别选择评分最高的
                 for (const cat of [rankByAlignment(growth), rankByAlignment(defensive), rankByAlignment(liquidity)]) {
                     if (cat.length > 0) {
                         const best = cat.map(p => ({...p, score: score(p)})).reduce((a, b) => a.score > b.score ? a : b);
+                        if (!usedIds.has(best.id)) {
                         selected.push(best);
                         usedIds.add(best.id);
                     }
                 }
-                // 补充到4个
+                }
+                // 灵活补充到3-4个（根据评分决定）
                 for (const p of all) {
                     if (selected.length >= 4) break;
                     if (!usedIds.has(p.id)) {
@@ -417,7 +517,7 @@ export async function buildOptimizedPortfolios(params = {}) {
     const portfolioOptions = [];
     const usedProductIds = new Set();
 
-    const maxAllowedDeviation = 10;
+    const maxAllowedDeviation = 18;  // 放宽偏差限制到18%，提高组合成功率
     for (const strategy of portfolioStrategies) {
         const filterByUsed = (list) => list.filter(p => !usedProductIds.has(p.id));
         const filteredGrowth = filterByUsed(candidates.candidates.growth);
@@ -432,10 +532,22 @@ export async function buildOptimizedPortfolios(params = {}) {
 
         if (selectedProducts.length < 2) continue;
 
+        // 打印选出的产品配置，用于诊断
+        console.log(`[ProductTools] ${strategy.id} selected products:`);
+        selectedProducts.forEach(p => {
+            console.log(`  - ${p.name}: ${(p.allocation.growth || 0).toFixed(2)}% growth / ${(p.allocation.defensive || 0).toFixed(2)}% defensive / ${(p.allocation.cash || 0).toFixed(2)}% cash`);
+        });
+
         // 使用优化器计算最佳权重
+        // 为 diversified 策略设置更严格的权重约束，确保真正的分散
+        const constraints = strategy.id === 'diversified' 
+            ? { min_weight_per_product: 15, max_weight_per_product: 40 }  // 分散持仓：15-40%
+            : {};  // 其他策略使用默认约束（5-70%）
+        
         const optimized = await optimizePortfolioWeights({
             product_ids: selectedProducts.map(p => p.id),
-            target_exposure: targetExposure
+            target_exposure: targetExposure,
+            constraints: constraints
         });
 
         if (optimized.error) {
@@ -452,6 +564,24 @@ export async function buildOptimizedPortfolios(params = {}) {
             continue;
         }
 
+        // === 验证 KiwiSaver 包含性（最后保障）===
+        if (requiresKiwiSaver) {
+            const hasKiwiSaver = optimized.optimized_products.some(p => 
+                p.name?.toLowerCase().includes('kiwisaver') || 
+                selectedProducts.find(sp => sp.id === p.product_id)?.category?.toLowerCase().includes('kiwisaver')
+            );
+            if (!hasKiwiSaver) {
+                console.warn(`[ProductTools] ⚠️ ${strategy.id} does not include KiwiSaver - skipping (required for ${is_retirement_goal ? 'retirement' : 'home'} goal with employment income)`);
+                continue;
+            }
+        }
+
+        // 打印每个组合的费率信息用于调试
+        console.log(`[ProductTools] ${strategy.name} - Total Fees: ${optimized.total_fees_estimate?.toFixed(2)}%`);
+        optimized.optimized_products.forEach(p => {
+            console.log(`  - ${p.name}: ${p.fees?.toFixed(2)}% fee, ${p.weight_pct?.toFixed(1)}% weight`);
+        });
+
         portfolioOptions.push({
             option_id: strategy.id,
             option_name: strategy.name,
@@ -466,13 +596,16 @@ export async function buildOptimizedPortfolios(params = {}) {
                 provider: p.provider,
                 weight_pct: p.weight_pct,
                 allocation: p.allocation,
-                rationale: `${p.name} - ${p.allocation.growth}% growth / ${p.allocation.defensive}% defensive / ${p.allocation.cash}% cash`
+                rationale: `${p.name} - ${(p.allocation.growth || 0).toFixed(2)}% growth / ${(p.allocation.defensive || 0).toFixed(2)}% defensive / ${(p.allocation.cash || 0).toFixed(2)}% cash`
             }))
         });
         optimized.optimized_products.forEach(p => usedProductIds.add(p.product_id));
     }
 
     console.log(`[ProductTools] Built ${portfolioOptions.length} optimized portfolios`);
+    
+    // 按方法排序（保持策略定义的顺序）：Lowest Cost -> Diversified -> Balanced
+    // 不按结果费率排序
 
     return {
         target_exposure: targetExposure,
@@ -509,7 +642,8 @@ export async function searchPortfolioCandidates(params = {}) {
         target_defensive_pct = 30,
         target_liquidity_pct = 10,
         max_fees,
-        is_retirement_goal = false
+        is_retirement_goal = false,
+        is_home_goal = false
     } = params;
 
     // Final counts: 15 growth, 15 defensive, 5 liquidity = 35 total
@@ -526,17 +660,20 @@ export async function searchPortfolioCandidates(params = {}) {
         baseQuery['metrics.fees.total'] = { $lte: max_fees };
     }
 
-    // 根据是否是退休目标决定是否包含 KiwiSaver
-    const excludeKiwiSaver = !is_retirement_goal;
+    // 根据是否是退休或购房目标决定是否包含 KiwiSaver
+    // 退休目标：KiwiSaver 有雇主贡献 (3%) + 政府补贴 ($521/年)
+    // 购房目标：KiwiSaver 支持 First Home Withdrawal + First Home Grant
+    const excludeKiwiSaver = !(is_retirement_goal || is_home_goal);
 
     // 并行查询三个资产类别
+    // 策略：让 KiwiSaver 和 Fund 产品公平竞争，基于回报、费用、风险配置进行筛选
+    // 不在查询阶段给 KiwiSaver 特殊待遇，只在最终选择阶段确保至少有一个 KiwiSaver
     const [growthProducts, defensiveProducts, liquidityProducts] = await Promise.all([
         // Growth 类：高股票配置的产品 (15个)
         target_growth_pct > 0 ? Product.find({
             ...baseQuery,
             $or: [
                 { strategy: { $in: ['Growth', 'Aggressive'] } },
-                { category: { $in: ['Growth', 'Aggressive'] } },
                 { 'allocation.growth': { $gte: 60 } }
             ],
             ...(excludeKiwiSaver ? { category: { $not: /kiwisaver/i } } : {})
@@ -550,7 +687,6 @@ export async function searchPortfolioCandidates(params = {}) {
             ...baseQuery,
             $or: [
                 { strategy: { $in: ['Conservative', 'Income', 'Balanced'] } },
-                { category: { $in: ['Conservative', 'Income', 'Balanced'] } },
                 { 'allocation.defensive': { $gte: 40 } }
             ],
             ...(excludeKiwiSaver ? { category: { $not: /kiwisaver/i } } : {})
@@ -564,7 +700,6 @@ export async function searchPortfolioCandidates(params = {}) {
             ...baseQuery,
             $or: [
                 { strategy: { $in: ['Cash', 'Default'] } },
-                { category: { $in: ['Cash', 'Default'] } },
                 { 'allocation.cash': { $gte: 80 } }
             ],
             ...(excludeKiwiSaver ? { category: { $not: /kiwisaver/i } } : {})
@@ -600,7 +735,7 @@ export async function searchPortfolioCandidates(params = {}) {
                 cash: cash
             },
             // 便于 AI 快速参考的摘要
-            allocation_summary: `${growth}% growth / ${defensive}% defensive / ${cash}% cash`
+            allocation_summary: `${growth.toFixed(2)}% growth / ${defensive.toFixed(2)}% defensive / ${cash.toFixed(2)}% cash`
         };
     };
 
@@ -799,7 +934,7 @@ export async function searchProducts(params = {}) {
                 return_1y: return1y,
                 return_5yr: return5y ?? return5yAnnualized,
                 allocation: { growth, defensive, cash },
-                allocation_summary: `${growth}% growth / ${defensive}% defensive / ${cash}% cash`
+                allocation_summary: `${growth.toFixed(2)}% growth / ${defensive.toFixed(2)}% defensive / ${cash.toFixed(2)}% cash`
             };
         });
     } catch (err) {
@@ -983,7 +1118,7 @@ export async function optimizePortfolioWeights(params) {
         constraints = {}
     } = params;
 
-    const minWeight = constraints.min_weight_per_product || 5;
+    const minWeight = constraints.min_weight_per_product || 5;   // 最小权重5%，提供最大灵活性
     const maxWeight = constraints.max_weight_per_product || 70;
 
     if (product_ids.length < 2) {
@@ -997,11 +1132,11 @@ export async function optimizePortfolioWeights(params) {
     }
 
     try {
-        // 获取产品 allocation 数据
+        // 获取产品 allocation 和 performance 数据
         const dbProducts = await Product.find({
             _id: { $in: product_ids },
             isActive: true
-        }).select('name provider allocation metrics.fees.total').lean();
+        }).select('name provider category strategy riskLevel allocation metrics.fees.total metrics.returns.y1 metrics.returns.y5').lean();
 
         if (dbProducts.length !== product_ids.length) {
             const foundIds = dbProducts.map(p => p._id.toString());
@@ -1047,37 +1182,69 @@ export async function optimizePortfolioWeights(params) {
             return w.map(x => x * 100 / sum);
         };
 
-        // 迭代优化
-        const maxIter = 1000;
-        const step = 2;
+        // 改进的迭代优化：多步长 + 随机扰动
+        const maxIter = 2000;
+        let bestWeights = [...weights];
         let bestError = calculateError(weights);
-        let improved = true;
         let iter = 0;
+        let noImprovementCount = 0;
 
-        while (improved && iter < maxIter) {
-            improved = false;
-            iter++;
+        // 多步长策略：从粗到细
+        const steps = [5, 2, 1, 0.5];
+        
+        for (const step of steps) {
+            let improved = true;
+            let stepIter = 0;
+            const maxStepIter = 500;
 
-            for (let i = 0; i < n; i++) {
-                for (let j = 0; j < n; j++) {
-                    if (i === j) continue;
+            while (improved && stepIter < maxStepIter && iter < maxIter) {
+                improved = false;
+                iter++;
+                stepIter++;
 
-                    // 尝试从 j 转移权重到 i
-                    const newWeights = [...weights];
-                    newWeights[i] += step;
-                    newWeights[j] -= step;
-                    
-                    const normalized = normalizeWeights(newWeights);
+                // 尝试所有两两权重转移
+                for (let i = 0; i < n; i++) {
+                    for (let j = 0; j < n; j++) {
+                        if (i === j) continue;
+
+                        const newWeights = [...bestWeights];
+                        newWeights[i] += step;
+                        newWeights[j] -= step;
+                        
+                        const normalized = normalizeWeights(newWeights);
+                        const error = calculateError(normalized);
+
+                        if (error < bestError - 0.001) {
+                            bestWeights = normalized;
+                            bestError = error;
+                            improved = true;
+                            noImprovementCount = 0;
+                        }
+                    }
+                }
+
+                if (!improved) {
+                    noImprovementCount++;
+                }
+
+                // 如果连续多次无改进，尝试随机扰动跳出局部最优
+                if (noImprovementCount > 3 && step > 0.5) {
+                    const perturbation = bestWeights.map(w => {
+                        const rand = (Math.random() - 0.5) * step * 2;
+                        return w + rand;
+                    });
+                    const normalized = normalizeWeights(perturbation);
                     const error = calculateError(normalized);
-
-                    if (error < bestError - 0.01) {
-                        weights = normalized;
+                    if (error < bestError * 1.5) { // 接受稍差的解来探索
+                        bestWeights = normalized;
                         bestError = error;
-                        improved = true;
+                        noImprovementCount = 0;
                     }
                 }
             }
         }
+
+        weights = bestWeights;
 
         // 计算最终 exposure
         let finalGrowth = 0, finalDefensive = 0, finalLiquidity = 0, finalFees = 0;
@@ -1095,6 +1262,7 @@ export async function optimizePortfolioWeights(params) {
                 name: products[i].name,
                 provider: products[i].provider,
                 weight_pct: +weights[i].toFixed(1),
+                fees: products[i].fees,
                 allocation: {
                     growth: products[i].growth,
                     defensive: products[i].defensive,

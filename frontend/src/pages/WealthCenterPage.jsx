@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import * as wealthService from '../services/wealthService';
 import MainLayout from '../components/layout/MainLayout';
@@ -21,6 +21,7 @@ import { getGoals } from '../services/goalService';
 
 const WealthCenterPage = () => {
   const location = useLocation();
+  const contentRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'portfolio' | 'cashflow'
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -30,6 +31,7 @@ const WealthCenterPage = () => {
   const [convertMode, setConvertMode] = useState('asset-to-cash');
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
   const { timeOffset, marketMode } = useSimulation();
   
   const [data, setData] = useState({
@@ -128,6 +130,80 @@ const WealthCenterPage = () => {
       });
     } finally {
       setSyncing(false);
+    }
+  };
+
+  // �?原生PDF打印导出
+  const handleExport = async () => {
+    if (!contentRef.current) return;
+    
+    setIsExporting(true);
+    try {
+      const tabLabels = {
+        'overview': 'Overview',
+        'portfolio': 'Portfolio',
+        'cashflow': 'Cash Flow'
+      };
+      
+      const printWindow = window.open('', '_blank', 'width=1200,height=800');
+      
+      const styles = Array.from(document.styleSheets)
+        .map(sheet => {
+          try {
+            return Array.from(sheet.cssRules).map(rule => rule.cssText).join('\n');
+          } catch (e) {
+            return '';
+          }
+        })
+        .join('\n');
+      
+      const clonedContent = contentRef.current.cloneNode(true);
+      clonedContent.querySelectorAll('[data-export-ignore="true"]').forEach(el => el.remove());
+      
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Wealth Center - ${tabLabels[activeTab]}</title>
+            <meta charset="UTF-8">
+            <style>
+              ${styles}
+              @media print {
+                body { margin: 0; padding: 20px; background: white; }
+                button { display: none !important; }
+                [data-export-ignore="true"] { display: none !important; }
+                @page { margin: 1.5cm; size: A4; }
+                h1, h2, h3 { page-break-after: avoid; }
+                * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                line-height: 1.6;
+                color: #1e293b;
+              }
+            </style>
+          </head>
+          <body>
+            <div style="text-align: center; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 3px solid #6366f1;">
+              <h1 style="font-size: 32px; font-weight: bold; color: #1e293b; margin-bottom: 10px;">
+                Wealth Center - ${tabLabels[activeTab]}
+              </h1>
+              <p style="color: #64748b; font-size: 14px;">
+                Report Generated �?${new Date().toLocaleDateString('en-NZ', { dateStyle: 'long' })}
+              </p>
+            </div>
+            ${clonedContent.innerHTML}
+          </body>
+        </html>
+      `);
+      
+      printWindow.document.close();
+      setTimeout(() => { printWindow.print(); }, 1000);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert(`导出失败: ${err.message || '未知错误'}`);
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -240,9 +316,13 @@ const WealthCenterPage = () => {
                       className="pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all w-48"
                     />
                   </div>
-                  <button className="flex items-center gap-2 px-3.5 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-semibold hover:bg-slate-50 transition-colors shadow-sm">
-                    <Download size={14} />
-                    <span className="hidden lg:inline">Export</span>
+                  <button 
+                    onClick={handleExport}
+                    disabled={isExporting}
+                    className="flex items-center gap-2 px-3.5 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-semibold hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Download size={14} className={isExporting ? 'animate-pulse' : ''} />
+                    <span className="hidden lg:inline">{isExporting ? 'Exporting...' : 'Export'}</span>
                   </button>
                   <button 
                     onClick={() => { setEditingAsset(null); setIsAddModalOpen(true); }}
@@ -308,7 +388,7 @@ const WealthCenterPage = () => {
           )}
 
           {/* Level 3: Content Area */}
-          <div className="min-h-[600px] animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div ref={contentRef} className="min-h-[600px] animate-in fade-in slide-in-from-bottom-4 duration-500">
             <WealthContext.Provider value={contextValue}>
               {activeTab === 'overview' && <WealthOverview />}
               {activeTab === 'portfolio' && <WealthPortfolio />}
@@ -368,3 +448,8 @@ const TabButton = ({ id, label, icon: Icon, active, onClick, disabled, badge }) 
 
 export default WealthCenterPage;
 export { WealthContext };
+
+
+
+
+

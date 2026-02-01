@@ -400,6 +400,19 @@ def process_single_file(file_path, category_hint, file_format):
                     strategy = map_risk_to_strategy(risk_score)
             
             # --- E. Metrics (Risk, Fees, Returns) ---
+            # Calculate 5-year return: try direct column first, fallback to average of Annual Return % 1-5
+            y5_return = nullable_float(row.get('Average 5 Yrs Return Net'))
+            if y5_return is None:
+                # Try to calculate from Annual Return % 1-5 (NOT "Annual Return Year" which are year labels!)
+                annual_returns = []
+                for year_idx in range(1, 6):
+                    col_name = f'Annual Return % {year_idx}'
+                    yr_val = nullable_float(row.get(col_name))
+                    if yr_val is not None:
+                        annual_returns.append(yr_val)
+                if len(annual_returns) >= 3:  # At least 3 years of data
+                    y5_return = round(sum(annual_returns) / len(annual_returns), 2)
+            
             metrics = {
                 'riskScore': risk_score,
                 'fees': {
@@ -409,7 +422,7 @@ def process_single_file(file_path, category_hint, file_format):
                 },
                 'returns': {
                     'y1': nullable_float(row.get('Past Year Return(%) Net Charges And Tax')),
-                    'y5': nullable_float(row.get('Average 5 Yrs Return Net')),
+                    'y5': y5_return,
                     'benchmark_y1': nullable_float(row.get('Market Index Past Year Return (%)'))
                 }
             }

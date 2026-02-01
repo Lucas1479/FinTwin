@@ -3,15 +3,27 @@ import { ArrowUpDown, Clock, TrendingUp, XCircle, CheckCircle2 } from 'lucide-re
 const GoalSummaryWidget = ({ goals = [] }) => {
   const getStatusCount = (statusList) => 
     goals.filter(g => {
-      const s = g.status || 'In Progress';
-      return statusList.includes(s === 'Active' ? 'In Progress' : s === 'Completed' ? 'Finished' : s);
+      const rawStatus = g.status || 'in_progress';
+      // Normalize status to lowercase and handle common variations
+      const s = String(rawStatus).toLowerCase().replace(/\s+/g, '_');
+      
+      const normalizedStatusList = statusList.map(item => 
+        item.toLowerCase().replace(/\s+/g, '_')
+      );
+
+      // Map 'active' to 'in_progress' and 'finished' to 'completed' for consistency
+      let mappedStatus = s;
+      if (s === 'active') mappedStatus = 'in_progress';
+      if (s === 'finished') mappedStatus = 'completed';
+
+      return normalizedStatusList.includes(mappedStatus);
     }).length;
 
   const stats = {
-    notStarted: getStatusCount(['Not Started']),
-    inProgress: getStatusCount(['In Progress', 'Active']),
-    canceled: getStatusCount(['Canceled']),
-    finished: getStatusCount(['Finished', 'Completed']),
+    notStarted: getStatusCount(['not_started']),
+    inProgress: getStatusCount(['in_progress']),
+    canceled: getStatusCount(['canceled']),
+    finished: getStatusCount(['completed']),
   };
 
   return (

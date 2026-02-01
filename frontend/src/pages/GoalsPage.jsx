@@ -9,46 +9,6 @@ import { HELP_ANCHORS } from '../constants/helpAnchors';
 import GoalsOverview from './goals/GoalsOverview';
 import GoalsOptimizer from './goals/GoalsOptimizer';
 
-// Mock data to match the design
-const MOCK_GOALS = [
-  {
-    _id: 'mock-1',
-    title: 'MacBook Pro',
-    target_date: '2025-10-07',
-    current_amount: 412.50,
-    target_amount: 1650,
-    status: 'In Progress',
-    category: 'Purchase',
-  },
-  {
-    _id: 'mock-2',
-    title: 'New car',
-    target_date: '2025-09-25',
-    current_amount: 25000.50,
-    target_amount: 60000,
-    status: 'In Progress',
-    category: 'Purchase',
-  },
-  {
-    _id: 'mock-3',
-    title: 'New house',
-    target_date: '2027-04-20',
-    current_amount: 5000.00,
-    target_amount: 150000,
-    status: 'Not Started',
-    category: 'Housing',
-  },
-  {
-    _id: 'mock-4',
-    title: 'Vacation',
-    target_date: '2025-12-01',
-    current_amount: 2500.00,
-    target_amount: 3500,
-    status: 'Finished',
-    category: 'Travel',
-  }
-];
-
 const GoalsPage = () => {
   const location = useLocation();
   const [goals, setGoals] = useState([]);
@@ -83,11 +43,10 @@ const GoalsPage = () => {
     setIsLoading(true);
     try {
       const realGoals = await getGoals();
-      const hasRealGoals = Array.isArray(realGoals) && realGoals.length > 0;
-      setGoals(hasRealGoals ? realGoals : MOCK_GOALS);
+      setGoals(Array.isArray(realGoals) ? realGoals : []);
     } catch (error) {
       console.error('Failed to fetch goals:', error);
-      setGoals(MOCK_GOALS);
+      setGoals([]);
     } finally {
       setIsLoading(false);
     }

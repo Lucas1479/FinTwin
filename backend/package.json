@@ -10,8 +10,10 @@
     "generate-from-docs": "node scripts/generate_payload_from_docs.js",
     "smart-process": "node scripts/smart_pdf_pipeline.js",
     "upload-vectara": "node scripts/upload_to_vectara.js",
+    "upload-single": "node scripts/upload_single_document.js",
     "update-kb": "npm run generate-from-docs && npm run smart-process && npm run upload-vectara",
-    "clear-cache": "node scripts/clear_cache.js"
+    "clear-cache": "node scripts/clear_cache.js",
+    "view-results": "node scripts/view_pipeline_results.js"
   },
   "keywords": [],
   "author": "",
@@ -32,6 +34,7 @@
     "mammoth": "^1.11.0",
     "mongoose": "^9.0.0",
     "morgan": "^1.10.1",
+    "node-cron": "^3.0.3",
     "pdf-parse": "^2.4.5",
     "recharts": "^3.5.1",
     "tailwindcss": "^4.1.17"

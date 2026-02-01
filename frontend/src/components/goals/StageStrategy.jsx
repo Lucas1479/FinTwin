@@ -84,12 +84,6 @@ const StageStrategy = ({ goalContext, onChange, isLoadingAI, goalsSnapshot, cash
                 return prev;
             }
 
-            console.log('[StageStrategy] Syncing financials:', {
-                surplus: totalSurplus,
-                locked: lockedAllocations,
-                available: availableForThisGoal
-            });
-
             return {
                 ...prev,
                 simulation_data: {

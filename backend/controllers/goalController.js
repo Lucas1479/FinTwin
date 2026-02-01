@@ -95,7 +95,7 @@ const handlePlanActivation = async (user, goal, plan) => {
 
                     await FinancialAsset.create({
                         user_id: user._id,
-                        name: `${productName} (${goal.goal_name})`,
+                        name: productName,
                         record_type: 'Asset',
                         category: productCat,
                         value: productAmount,
@@ -108,7 +108,7 @@ const handlePlanActivation = async (user, goal, plan) => {
                             weight_pct: item.weight_pct
                         }
                     });
-                    console.log(`   + Created asset: ${productName} ($${productAmount})`);
+                    console.log(`   + Created asset: ${productName} for goal "${goal.goal_name}" ($${productAmount})`);
                 }
             } else {
                 // Fallback: If no specific portfolio products, create a generic one
@@ -117,7 +117,7 @@ const handlePlanActivation = async (user, goal, plan) => {
                 
                 await FinancialAsset.create({
                     user_id: user._id,
-                    name: investmentAssetName,
+                    name: 'Portfolio Investment',
                     record_type: 'Asset',
                     category: isRetirement ? 'KiwiSaver' : 'Invest_ManagedFund',
                     value: initialAmount,
@@ -128,7 +128,7 @@ const handlePlanActivation = async (user, goal, plan) => {
                         is_auto_generated: true
                     }
                 });
-                console.log(`[Goal Activation] 📈 Created generic investment asset: ${investmentAssetName}`);
+                console.log(`[Goal Activation] 📈 Created generic investment asset for goal "${goal.goal_name}"`);
             }
         } else {
             console.error(`[Goal Activation] ❌ No suitable cash account found for deduction of ${initialAmount}`);
@@ -153,7 +153,7 @@ const handlePlanActivation = async (user, goal, plan) => {
 
                 await CashFlow.create({
                     user_id: user._id,
-                    name: `${productName} (${goal.goal_name})`,
+                    name: `${productName} - ${goal.goal_name}`,
                     type: 'Investment',
                     category: 'Goal_Contribution',
                     amount: productMonthlyAmount,
@@ -164,13 +164,13 @@ const handlePlanActivation = async (user, goal, plan) => {
                     icon: goal.icon || 'target',
                     color: '#4F46E5' 
                 });
-                console.log(`   + Created recurring cashflow: ${productName} ($${productMonthlyAmount}/mo)`);
+                console.log(`   + Created recurring cashflow: ${productName} for "${goal.goal_name}" ($${productMonthlyAmount}/mo)`);
             }
         } else {
             // Fallback: Generic single contribution record
             await CashFlow.create({
                 user_id: user._id,
-                name: `Contribution: ${goal.goal_name}`,
+                name: `Monthly Contribution - ${goal.goal_name}`,
                 type: 'Investment',
                 category: 'Goal_Contribution',
                 amount: monthlyAmount,
@@ -181,7 +181,7 @@ const handlePlanActivation = async (user, goal, plan) => {
                 icon: goal.icon || 'target',
                 color: '#4F46E5' 
             });
-            console.log(`   + Created generic recurring cashflow: $${monthlyAmount}/mo`);
+            console.log(`   + Created generic recurring cashflow for "${goal.goal_name}": $${monthlyAmount}/mo`);
         }
     }
 };
