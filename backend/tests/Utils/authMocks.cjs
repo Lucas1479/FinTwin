@@ -1,18 +1,12 @@
-const mongoose = require('mongoose');
+// tests/utils/authMocks.cjs
 
-/**
- * Factory to create a simple auth bypass middleware.
- *
- * Usage:
- *   jest.mock('../middleware/authMiddleware.js', () => {
- *     const { createProtectMock } = require('./utils/authMocks.cjs');
- *     return { protect: createProtectMock({ objectId: true }) };
- *   });
- */
-function createProtectMock({ objectId = false, id = '507f191e810c19729de860ea' } = {}) {
-  return (req, _res, next) => {
+function createProtectMock({ objectId = true } = {}) {
+  return (req, res, next) => {
     req.user = {
-      _id: objectId ? new mongoose.Types.ObjectId(id) : id,
+      _id: objectId ? "507f191e810c19729de860ea" : "507f191e...",
+      id: objectId ? "507f191e810c19729de860ea" : "507f191e...",
+      email: "test@example.com",
+      name: "Test User",
     };
     next();
   };

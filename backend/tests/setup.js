@@ -1,49 +1,35 @@
-// tests/setup.js
-import mongoose from "mongoose";
-import { MongoMemoryServer } from "mongodb-memory-server";
+// backend/tests/setup.js
+// Test-global setup for Jest (ESM-friendly)
 
-jest.mock("../services/llmService.js", () => ({
-  __esModule: true,
-  default: {
-    generate: jest.fn(async () => ({
-      provider: "mock",
-      text: "mock decision",
-      json: { ok: true },
-      raw: null,
-    })),
-    generateWithTools: jest.fn(async () => ({
-      provider: "mock",
-      text: "mock decision with tools",
-      json: { ok: true, toolCalls: [] },
-      toolCalls: [],
-      raw: null,
-    })),
-  },
-}));
+import { jest } from "@jest/globals";
 
-let mongo;
+// Keep tests fast + predictable
+process.env.NODE_ENV = "test";
+process.env.JWT_SECRET = process.env.JWT_SECRET || "test-secret";
 
-beforeAll(async () => {
-  // Start an in-memory MongoDB instance for Jest
-  mongo = await MongoMemoryServer.create();
-  const uri = mongo.getUri();
+// Some controllers may read these
+process.env.MONGO_URI =
+  process.env.MONGO_URI ||
+  "mongodb://localhost:27017/__jest_should_not_be_used__";
 
-  // Connect mongoose to the in-memory DB
-  await mongoose.connect(uri, {
-    dbName: "jest",
-  });
+// Reduce noise in output (you can comment this out when debugging)
+const originalError = console.error;
+const originalLog = console.log;
+
+beforeAll(() => {
+  jest.setTimeout(30000);
+
+  // Silence noisy logs from controllers/middleware during tests
+  console.error = (...args) => {
+    const msg = String(args?.[0] ?? "");
+    // keep unexpected errors visible if you want
+    if (msg.includes("JestAssertionError")) return originalError(...args);
+  };
+
+  console.log = () => {};
 });
 
-afterEach(async () => {
-  // Clean the in-memory DB between tests (ONLY the in-memory one)
-  const collections = await mongoose.connection.db.collections();
-  for (const c of collections) {
-    await c.deleteMany({});
-  }
-});
-
-afterAll(async () => {
-  // Disconnect and stop the in-memory DB
-  await mongoose.disconnect();
-  if (mongo) await mongo.stop();
+afterAll(() => {
+  console.error = originalError;
+  console.log = originalLog;
 });
