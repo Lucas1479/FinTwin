@@ -5,6 +5,7 @@ import productRoutes from './productRoutes.js';
 import cashFlowRoutes from './cashFlowRoutes.js'; // New Import
 import playgroundRoutes from './playgroundRoutes.js'; // New Import
 import snapshotRoutes from './snapshotRoutes.js'; // Snapshot Routes
+import advisorInsightsRoutes from '../advisorInsightsRoutes.js'; // Advisor Insights Routes
 import helpController from '../../controllers/helpController.js';
 
 import goalRoutes from './goalRoutes.js';
@@ -22,6 +23,7 @@ router.use('/wealth', wealthCentreRoutes);
 router.use('/cashflow', cashFlowRoutes); // New Route
 router.use('/playground', playgroundRoutes); // New Route
 router.use('/snapshots', snapshotRoutes); // Snapshot Routes
+router.use('/insights', advisorInsightsRoutes); // Advisor Insights Routes
 router.use('/help', helpController);
 
 // Health Check for /api/health

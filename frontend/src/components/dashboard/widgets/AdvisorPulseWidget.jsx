@@ -1,7 +1,7 @@
 import { Zap, CheckCircle2, AlertTriangle, ArrowUpRight } from 'lucide-react';
 
 const AdvisorPulseWidget = ({ insights = [] }) => {
-  // Mock insights if none provided
+  // Mock insights if none provided (fallback for when API fails or returns empty)
   const displayInsights = insights.length > 0 ? insights : [
     { 
       type: 'opportunity', 

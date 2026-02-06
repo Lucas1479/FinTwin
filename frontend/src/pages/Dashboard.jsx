@@ -5,6 +5,7 @@ import { getWealthSummary, getAssets } from '../services/wealthService';
 import { getGoals } from '../services/goalService';
 import { getUserProfile } from '../services/userService';
 import { getCashFlows } from '../services/cashFlowService';
+import { getAdvisorPulseInsights } from '../services/advisorInsightsService';
 import { useSimulation, useSimulatedData } from '../context/SimulationContext';
 
 // New Widgets
@@ -26,7 +27,8 @@ const Dashboard = () => {
     wealth: null,
     assets: [],
     goals: [],
-    cashFlows: []
+    cashFlows: [],
+    advisorInsights: []
   });
 
   useEffect(() => {
@@ -36,12 +38,13 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const [profile, wealth, assets, goals, cashFlows] = await Promise.all([
+      const [profile, wealth, assets, goals, cashFlows, advisorInsights] = await Promise.all([
         getUserProfile(),
         getWealthSummary(),
         getAssets(),
         getGoals(),
-        getCashFlows()
+        getCashFlows(),
+        getAdvisorPulseInsights()
       ]);
 
       setData({
@@ -49,7 +52,8 @@ const Dashboard = () => {
         wealth,
         assets: assets || [],
         goals: goals || [],
-        cashFlows: cashFlows || []
+        cashFlows: cashFlows || [],
+        advisorInsights: advisorInsights || []
       });
     } catch (err) {
       console.error('Failed to load dashboard data', err);
@@ -209,7 +213,7 @@ const Dashboard = () => {
               cashFlows={data.cashFlows} 
               profile={data.profile} 
             />
-            <AdvisorPulseWidget />
+            <AdvisorPulseWidget insights={data.advisorInsights} />
           </div>
         </div>
 
