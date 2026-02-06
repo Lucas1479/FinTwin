@@ -870,15 +870,15 @@ copies of the Software...
 
 ## 👥 Team
 
-FinTwin was built by a collaborative team at the University of Auckland:
+FinTwin was built by a collaborative team at the University of Auckland, ICT School:
 
 | Member | Role | Responsibilities |
 |--------|------|-----------------|
-| **Lucas** | Product Manager & Lead Engineer | Architecture design, AI/LLM integration, goal engine implementation, API design, database schema |
-| **Kuda** | Project Manager & Data Lead | Project coordination, AWS deployment, financial compliance review, data cleaning & preparation |
-| **Ray** | Backend Developer | CRUD API implementation, data persistence, backend-frontend integration, service layer maintenance |
+| **Lucas** | Lead Architect | Architecture design, AI/LLM integration, goal engine implementation, API design, database schema, AWS deployment |
+| **Kuda** | Data Lead | Financial compliance review, data cleaning & preparation |
+| **Ray** | Backend Developer | CRUD API implementation, service layer maintenance |
 | **Ming** | Frontend Developer | Data visualization (Recharts), component development, user research & requirements gathering |
-| **Ava** | Frontend Developer & QA | User authentication UI, global styling, demo assets preparation, backend API testing, user testing & bug reporting |
+| **Ava** | Frontend Developer & QA | User authentication UI, global styling, backend API testing, user testing & bug reporting |
 
 ---
 
@@ -886,7 +886,7 @@ FinTwin was built by a collaborative team at the University of Auckland:
 
 Special thanks to:
 
-- **University of Auckland, Department of Computer Science** - Research support and guidance
+- **University of Auckland, ICT School** - Research support and guidance
 - **DeepSeek Team** - Providing accessible AI reasoning capabilities
 - **Vectara Team** - Enabling powerful RAG infrastructure
 - **Financial Markets Authority (NZ)** - Open data for financial products
@@ -898,8 +898,8 @@ Special thanks to:
 
 ### Project Lead
 - **Name**: Lucas
-- **Role**: Product Owner & Lead Engineer
-- **Institution**: University of Auckland, Department of Computer Science
+- **Role**: Lead Architect
+- **Institution**: University of Auckland, ICT School
 - **Email**: [Contact via GitHub](https://github.com/your-org/money-minds)
 
 ### Getting Help
