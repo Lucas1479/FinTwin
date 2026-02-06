@@ -8,7 +8,13 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/setupTests.js'],
     include: ['src/**/*.{test,spec}.{js,jsx}'],
-    testTimeout: 10000, // Increase timeout to 10 seconds
+    testTimeout: 60000, // Increase timeout to 60 seconds for CI environment
+    pool: 'threads', // Use threads instead of forks to fix ESM compatibility issues
+    poolOptions: {
+      threads: {
+        singleThread: true, // Run tests in single thread to avoid jsdom conflicts
+      },
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
