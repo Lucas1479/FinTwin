@@ -59,10 +59,10 @@ describe('AssumptionForm', () => {
 
     it('should call onSubmit when submitting', async () => {
         const onSubmit = vi.fn();
-        render(<AssumptionForm onSubmit={onSubmit} />);
+        const { container } = render(<AssumptionForm onSubmit={onSubmit} />);
         
-        const submitButton = screen.getByText('Save & review');
-        fireEvent.click(submitButton);
+        const form = container.querySelector('form');
+        fireEvent.submit(form);
         
         await waitFor(() => {
             expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -161,14 +161,14 @@ describe('AssumptionForm', () => {
         const onSubmit = vi.fn();
         const user = userEvent.setup();
         
-        render(<AssumptionForm onSubmit={onSubmit} />);
+        const { container } = render(<AssumptionForm onSubmit={onSubmit} />);
         
         const inputs = screen.getAllByRole('spinbutton');
         await user.clear(inputs[0]);
         await user.type(inputs[0], '10');
         
-        const submitButton = screen.getByText('Save & review');
-        fireEvent.click(submitButton);
+        const form = container.querySelector('form');
+        fireEvent.submit(form);
         
         await waitFor(() => {
             expect(onSubmit).toHaveBeenCalledWith(
