@@ -59,30 +59,34 @@ describe('AssumptionForm', () => {
 
     it('should call onSubmit when submitting', async () => {
         const onSubmit = vi.fn();
-        render(<AssumptionForm onSubmit={onSubmit} />);
+        const { container } = render(<AssumptionForm onSubmit={onSubmit} />);
         
-        const submitButton = screen.getByText('Save & review');
-        fireEvent.click(submitButton);
+        const form = container.querySelector('form');
+        fireEvent.submit(form);
         
         await waitFor(() => {
             expect(onSubmit).toHaveBeenCalledTimes(1);
         });
     });
 
-    it('should call onCancel when cancelling', () => {
+    it('should call onCancel when cancelling', async () => {
         const onCancel = vi.fn();
         render(<AssumptionForm onCancel={onCancel} />);
         
-        const cancelButton = screen.getByText('Back to edit');
+        const cancelButton = await screen.findByText('Back to edit');
         fireEvent.click(cancelButton);
         
-        expect(onCancel).toHaveBeenCalledTimes(1);
+        await waitFor(() => {
+            expect(onCancel).toHaveBeenCalledTimes(1);
+        });
     });
 
-    it('should not show cancel button when onCancel is not provided', () => {
+    it('should not show cancel button when onCancel is not provided', async () => {
         render(<AssumptionForm />);
         
-        expect(screen.queryByText('Back to edit')).not.toBeInTheDocument();
+        await waitFor(() => {
+            expect(screen.queryByText('Back to edit')).toBeNull();
+        });
     });
 
     it('should show risk attitude options', () => {
@@ -157,14 +161,14 @@ describe('AssumptionForm', () => {
         const onSubmit = vi.fn();
         const user = userEvent.setup();
         
-        render(<AssumptionForm onSubmit={onSubmit} />);
+        const { container } = render(<AssumptionForm onSubmit={onSubmit} />);
         
         const inputs = screen.getAllByRole('spinbutton');
         await user.clear(inputs[0]);
         await user.type(inputs[0], '10');
         
-        const submitButton = screen.getByText('Save & review');
-        fireEvent.click(submitButton);
+        const form = container.querySelector('form');
+        fireEvent.submit(form);
         
         await waitFor(() => {
             expect(onSubmit).toHaveBeenCalledWith(

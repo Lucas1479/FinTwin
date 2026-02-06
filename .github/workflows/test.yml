@@ -29,6 +29,10 @@ jobs:
       working-directory: ./frontend
       run: npm ci
     
+    - name: Install happy-dom for testing
+      working-directory: ./frontend
+      run: npm install --save-dev happy-dom
+    
     - name: Run frontend tests
       working-directory: ./frontend
       run: npm test -- --run --reporter=verbose

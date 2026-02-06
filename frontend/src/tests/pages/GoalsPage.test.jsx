@@ -169,7 +169,7 @@ describe('GoalsPage', () => {
 
   it('handles goal deletion', async () => {
     // Mock window.confirm to always return true
-    vi.spyOn(window, 'confirm').mockImplementation(() => true);
+    window.confirm = vi.fn(() => true);
 
     render(
       <MemoryRouter>

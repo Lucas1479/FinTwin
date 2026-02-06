@@ -80,7 +80,8 @@ describe('Login Component (Safe UI Test)', () => {
     authService.login.mockRejectedValue(new Error('Invalid credentials'));
     
     // Mock window.alert since LoginPage uses alert() for errors
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    window.alert = vi.fn();
+    const alertSpy = window.alert;
 
     render(
       <BrowserRouter>

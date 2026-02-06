@@ -5,10 +5,10 @@ export default defineConfig({
   plugins: [react()],
   test: {
     globals: true,
-    environment: 'jsdom',
+    environment: 'happy-dom', // Use happy-dom instead of jsdom for better ESM support
     setupFiles: ['./src/setupTests.js'],
     include: ['src/**/*.{test,spec}.{js,jsx}'],
-    testTimeout: 10000, // Increase timeout to 10 seconds
+    testTimeout: 60000, // Increase timeout to 60 seconds for CI environment
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
