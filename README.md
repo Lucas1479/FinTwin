@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI Pipeline](https://img.shields.io/badge/CI-passing-brightgreen)](https://github.com/CS778-LY-2025-Consulting-Challenge/Money-Minds/actions)
-[![Backend Tests](https://img.shields.io/badge/backend%20tests-25%20passed-success)](https://github.com/CS778-LY-2025-Consulting-Challenge/Money-Minds)
+[![Backend Tests](https://img.shields.io/badge/tests-208%20passing-success)](https://github.com/CS778-LY-2025-Consulting-Challenge/Money-Minds)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)](https://nodejs.org/)
 [![React Version](https://img.shields.io/badge/react-19.2.0-blue)](https://reactjs.org/)
 [![MongoDB](https://img.shields.io/badge/mongodb-6.x-green)](https://www.mongodb.com/)
@@ -100,7 +100,7 @@ FinTwin is a **goal-based financial planning platform** that combines Large Lang
 - **Session Isolation**: Prevents context leakage between goals
 - **Intelligent Document Processing**: Automated quality filtering for RAG corpus
 - **Background Tasks**: Asynchronous simulation execution with progress tracking
-- **Comprehensive Testing**: 25+ backend tests, 5+ frontend component test suites
+- **Comprehensive Testing**: 208 backend tests (13 suites), 23 E2E tests, stable CI/CD pipeline
 - **Automated CI/CD**: GitHub Actions pipelines for testing, linting, and build verification
 
 ---
@@ -663,9 +663,12 @@ For complete API documentation, see [API_REFERENCE.md](docs/API_REFERENCE.md).
 ### Run All Tests
 
 ```bash
-# Backend tests
+# Backend tests (with coverage)
 cd backend
-npm test
+npm test -- --coverage
+
+# Backend tests (watch mode)
+npm test -- --watch
 
 # Frontend unit tests
 cd frontend
@@ -678,16 +681,34 @@ npx cypress open
 
 ### Test Coverage
 
-Current test coverage:
-- **Backend**: ✅ 6 test suites, 25 tests (all passing)
-  - Auth middleware tests
-  - User API tests
-  - Goal API tests
-  - Product API tests
-  - Cash flow API tests
-  - Misc API tests
-- **Frontend Components**: 5 test suites for goal engine components
-- **E2E Tests**: 23 Cypress test files
+#### Backend Testing
+- **Test Suites**: 13 suites, 208 tests (all passing) ✅
+
+**Test Suites**:
+- ✅ **Auth Middleware** (9 tests) - JWT authentication (91% coverage)
+- ✅ **Privacy Middleware** (33 tests) - Data privacy controls (93% coverage)
+- ✅ **Goal API** (8 tests) - Basic CRUD operations
+- ✅ **Cash Flow API** (5 tests) - Income/expense management
+- ✅ **Product API** (3 tests) - Financial product queries
+- ✅ **User API** (3 tests) - User profile management
+- ✅ **Snapshot API** (13 tests) - Wealth/goal history tracking
+- ✅ **Wealth Helpers** (43 tests) - Financial calculations
+- ✅ **Constants** (37 tests) - Configuration and enums
+- ✅ **Memory Logger** (32 tests) - Debug logging
+- ✅ **Error Handling** (9 tests) - Custom error classes
+- ✅ **API Routes** (7 tests) - Route configuration
+
+**Coverage Highlights**:
+- Main API routes (Goal, Cash Flow, Product, User, Snapshot, Wealth Centre): 100%
+- Privacy middleware: 93.47%
+- Auth middleware: 90.9%
+- Models: 57%
+
+> **Note**: Complex business logic (AI engine, LLM integration, portfolio optimization algorithms) will be covered in future test iterations.
+
+#### Frontend Testing
+- **Unit Tests**: 5 test suites for goal engine components
+- **E2E Tests**: 23 Cypress test files covering critical user workflows
 
 ### CI/CD Pipeline
 
@@ -709,6 +730,14 @@ The project includes automated GitHub Actions workflows:
 - Prevents accidental code loss
 
 For detailed CI/CD documentation, see [`.github/workflows/README.md`](.github/workflows/README.md)
+
+### Contributing Tests
+
+To add new tests:
+1. Follow existing patterns in `backend/tests/`
+2. Focus on pure functions and helper utilities
+3. Ensure tests are stable and maintainable
+4. Run `npm test` to verify all tests pass
 
 ---
 
@@ -769,6 +798,12 @@ test: add unit tests for privacy middleware
 
 ### Version 1.1 (Q2 2026)
 
+**Testing & Quality**:
+- [ ] Maintain stable test suite (208 passing tests)
+- [ ] Add E2E tests for critical user workflows
+- [ ] Performance monitoring for AI response times
+
+**Features**:
 - [ ] Real-time market data integration
 - [ ] Enhanced portfolio rebalancing
 - [ ] Mobile-responsive design improvements

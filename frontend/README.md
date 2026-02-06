@@ -129,6 +129,16 @@ npm test -- --run --coverage
   - `GapAnalysisForm.test.jsx`
   - `SubstageStepIndicator.test.jsx`
 
+**Coverage Status**: ⚠️ Limited coverage - most page components and utility functions lack tests
+
+**Areas Needing Tests**:
+- ❌ Most page components (`WealthCenterPage`, `Dashboard`, etc.)
+- ❌ Service layer (API clients)
+- ❌ Utility functions
+- ❌ Form validation logic
+- ❌ State management
+- ✅ Goal engine components (partial coverage)
+
 ### E2E Testing
 
 This project uses **Cypress** for end-to-end testing.
