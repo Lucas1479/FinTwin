@@ -1,93 +1,465 @@
-# FinTwin: Goal-Based AI Financial Planning System
+# FinTwin: AI-Powered Goal-Based Financial Planning
 
-## Abstract
+<div align="center">
 
-FinTwin is a goal-based financial planning platform that combines Large Language Models with mathematical optimization algorithms to provide transparent, personalized investment recommendations. Unlike traditional asset-centric approaches, FinTwin organizes all financial decisions around user-defined goals (retirement, home purchase, education, wealth growth), automatically allocating resources, managing conflicts, and tracking progress toward each specific objective. The system implements a four-stage AI decision pipeline where LLMs handle reasoning and context analysis while deterministic algorithms execute financial calculations.
+**A neuro-symbolic AI system that helps users achieve their financial goals through personalized, transparent, and privacy-first investment planning.**
 
-**Goal-Based Investment Philosophy**: Every financial decision is linked to a specific life goal with defined timeline, target amount, and risk tolerance. The system prevents resource conflicts (double-counting assets), tracks goal-specific performance, and provides clear progress visualization. This approach delivers more meaningful advice than generic portfolio recommendations.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)](https://nodejs.org/)
+[![React Version](https://img.shields.io/badge/react-19.2.0-blue)](https://reactjs.org/)
+[![MongoDB](https://img.shields.io/badge/mongodb-6.x-green)](https://www.mongodb.com/)
 
-**Neuro-Symbolic Approach**: LLMs handle natural language understanding and contextual reasoning (neural), while mathematical algorithms execute portfolio optimization and Monte Carlo simulation (symbolic). This separation ensures explainability, auditability, and mathematical correctness.
-
-**Key Innovations**: 
-- **Goal-Centric Design**: All assets, cash flows, and portfolios linked to specific life goals with automatic conflict resolution
-- **Hybrid AI**: Function-calling architecture bridging LLM reasoning and algorithmic computation
-- **Complete Explainability**: Decision logs capturing thought process, rationale, and citations
-- **Privacy-Preserving**: Three-layer privacy controls with granular data sharing management
-- **Dynamic Forms**: AI-generated context-aware questionnaires with session isolation
-
-## Table of Contents
-
-1. [Project Overview](#project-overview)
-2. [Research Contributions](#research-contributions)
-3. [System Architecture](#system-architecture)
-4. [Core Features](#core-features)
-5. [AI Engine Design](#ai-engine-design)
-6. [Privacy and Explainability](#privacy-and-explainability)
-7. [Technology Stack](#technology-stack)
-8. [Installation](#installation)
-9. [Data Models](#data-models)
-10. [Development](#development)
+[🚀 Live Demo](http://13.210.244.120/) • [Features](#-key-features) • [Installation](#-installation) • [Architecture](#-architecture) • [Team](#-team)
 
 ---
 
-## Project Overview
+### 🌟 Quick Links
+- **Try Now**: [Live Demo →](http://13.210.244.120/)
+- **Documentation**: [See Below](#-table-of-contents)
+- **GitHub**: [Repository](https://github.com/your-org/money-minds)
 
-### Target Users
-
-- Individual investors seeking AI-assisted financial planning
-- Financial advisors requiring decision-support tools
-- Researchers studying AI applications in finance and trustworthy AI systems
+</div>
 
 ---
 
-## Research Contributions
+## 📖 Table of Contents
+
+- [Overview](#-overview)
+- [Key Features](#-key-features)
+- [Demo](#-demo)
+- [System Architecture](#-system-architecture)
+- [Technology Stack](#-technology-stack)
+- [Installation](#-installation)
+- [Usage](#-usage)
+- [Project Structure](#-project-structure)
+- [Core Innovations](#-core-innovations)
+- [API Documentation](#-api-documentation)
+- [Contributing](#-contributing)
+- [License](#-license)
+
+---
+
+## 🎯 Overview
+
+FinTwin is a **goal-based financial planning platform** that combines Large Language Models (LLMs) with mathematical optimization algorithms to deliver transparent, personalized investment recommendations. Unlike traditional asset-centric approaches, FinTwin organizes all financial decisions around user-defined life goals—retirement, home purchase, education, wealth growth, and emergency funds.
+
+### What Makes FinTwin Different?
+
+**Traditional Approach:**
+> "Here's a balanced portfolio for your risk profile."
+
+**FinTwin's Approach:**
+> "This retirement portfolio needs 73% growth exposure to achieve $1.025M by 2059 with 96% probability. Here's how each investment contributes to your specific goal."
+
+### Core Philosophy
+
+- **Goal-Centric Design**: Every financial decision is linked to a specific life goal with defined timeline, target amount, and risk tolerance
+- **Neuro-Symbolic AI**: LLMs handle reasoning and context analysis (neural), while deterministic algorithms execute financial calculations (symbolic)
+- **Complete Transparency**: Full audit trail of AI decisions with explainable recommendations and citations
+- **Privacy-First**: Three-layer privacy controls with granular data sharing management
+
+---
+
+## ✨ Key Features
+
+### 🎯 Goal-Based Planning
+- **Four-Stage AI Pipeline**: Definition → Strategy → Product Selection → Simulation
+- **Multi-Goal Optimization**: Automatically allocates limited resources across competing goals
+- **Progress Tracking**: Real-time visualization of goal progress and success probability
+- **Asset Linking**: Prevents double-counting by tracking which assets fund which goals
+
+### 🤖 Hybrid AI Engine
+- **Conversational AI**: Natural language Q&A with streaming responses
+- **Function Calling**: LLM invokes computational tools for portfolio optimization
+- **RAG Integration**: 501 curated document chunks from NZ financial regulations
+- **Multi-Provider Support**: DeepSeek R1, GPT-4o, Gemini 1.5 Flash
+
+### 💼 Wealth Management Center
+- **Asset-Liability Tracking**: Real-time net worth calculation
+- **Cash Flow Engine**: Monthly surplus analysis (income - expenses - goals)
+- **Scenario Simulation**: Forward-looking projections (1-40 years)
+- **Liquidity Analysis**: Three-tier asset classification (liquid/semi-liquid/locked)
+
+### 📊 Portfolio Optimization
+- **1,092 Products**: KiwiSaver funds, managed funds, term deposits
+- **Automated Construction**: 3 portfolio options (lowest cost, diversified, balanced)
+- **Constraint Satisfaction**: Product weights, exposure targets, fee limits
+- **Monte Carlo Simulation**: 100 iterations with probabilistic outcome analysis
+
+### 🔒 Privacy & Security
+- **Three-Layer Protection**: Global toggle, granular allowlist, PII sanitization
+- **Request-Level Override**: Per-conversation privacy control
+- **GDPR-Compliant**: Automated scrubbing of personal identifiers
+- **Audit Trail**: Complete decision logging for regulatory compliance
+
+### 🧪 Advanced Features
+- **Dynamic Form Generation**: AI-generated context-aware questionnaires
+- **Session Isolation**: Prevents context leakage between goals
+- **Intelligent Document Processing**: Automated quality filtering for RAG corpus
+- **Background Tasks**: Asynchronous simulation execution with progress tracking
+
+---
+
+## 🎥 Demo
+
+### 🌐 Live Demo
+
+**Try FinTwin now:** [http://13.210.244.120/](http://13.210.244.120/)
+
+> **Note**: This is a demo deployment hosted on AWS. Feel free to create an account and explore the features!
+
+### 📸 Screenshots
+
+#### Dashboard Overview
+![Dashboard](docs/screenshots/dashboard.png)
+
+#### AI-Powered Goal Planning
+![Goal Planning](docs/screenshots/goal-planning.png)
+
+#### Portfolio Optimization
+![Portfolio](docs/screenshots/portfolio-optimization.png)
+
+> **Note**: Screenshots will be added in the next release.
+
+---
+
+## 🏗 System Architecture
+
+### High-Level Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    React Frontend (Vite)                        │
+│  • Dynamic form rendering          • Real-time SSE streaming    │
+│  • Session-based context isolation • Smart routing & navigation │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ REST API + SSE
+┌────────────────────────────▼────────────────────────────────────┐
+│                  Node.js/Express Backend                        │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │         Goal Engine Controller (Hybrid AI Core)          │  │
+│  │  • Context enrichment       • Privacy filtering          │  │
+│  │  • LLM orchestration        • Algorithm execution        │  │
+│  │  • Decision logging         • Function calling           │  │
+│  └────────┬──────────────────────────────────┬──────────────┘  │
+│           │                                  │                  │
+│  ┌────────▼─────────┐           ┌───────────▼──────────┐       │
+│  │   LLM Service    │           │  Financial Algorithms│       │
+│  │  • Multi-provider│           │  • Portfolio optimizer│       │
+│  │  • RAG integration│           │  • Monte Carlo engine│       │
+│  │  • Streaming     │           │  • Resource allocator│       │
+│  └────────┬─────────┘           └───────────┬──────────┘       │
+└───────────┼─────────────────────────────────┼──────────────────┘
+            │                                 │
+    ┌───────┴──────────┬─────────────────────┴────────┐
+    │                  │                              │
+    ▼                  ▼                              ▼
+┌─────────┐    ┌──────────────┐            ┌──────────────┐
+│ MongoDB │    │  DeepSeek R1 │            │   Vectara    │
+│10 Models│    │   (LLM API)  │            │  (RAG Store) │
+└─────────┘    └──────────────┘            └──────────────┘
+```
+
+### Architecture Layers
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Frontend** | React 19 + Vite 7 | Dynamic form rendering, session management, SSE streaming |
+| **API** | Express 5 + Mongoose 9 | RESTful endpoints, AI-algorithm orchestration, privacy middleware |
+| **AI Layer** | DeepSeek R1, GPT-4o, Gemini | Natural language reasoning, context analysis, function calling |
+| **Algorithm Layer** | Custom implementations | Portfolio optimization, Monte Carlo simulation, linear programming |
+| **RAG** | Vectara v2 | Semantic search over 501 cleaned document chunks |
+| **Database** | MongoDB 6 | 10 collections with 50+ embedded schemas |
+
+---
+
+## 🛠 Technology Stack
+
+### Backend
+- **Runtime**: Node.js 20.x
+- **Framework**: Express 5.x
+- **Database**: MongoDB 6.x with Mongoose 9.x
+- **AI/ML**: 
+  - DeepSeek R1 (primary LLM)
+  - GPT-4o (high-stakes decisions)
+  - Gemini 1.5 Flash (document processing)
+  - Vectara v2 (vector database for RAG)
+- **Key Libraries**:
+  - `@google/generative-ai` - Gemini API client
+  - `glpk.js` - Linear programming for resource allocation
+  - `pdf-parse`, `mammoth` - Document processing
+  - `node-cron` - Scheduled tasks
+
+### Frontend
+- **Framework**: React 19.2
+- **Build Tool**: Vite 7.x
+- **UI Libraries**:
+  - Tailwind CSS 4.x + DaisyUI 5.x
+  - Material-UI 7.x
+  - Recharts 3.x (charts)
+  - Lucide React (icons)
+- **Key Libraries**:
+  - `react-markdown` - Markdown rendering
+  - `react-router-dom` 7.x - Routing
+  - `axios` - HTTP client
+  - `katex` - Math formula rendering
+
+### Development Tools
+- **Testing**: Vitest 4.x + Testing Library
+- **E2E Testing**: Cypress
+- **Linting**: ESLint 9.x
+- **Authentication**: JWT (jsonwebtoken)
+- **Environment**: dotenv
+
+---
+
+## 🚀 Installation
+
+### Prerequisites
+
+- **Node.js**: v20.0.0 or higher
+- **MongoDB**: v6.0 or higher (local or Atlas)
+- **API Keys**:
+  - DeepSeek API key (for primary LLM)
+  - Vectara API key (for RAG)
+  - (Optional) OpenAI API key for GPT-4o
+
+### Step 1: Clone the Repository
+
+```bash
+git clone https://github.com/your-org/money-minds.git
+cd money-minds
+```
+
+### Step 2: Install Dependencies
+
+```bash
+# Backend dependencies
+cd backend
+npm install
+
+# Frontend dependencies
+cd ../frontend
+npm install
+```
+
+### Step 3: Environment Configuration
+
+#### Backend Configuration
+
+Create `backend/.env` file:
+
+```env
+# Database
+MONGODB_URI=mongodb://localhost:27017/fintwin
+
+# Server
+PORT=5001
+NODE_ENV=development
+
+# JWT Authentication
+JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+
+# LLM Provider (options: deepseek, gemini, bedrock)
+LLM_PROVIDER=deepseek
+
+# DeepSeek API
+DEEPSEEK_API_KEY=your-deepseek-api-key
+DEEPSEEK_MODEL=deepseek-reasoner
+
+# Gemini API (optional)
+GEMINI_API_KEY=your-gemini-api-key
+GEMINI_MODEL=gemini-1.5-flash
+
+# OpenAI API (optional)
+OPENAI_API_KEY=your-openai-api-key
+
+# Vectara RAG
+VECTARA_API_KEY=your-vectara-api-key
+VECTARA_CUSTOMER_ID=your-customer-id
+VECTARA_CORPUS_KEY=FinTwin_Docs
+
+# Privacy & Sanitization
+PRIVACY_SANITIZATION_MODE=pii_only
+```
+
+#### Frontend Configuration
+
+Create `frontend/.env` file:
+
+```env
+# API Base URL
+VITE_API_BASE_URL=http://localhost:5001/api
+
+# Feature Flags (optional)
+VITE_ENABLE_DEBUG=false
+```
+
+### Step 4: Initialize Database
+
+```bash
+cd backend
+
+# Import 1,092 financial products (KiwiSaver, managed funds, term deposits)
+npm run seed
+
+# (Optional) Upload documents to Vectara for RAG
+npm run update-kb
+```
+
+### Step 5: Start Development Servers
+
+#### Terminal 1: Backend Server
+```bash
+cd backend
+npm run dev
+```
+Server will start at `http://localhost:5001`
+
+#### Terminal 2: Frontend Server
+```bash
+cd frontend
+npm run dev
+```
+Frontend will start at `http://localhost:5173`
+
+### Step 6: Access the Application
+
+1. Open browser and navigate to `http://localhost:5173`
+2. Register a new account
+3. Complete the onboarding questionnaire
+4. Start creating your first financial goal!
+
+---
+
+## 📚 Usage
+
+### Creating Your First Goal
+
+1. **Navigate to Goals Page**: Click "Goals" in the sidebar
+2. **Create New Goal**: Click "Create Goal" button
+3. **Choose Category**: Select from retirement, home purchase, education, wealth growth, or emergency fund
+4. **AI-Guided Planning**: Follow the four-stage process:
+   - **Definition**: Specify target amount, timeline, and priority
+   - **Strategy**: AI recommends risk profile and contribution strategy
+   - **Product Selection**: Choose from 3 optimized portfolios
+   - **Simulation**: View Monte Carlo projections and success probability
+
+### Managing Your Wealth
+
+1. **Navigate to Wealth Center**: Click "Wealth" in the sidebar
+2. **Add Assets**: Click "Add Asset" and categorize (cash, investments, property, etc.)
+3. **Add Liabilities**: Record debts, mortgages, loans
+4. **Track Cash Flow**: Add recurring income and expenses
+5. **View Analytics**: Monitor net worth trends, liquidity analysis, and allocation charts
+
+### Using the AI Chatbox
+
+- **Ask Mode**: General financial questions with RAG-powered answers
+- **Auto Mode**: Structured goal planning with form generation
+- **Agent Mode**: Autonomous multi-step reasoning
+
+### Privacy Controls
+
+1. **Global Settings**: Navigate to Settings → Privacy
+2. **Toggle AI Sharing**: Enable/disable data sharing with AI
+3. **Granular Control**: Select which data types to share (assets, income, debts, etc.)
+4. **Per-Request Override**: Use chatbox privacy toggle for one-time exceptions
+
+---
+
+## 📁 Project Structure
+
+```
+money-minds/
+├── backend/
+│   ├── config/                 # Database configuration
+│   ├── controllers/            # Route handlers (8 controllers)
+│   ├── middleware/             # Auth, privacy, error handling
+│   ├── models/                 # Mongoose schemas (10 models)
+│   ├── routes/                 # API routes
+│   ├── services/               # Business logic
+│   │   ├── llmService.js       # LLM abstraction layer
+│   │   ├── goalEnginePrompts.js # AI prompts (1,000+ lines)
+│   │   ├── productTools.js     # Portfolio optimization
+│   │   ├── vectaraClient.js    # RAG integration
+│   │   └── ...
+│   ├── scripts/                # Data processing & seeding
+│   ├── utils/                  # Helpers & sanitizers
+│   └── server.js               # Express app entry point
+│
+├── frontend/
+│   ├── public/                 # Static assets
+│   ├── src/
+│   │   ├── components/         # Reusable components (60+)
+│   │   │   ├── goals/          # Goal-related components
+│   │   │   │   └── engine/     # AI engine components
+│   │   │   ├── wealth/         # Wealth management components
+│   │   │   └── ...
+│   │   ├── pages/              # Route pages (25 pages)
+│   │   │   ├── GoalIntakePage.jsx      # Main goal planning (1,909 lines)
+│   │   │   ├── WealthCenterPage.jsx    # Wealth management
+│   │   │   ├── Dashboard.jsx           # User dashboard
+│   │   │   └── ...
+│   │   ├── services/           # API clients
+│   │   ├── utils/              # Helpers
+│   │   └── App.jsx             # React app entry point
+│   └── cypress/                # E2E tests
+│
+├── docs/                       # Additional documentation
+└── README.md                   # This file
+```
+
+### Key Files
+
+| File | Purpose | Lines |
+|------|---------|-------|
+| `backend/services/goalEnginePrompts.js` | AI prompts for 4-stage planning | ~1,000 |
+| `backend/services/productTools.js` | Portfolio optimization algorithms | ~800 |
+| `frontend/src/pages/GoalIntakePage.jsx` | Main goal planning interface | 1,909 |
+| `frontend/src/components/goals/engine/Copilot.jsx` | AI chatbox component | 1,045 |
+| `backend/specification.md` | Technical specification & formulas | 535 |
+
+---
+
+## 🔬 Core Innovations
 
 ### 1. Goal-Based Investment Framework
 
-**Innovation**: Full lifecycle goal management from definition to execution with automated resource allocation.
+**Problem**: Traditional advice focuses on asset allocation without linking to specific life goals.
 
-#### Goal-Centric Architecture
-- **Asset Linking**: Each `FinancialAsset` can be linked to a specific goal via `asset_details.linked_goal_id`
+**Solution**: Full lifecycle goal management with automated resource allocation.
+
+- **Asset Linking**: Each `FinancialAsset` can be linked to a specific goal via `linked_goal_id`
 - **Resource Conflict Prevention**: System tracks allocated assets across goals to prevent double-counting
 - **Multi-Goal Optimization**: Linear programming allocates limited resources across competing goals
-- **Progress Tracking**: Real-time visualization of goal progress, success probability, and projected outcomes
-
-#### Lifecycle Management
-1. **Goal Definition**: AI analyzes gap between current position and target
-2. **Strategy Formulation**: Determines optimal contribution mix (lump sum vs. monthly)
-3. **Product Allocation**: Automatically creates `FinancialAsset` records linked to goal when plan activated
-4. **Continuous Monitoring**: Tracks performance, recalculates success probability, suggests adjustments
-
-**Contrast with Traditional Approaches**:
-- Traditional: "Here's a balanced portfolio for your risk profile"
-- Goal-Based: "This retirement portfolio needs 73% growth exposure to achieve $1.025M by 2059 with 96% probability"
+- **Progress Tracking**: Real-time visualization of goal progress and success probability
 
 **User Value**: Users see exactly how each investment contributes to specific life goals, making financial planning more tangible and motivating.
 
-### 2. Hybrid AI Architecture (Neuro-Symbolic Approach)
+### 2. Neuro-Symbolic AI Architecture
 
 **Design Principle**: Separate AI reasoning from algorithmic computation for reliability and explainability.
 
-#### LLM Component
+#### LLM Component (Neural)
 - Natural language understanding of user goals
 - Context-aware recommendation generation
 - Document retrieval and synthesis (RAG)
 - Intent classification (Ask vs. Auto mode)
-- Function-calling to invoke computational tools
+- Function calling to invoke computational tools
 
-#### Algorithmic Component
+#### Algorithmic Component (Symbolic)
 - Portfolio optimization (gradient descent + greedy selection)
 - Monte Carlo simulation (100 iterations with Box-Muller sampling)
 - Multi-goal resource allocation (linear programming fallback)
 - Cash flow calculations (deterministic arithmetic)
 
-**Benefit**: LLM generates high-level strategy, algorithms execute precise calculations. Users can verify AI recommendations by inspecting the underlying mathematical models and optimization constraints.
+**Benefit**: LLM generates high-level strategy, algorithms execute precise calculations. Users can verify AI recommendations by inspecting the underlying mathematical models.
 
 ### 3. Explainable AI (XAI) Decision System
 
 **Innovation**: Full audit trail of AI reasoning process through structured decision logs.
 
-#### Decision Logging Architecture
 Every AI recommendation is persisted with:
 - **Thought Process**: Step-by-step reasoning chain
 - **Rationale**: Natural language explanation for end users
@@ -95,17 +467,11 @@ Every AI recommendation is persisted with:
 - **Goal Snapshot**: Complete context at decision time
 - **User Actions**: How user responded to recommendation (accepted/modified/rejected)
 
-#### Model: `GoalDecisionLog`
-Captures each step in the four-stage workflow (Definition, Strategy, Product, Simulation). Enables retrospective analysis of AI decision quality and user trust patterns.
-
-**Use Cases**:
-- Regulatory compliance audits
-- Model improvement through feedback analysis
-- User transparency ("Why did the AI recommend this?")
+**Model**: `GoalDecisionLog` captures each step in the four-stage workflow, enabling retrospective analysis of AI decision quality and user trust patterns.
 
 ### 4. Privacy-First AI Architecture
 
-**Challenge**: LLM APIs are third-party services; how to enable personalized advice while respecting data privacy?
+**Challenge**: LLM APIs are third-party services—how to enable personalized advice while respecting data privacy?
 
 #### Three-Layer Privacy Protection
 
@@ -114,20 +480,14 @@ Captures each step in the four-stage workflow (Definition, Strategy, Product, Si
 - If disabled, AI operates with only aggregate/anonymized data
 
 **Layer 2: Granular Data Allowlist**
-- Fine-grained control over data types sent to AI:
-  - `financial_assets`, `income`, `debts`, `goals`, `cashflow`
+- Fine-grained control over data types sent to AI: `financial_assets`, `income`, `debts`, `goals`, `cashflow`
 - Example: User allows AI to see income but not specific asset holdings
 
 **Layer 3: PII Sanitization**
-- Automated scrubbing before LLM transmission:
-  - Removes: `user_id`, `email`, `name`, `address`, `session_id`
-  - Preserves: Financial values, ratios, and relationships
+- Automated scrubbing before LLM transmission
+- Removes: `user_id`, `email`, `name`, `address`, `session_id`
+- Preserves: Financial values, ratios, and relationships
 - Four sanitization modes: `none`, `pii_only`, `normalized`, `strict`
-
-#### Request-Level Override
-Chatbox interactions can temporarily override global settings:
-- "Allow AI to see my full portfolio for this question only"
-- Privacy context tracked per-request via middleware
 
 **Academic Value**: First implementation of GDPR-style consent management for LLM-based financial advisory.
 
@@ -138,115 +498,36 @@ Chatbox interactions can temporarily override global settings:
 #### Automated Cleaning Pipeline
 
 **Stage 1: Content Type Detection**
-LLM-powered classification of text chunks into 8 types:
-- `paragraph`, `table`, `list`, `figure_caption`, `table_of_contents`, `header_footer`, `metadata_section`, `other`
+- LLM-powered classification into 8 types: paragraph, table, list, figure_caption, TOC, header_footer, metadata_section, other
 
 **Stage 2: Semantic Quality Filtering**
-- LLM evaluates each chunk for:
-  - `content_quality`: high/medium/low
-  - `priority`: core concepts vs. edge cases
-  - `topic`, `audience`, `keywords`
+- LLM evaluates each chunk for: `content_quality` (high/medium/low), `priority`, `topic`, `audience`, `keywords`
 - Code-level enforcement: Force-filter TOC and headers regardless of LLM judgment
 
 **Stage 3: Metadata Enrichment**
-Auto-generates searchable attributes:
-- Topic taxonomy (e.g., `kiwisaver`, `retirement_planning`, `investment_tax`)
-- Document type (e.g., `guide`, `policy`, `calculation`)
-- Structural features: `has_tables`, `has_numbers`, `has_examples`
+- Auto-generates searchable attributes: topic taxonomy, document type, structural features
 
 #### Performance Metrics
 - **Input**: 6 documents, 293 pages, 678 raw chunks
 - **Output**: 501 high-quality chunks (73.9% retention)
 - **Quality Distribution**: ~78% high quality, 22% medium quality
 - **Processing Cost**: $0.036 USD (Gemini 1.5 Flash)
-- **Processing Time**: 30 minutes (10 chunks/batch, 500ms delay)
+- **Processing Time**: 30 minutes
 
 **Research Impact**: Demonstrates feasibility of fully automated knowledge base curation for domain-specific RAG systems.
 
-### 6. Function-Calling Portfolio Optimization
+### 6. Dynamic Form Generation & Context Isolation
 
-**Architecture**: AI determines user's investment goals → backend executes mathematical optimization.
-
-#### Tool: `build_optimized_portfolios`
-
-**Inputs**:
-- `target_growth_pct`, `target_defensive_pct`, `target_liquidity_pct`
-- `max_fees`, `is_retirement_goal`, `has_employment_income`
-
-**Algorithm**:
-1. Filter 1,092 products by risk, asset allocation, and category
-2. Score candidates using distance metrics (Euclidean distance from target exposure)
-3. Construct 3 portfolios via greedy optimization:
-   - **Lowest Cost**: Minimize expense ratio
-   - **Diversified**: Maximize provider count and asset class spread
-   - **Balanced**: Optimize exposure accuracy with fee constraint
-4. Refine weights using iterative optimization (gradient descent + random perturbation)
-
-**Constraints**:
-- Product weights: 5% ≤ w_i ≤ 70%
-- Portfolio deviation: |actual - target| ≤ 13% per exposure category
-- KiwiSaver requirement: Must include if retirement goal + employment income
-
-**Output**: 3 ready-to-use portfolios with calculated exposures, total fees, and product weightings.
-
-**Innovation**: Separates "AI reasoning" from "computational optimization" for reliability and auditability.
-
-### 7. Multi-Goal Resource Allocation Engine
-
-**Problem**: Users have N competing goals but finite capital (liquid assets + monthly surplus).
-
-#### Allocation Strategy
-
-**Phase 1: Linear Programming**
-Optimize allocation across goals while satisfying:
-- Monthly surplus ≥ Σ(monthly contributions)
-- Liquid assets ≥ Σ(lump sum) + emergency buffer
-- Debt servicing already deducted from surplus
-
-**Phase 2: Greedy Fallback**
-If LP infeasible, use priority-based greedy allocation:
-- Sort goals by priority + deadline urgency
-- Allocate resources sequentially
-- Warn user when constraints violated
-
-**Asset Tracking**: Prevents double-counting via `asset_details.linked_goal_id` field.
-
-### 8. Dynamic Form Generation and Context Isolation
-
-**Challenge**: Traditional financial planning uses static forms that cannot adapt to user context (e.g., retirement vs. home purchase requires different questions).
+**Challenge**: Traditional financial planning uses static forms that cannot adapt to user context.
 
 #### Dynamic Form Rendering System
 
-**Architecture**: AI generates form schemas on-the-fly based on:
+AI generates form schemas on-the-fly based on:
 - Goal category (retirement/home/education/wealth/emergency)
 - Current stage (definition/strategy/product/simulation)
 - User's financial context (employment status, existing goals, risk tolerance)
 
-**Form Schema Structure**:
-```javascript
-{
-  fields: [
-    {
-      name: "lump_sum_amount",
-      label: "Do you have an initial lump sum to invest?",
-      type: "currency",
-      validation: { min: 0, max: user.liquidAssets },
-      conditional: { show_if: "has_liquid_assets === true" }
-    }
-  ]
-}
-```
-
-**Frontend Implementation** (`GoalIntakePage.jsx`):
-- Receives schema from AI engine
-- Dynamically renders input components (text, number, select, currency, date)
-- Applies conditional logic (show/hide fields based on other answers)
-- Validates input against AI-defined rules
-- Submits user response back to AI for next stage
-
 #### Context Isolation Architecture
-
-**Problem**: User navigates between multiple goals (retirement, home, vacation) - how to prevent context leakage?
 
 **Solution**: Session-based isolation
 - Each goal planning session has unique `session_id`
@@ -254,511 +535,268 @@ If LP infeasible, use priority-based greedy allocation:
 - Backend stores `previousDecisions` scoped to session
 - Switching goals clears chatbox history and resets context
 
-**Smart Routing**:
-- Auto-detect incomplete stages: If user exits mid-planning, system resumes at exact substage
-- Cross-goal awareness: AI knows about other goals to prevent resource conflicts (e.g., "Your retirement goal already uses $50k of your liquid assets")
-- History preservation: Decision logs persisted to database, allowing users to review past reasoning
-
-**User Experience Benefits**:
+**Benefits**:
 1. **Adaptive Questionnaires**: First-time home buyers see KiwiSaver withdrawal questions; investors don't
-2. **Progressive Disclosure**: Only show advanced options (glide path, escalation rate) when relevant
+2. **Progressive Disclosure**: Only show advanced options when relevant
 3. **Context-Aware Validation**: "Lump sum cannot exceed your available liquid assets ($84,500)"
 4. **Seamless Resumption**: User can leave mid-planning and return later without losing progress
 
 ---
 
-## System Architecture
+## 📡 API Documentation
 
-### System Architecture Diagram
-
+### Base URL
 ```
-┌───────────────────────────────────────────────────────────────────┐
-│                   React Frontend (Vite)                           │
-│  ┌─────────────────────────────────────────────────────────────┐ │
-│  │  Dynamic Form Rendering Engine                              │ │
-│  │  - AI-generated schemas → React components                  │ │
-│  │  - Session-based context isolation                          │ │
-│  │  - Smart routing with stage detection                       │ │
-│  └─────────────────────────────────────────────────────────────┘ │
-│  - 25 pages, 60+ components, Real-time SSE streaming            │
-└─────────────────┬─────────────────────────────────────────────────┘
-                  │ HTTP REST API
-┌─────────────────▼─────────────────────────────────────────────────┐
-│                  Node.js/Express Backend                          │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │              Goal Engine Controller (Hybrid Core)          │  │
-│  │  - Context enrichment + Privacy filtering                  │  │
-│  │  - LLM invocation for reasoning                            │  │
-│  │  - Algorithm execution via function-calling                │  │
-│  │  - Decision logging (XAI)                                  │  │
-│  └──────────────┬─────────────────────────────────────────────┘  │
-│                 │                                                 │
-│  ┌──────────────▼─────────────┐  ┌──────────────────────────┐   │
-│  │  LLM Service               │  │  Financial Algorithms    │   │
-│  │  - Multi-provider support  │  │  - Portfolio optimizer   │   │
-│  │  - Function calling        │  │  - Monte Carlo engine    │   │
-│  │  - RAG integration         │  │  - Resource allocator    │   │
-│  │  - Streaming responses     │  │  - 1,092 product search  │   │
-│  └──────────────┬─────────────┘  └──────────────────────────┘   │
-│                 │                                                 │
-└─────────────────┼─────────────────────────────────────────────────┘
-                  │
-    ┌─────────────┼─────────────┐
-    │             │             │
-    ▼             ▼             ▼
-┌─────────┐  ┌─────────┐  ┌──────────┐
-│ MongoDB │  │DeepSeek │  │ Vectara  │
-│10 Models│  │R1 (LLM) │  │  (RAG)   │
-└─────────┘  └─────────┘  └──────────┘
+http://localhost:5001/api
 ```
 
-### Component Summary
+### Authentication
 
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| **Presentation** | React 18 + Vite | Dynamic form rendering, context isolation, smart routing |
-| **API** | Express 4 + Mongoose | RESTful endpoints, AI-algorithm orchestration |
-| **AI** | DeepSeek R1, GPT-4o | Natural language reasoning, context analysis |
-| **Algorithms** | Custom implementations | Portfolio optimization, Monte Carlo, constraint solving |
-| **RAG** | Vectara v2 | Semantic search, 501 cleaned document chunks |
-| **Data** | MongoDB 6 | 10 collections with 50+ embedded schemas |
+All protected endpoints require JWT token in header:
+```http
+Authorization: Bearer <your-jwt-token>
+```
+
+### Key Endpoints
+
+#### Goal Management
+```http
+GET    /goals              # List all user goals
+POST   /goals              # Create new goal
+GET    /goals/:id          # Get goal details
+PUT    /goals/:id          # Update goal
+DELETE /goals/:id          # Delete goal
+POST   /goals/:id/activate # Activate goal plan
+```
+
+#### AI Engine
+```http
+POST   /goal-engine/chat               # Conversational AI (Ask mode)
+POST   /goal-engine/auto-substage      # Structured planning (Auto mode)
+POST   /goal-engine/execute-substage   # Execute substage with AI
+GET    /goal-engine/stream-chat        # SSE streaming endpoint
+```
+
+#### Wealth Management
+```http
+GET    /wealth/snapshot                # Current wealth snapshot
+GET    /wealth/assets                  # List all assets
+POST   /wealth/assets                  # Create asset
+PUT    /wealth/assets/:id              # Update asset
+DELETE /wealth/assets/:id              # Delete asset
+GET    /wealth/cashflow                # Cash flow summary
+POST   /wealth/cashflow                # Add cash flow item
+```
+
+#### Portfolio Optimization (Function Calling)
+```http
+POST   /products/build-portfolios      # Build optimized portfolios
+POST   /products/search                # Search product library
+GET    /products/recommendations       # Get product recommendations
+```
+
+For complete API documentation, see [API_REFERENCE.md](docs/API_REFERENCE.md).
 
 ---
 
-## Core Features
+## 🧪 Testing
 
-### 1. Four-Stage AI Goal Planning Pipeline
-
-#### Stage 1: Goal Definition
-- **Gap Analysis**: Compare current financial position to target
-- **Resource Calculation**: ONLY unallocated assets (prevent double-counting)
-- **Feasibility Assessment**: Coverage ratio, debt servicing capacity
-
-#### Stage 2: Strategy Formulation
-- **Risk Alignment**: Map user's risk tolerance to target exposure (growth/defensive/liquidity)
-- **Contribution Strategy**: Optimize lump sum vs. monthly contribution split
-- **Glide Path**: For retirement goals, auto-adjust exposure as deadline approaches
-
-#### Stage 3: Product Selection
-- **Function Calling**: AI invokes `build_optimized_portfolios` tool
-- **Portfolio Construction**: Returns 3 options (lowest cost, diversified, balanced)
-- **KiwiSaver Integration**: Mandatory for retirement goals with employment income
-
-#### Stage 4: Monte Carlo Simulation
-- **Projection**: 100 iterations, 35-year horizon (typical retirement scenario)
-- **Success Probability**: % of simulations achieving target
-- **Sensitivity Analysis**: p10, p50, p90 outcomes under volatility assumptions
-
-### 2. Wealth Management Center
-
-- **Asset-Liability Tracking**: Real-time net worth calculation
-- **Cash Flow Engine**: Monthly surplus calculation (income - expenses - goal contributions)
-- **Goal-Asset Linkage**: Visual tags showing which assets fund which goals
-- **Simulation Mode**: Forward-looking projections (1-40 years, adjustable scenarios)
-
-### 3. Product Library
-
-- **Coverage**: 1,092 products across 3 categories
-  - KiwiSaver: 800+ funds (FMA-regulated schemes)
-  - Managed Funds: 200+ non-KiwiSaver investment products
-  - Term Deposits: 90+ bank term deposits (3-month to 5-year terms)
-- **Attributes**:
-  - Risk scores (1-7 scale based on 5-year volatility)
-  - Asset allocation (growth/defensive/cash percentages)
-  - Fee structures (total annual, performance-based, admin)
-  - Historical returns (1-year, 5-year net returns)
-
-### 4. RAG Knowledge Base
-
-- **Corpus**: FinTwin_Docs (6 authoritative documents)
-  - FMA KiwiSaver Annual Report 2025
-  - RBNZ Monetary Policy Statements
-  - NZ Retirement Expenditure Guidelines
-  - Housing Market Analysis
-  - Tax and Investment Guides
-- **Query Process**: User question → semantic search → top 6 passages → LLM synthesis
-- **Quality Control**: Automated filtering removed 26.1% low-quality chunks
-
-### 5. Interactive Chatbox (Ask Mode)
-
-- **Intent Classification**: Automatically distinguishes Q&A vs. structured goal planning
-- **Streaming Responses**: Server-Sent Events for real-time feedback
-- **Context Awareness**: 12-turn conversation history maintained
-- **Privacy Override**: User can temporarily enable/disable data sharing per message
-
----
-
-## AI Engine Design
-
-### Dual-Mode Architecture
-
-#### Ask Mode (Conversational Q&A)
-- User asks free-form question
-- RAG retrieves relevant documentation
-- LLM synthesizes answer with citations
-- Response streamed via SSE
-
-#### Auto Mode (Structured Planning)
-- User proceeds through 4-stage goal workflow
-- Each stage has predefined substages and JSON schemas
-- AI populates structured fields + provides rationale
-- Results logged for explainability
-
-### LLM Service Abstraction
-
-Unified interface across 3 providers:
-
-| Provider | Use Case | Function Calling | Cost/1M tokens |
-|----------|----------|------------------|----------------|
-| **DeepSeek R1** | Primary | Via fallback | ~$0.30 |
-| **GPT-4o** | High-stakes decisions | Native | ~$5.00 |
-| **Gemini 1.5 Flash** | Document processing | Native | ~$0.08 |
-
-#### Function Calling Fallback (DeepSeek)
-DeepSeek doesn't natively support function calling, so we implement 2-phase approach:
-
-**Phase 1**: Request tool calls
-- Structured prompt asking AI to output JSON array of tool calls
-- Parse JSON, validate parameters
-
-**Phase 2**: Execute tools + final response
-- Run each tool (e.g., `build_optimized_portfolios`)
-- Send tool results back to AI
-- AI generates final recommendation
-
-### Prompt Engineering
-
-- **Total Prompt Content**: ~1,000 lines across 4 stages
-- **Structure**:
-  - Context summary (user profile, financial snapshot, RAG passages)
-  - Stage-specific instructions
-  - JSON schema enforcement
-  - Mathematical formulas (e.g., exposure calculation, surplus calculation)
-  - Consistency rules (e.g., "debt servicing already in cash flow, don't subtract from assets")
-
-**Example Rule (Strategy Stage)**:
-```
-CRITICAL: Debt servicing is ALREADY reflected in monthly_surplus.
-DO NOT subtract debts from available assets.
-Debts are a risk indicator, not an investment constraint.
-```
-
-### Monte Carlo Simulation Engine
-
-**Method**: Box-Muller transform for normal distribution sampling
-
-**Parameters**:
-- Initial capital (lump sum)
-- Monthly contributions
-- Escalation rate (contribution growth over time)
-- Asset returns (growth: 8%, defensive: 4%, cash: 3%)
-- Volatility (growth: 15%, defensive: 5%, cash: 0.5%)
-- Time horizon (1-50 years)
-
-**Output**:
-- Success probability (% reaching target)
-- Percentile outcomes (p10, p50, p90)
-- Median shortfall/surplus
-
----
-
-## Privacy and Explainability
-
-### Privacy Architecture
-
-#### 1. Middleware-Level Control (`privacyMiddleware.js`)
-
-Attaches privacy context to every authenticated request:
-
-```javascript
-req.privacyContext = {
-  userId,
-  globalSharingEnabled,     // User's default setting
-  requestOverride,          // Per-request override from frontend
-  finalAISharing,           // Effective policy (override > global)
-  allowlist,                // Array of permitted data types
-  canAccess(dataType),      // Function to check access
-  getAccessReason(dataType) // Logging helper
-}
-```
-
-**Usage in Controllers**:
-Controllers check `req.privacyContext.canAccess('financial_assets')` before querying DB.
-
-#### 2. Data Sanitization (`llmDataSanitizer.js`)
-
-Four sanitization levels:
-- **none**: Debug mode, send raw data
-- **pii_only**: Remove identifiers, keep financial values (RECOMMENDED)
-- **normalized**: Scale values while preserving ratios
-- **strict**: Remove all financial data, generic advice only
-
-**Removed Fields**: `user_id`, `email`, `name`, `phone`, `address`, `ip_address`, `session_id`
-
-#### 3. User Controls (Frontend)
-
-**Settings Page**:
-- Global toggle: "Share my financial data with AI"
-- Granular checklist: Select which data types to share
-- Per-chat override: "For this question only, allow/deny AI access"
-
-**Visual Indicators**: Lock icon in chatbox shows current privacy state.
-
-### Explainability Features
-
-#### Decision History Tab (Goal Detail Page)
-
-Timeline view showing every AI decision for the goal:
-- Timestamp, stage, and substage
-- AI's thought process (reasoning chain)
-- User input that triggered decision
-- AI's recommendation
-- User action (accepted/modified/rejected)
-- Citations to knowledge base documents
-
-**Use Case**: User asks "Why did the AI recommend KiwiSaver for my home goal?"
-- Navigate to Decision History
-- Find Product Selection stage
-- Read AI's rationale: "Because you have employment income, KiwiSaver provides employer match (3%) and government contribution ($521/year), boosting your deposit savings by ~$2,500/year."
-
-#### Memory Logger (In-Memory Analytics)
-
-Real-time decision stream for debugging:
-- Recent decisions cached in memory
-- Grouped by stage and category
-- Used for immediate feedback in development
-
-#### RAG Citations
-
-Every AI response includes references to source documents:
-- Document title
-- Passage relevance score
-- Original URL (if available)
-
----
-
-## Technology Stack
-
-### Backend Core
-- **Runtime**: Node.js 20.x
-- **Framework**: Express 4.x
-- **Database**: MongoDB 6.x (10 collections)
-- **ODM**: Mongoose 8.x
-
-### AI/ML Stack
-- **LLM Providers**: DeepSeek R1, GPT-4o, Gemini 1.5
-- **RAG Platform**: Vectara v2 (serverless vector DB)
-- **Document Processing**: pdf-parse, mammoth (DOCX)
-- **Simulation**: Custom Monte Carlo implementation
-
-### Frontend Stack
-- **Framework**: React 18.x
-- **Build Tool**: Vite 5.x
-- **UI Library**: Tailwind CSS 4.x
-- **Charts**: Recharts 2.x
-- **Icons**: Lucide React
-- **Routing**: React Router 6.x
-
-### Development Tools
-- **Authentication**: JWT (jsonwebtoken)
-- **Validation**: express-validator
-- **API Client**: Axios
-- **Environment**: dotenv
-
----
-
-## Installation
-
-### Prerequisites
-- Node.js 20.x or higher
-- MongoDB 6.x running locally or remotely
-- API keys for DeepSeek and Vectara
-
-### Quick Start
+### Run All Tests
 
 ```bash
-# 1. Clone repository
-git clone https://github.com/your-org/money-minds.git
-cd money-minds
-
-# 2. Install dependencies
-cd backend && npm install
-cd ../frontend && npm install
-
-# 3. Configure environment variables
-# Create backend/.env with:
-#   MONGODB_URI, LLM_PROVIDER, DEEPSEEK_API_KEY, VECTARA_API_KEY, JWT_SECRET
-# Create frontend/.env with:
-#   VITE_API_BASE_URL
-
-# 4. Initialize database (import 1,092 products)
+# Backend tests (if implemented)
 cd backend
-npm run seed
+npm test
 
-# 5. Start servers
-# Terminal 1: cd backend && npm run dev
-# Terminal 2: cd frontend && npm run dev
+# Frontend unit tests
+cd frontend
+npm run test
 
-# 6. Access application
-# Frontend: http://localhost:5173
-# Backend: http://localhost:5001/api
+# Frontend E2E tests
+cd frontend
+npx cypress open
+```
+
+### Test Coverage
+
+Current test coverage:
+- **Backend**: TBD
+- **Frontend Components**: 0% (test files to be created)
+- **E2E Tests**: 23 Cypress test files
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions from the community! Please follow these guidelines:
+
+### Development Workflow
+
+1. **Fork the repository**
+2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
+3. **Make your changes**: Follow existing code style
+4. **Test your changes**: Ensure all tests pass
+5. **Commit your changes**: `git commit -m 'Add amazing feature'`
+6. **Push to the branch**: `git push origin feature/amazing-feature`
+7. **Open a Pull Request**: Describe your changes in detail
+
+### Code Style
+
+- **Backend**: Follow Node.js best practices, use ES6+ modules
+- **Frontend**: Follow React best practices, use functional components and hooks
+- **Formatting**: Use consistent indentation (2 spaces)
+- **Comments**: Add JSDoc comments for functions and components
+- **Naming**: Use camelCase for variables/functions, PascalCase for components/classes
+
+### Commit Messages
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+feat: add Monte Carlo simulation dashboard
+fix: resolve portfolio optimization bug
+docs: update installation instructions
+refactor: extract Copilot component from GoalIntakePage
+test: add unit tests for privacy middleware
 ```
 
 ---
 
-## Data Models
+## 🗺 Roadmap
 
-### Core Models (10 total)
+### Current Version: v1.0 (MVP)
 
-| Model | Purpose | Key Fields |
-|-------|---------|-----------|
-| **User** | Authentication + privacy settings | `email`, `password`, `privacy.shareWithAI`, `privacy.dataAllowlist` |
-| **Goal** | User's financial objectives | `goal_name`, `category`, `target_amount`, `due_date`, `plan` (ref) |
-| **Plan** | AI-generated strategy for goal | `strategy_profile`, `selected_portfolio`, `simulation_results` |
-| **Product** | Investment products (1,092) | `name`, `provider`, `category`, `metrics.riskScore`, `allocation` |
-| **FinancialAsset** | User's assets/liabilities | `category`, `value`, `source_product_id`, `asset_details.linked_goal_id` |
-| **CashFlow** | Recurring income/expenses | `type`, `amount`, `frequency`, `timing_mode` |
-| **Snapshot** | Historical wealth tracking | `net_worth`, `total_assets`, `timestamp` |
-| **GoalDecisionLog** | XAI audit trail | `stage`, `user_input`, `ai_decision`, `user_action` |
-| **PlaygroundSimulation** | Scenario simulation runs | `simulation_type`, `time_offset`, `market_scenario`, `results` |
-| **PlaygroundBackground** | Background task execution | `task_type`, `status`, `result`, `metadata` |
+- ✅ Goal-based planning (4-stage pipeline)
+- ✅ Wealth management center
+- ✅ Portfolio optimization (1,092 products)
+- ✅ Privacy-first AI architecture
+- ✅ RAG integration (501 curated chunks)
+- ✅ Monte Carlo simulation
 
-### Key Relationships
+### Version 1.1 (Q2 2026)
+
+- [ ] Real-time market data integration
+- [ ] Enhanced portfolio rebalancing
+- [ ] Mobile-responsive design improvements
+- [ ] Multi-currency support
+- [ ] Tax optimization strategies
+
+### Version 2.0 (Q3 2026)
+
+- [ ] Multi-user support (family accounts)
+- [ ] Financial advisor dashboard
+- [ ] Advanced reporting & analytics
+- [ ] API for third-party integrations
+- [ ] Machine learning for personalized recommendations
+
+### Future Considerations
+
+- [ ] Mobile app (React Native)
+- [ ] Voice assistant integration
+- [ ] Blockchain-based asset verification
+- [ ] Open-source product database
+- [ ] Community-contributed goal templates
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+### MIT License Summary
 
 ```
-User (1) ─── (N) Goal
-Goal (1) ─── (1) Plan
-Plan (N) ─── (M) Product [via selected_portfolio.products array]
-Goal (1) ─── (N) FinancialAsset [via asset_details.linked_goal_id]
-Goal (1) ─── (N) GoalDecisionLog
-FinancialAsset (N) ─── (1) Product [via source_product_id]
+Copyright (c) 2026 FinTwin Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software...
 ```
 
 ---
 
-## Development
+## 📚 References & Data Sources
 
-### Architectural Complexity
-
-**AI-Algorithm Integration**:
-- Function-calling interface for LLM to invoke computational tools
-- Structured output validation (JSON schemas)
-- Two-phase execution: LLM reasoning → algorithm calculation
-
-**Algorithmic Complexity**:
-- Portfolio optimization: O(n²) gradient descent + random perturbation
-- Monte Carlo simulation: O(iterations × years)
-- Multi-goal allocation: Linear programming (Simplex method)
-
-**System Complexity**:
-- Frontend: Dynamic form generation from AI schemas, session-based context isolation
-- State management: 4-stage FSM with substages and smart routing
-- Privacy control: 3-layer architecture (global/request/sanitization)
-- LLM orchestration: Multi-provider with function-calling fallback
-- RAG pipeline: Automated document processing with quality control
-
-**Technical Depth**:
-- Hybrid AI architecture (LLM reasoning + algorithmic computation)
-- Advanced AI integration (function calling, structured output, streaming)
-- Mathematical optimization (portfolio construction, Monte Carlo simulation)
-- Privacy engineering (middleware, sanitization, user controls)
-- Software architecture (layered design, separation of concerns, context isolation)
-
-### Key Technical Challenges Solved
-
-1. **LLM Hallucination Control**
-   - URL validation and cleaning
-   - Structured output enforcement via JSON schemas
-   - RAG passage quality filtering
-
-2. **Multi-Goal Resource Contention**
-   - Linear programming for optimal allocation
-   - Asset tracking via `linked_goal_id` to prevent double-counting
-
-3. **Function Calling Fallback**
-   - Two-phase approach for providers without native support
-   - Tool result injection and final response generation
-
-4. **Document Quality Assurance**
-   - Automated content type detection
-   - Code-level enforcement of filtering rules
-   - LLM-powered metadata generation
-
-5. **Real-Time Privacy Enforcement**
-   - Middleware intercepts all requests
-   - Per-request override capability
-   - Transparent logging for auditability
-
-6. **Dynamic Form Generation**
-   - AI generates context-aware form schemas
-   - Frontend dynamically renders input components
-   - Session-based context isolation prevents cross-goal contamination
-
----
-
-## Technical Innovations Summary
-
-### Goal-Based Investment
-- **Goal-Centric Design**: All financial decisions organized around user-defined life goals
-- **Asset Linking**: Automatic tracking of which assets fund which goals (`linked_goal_id`)
-- **Resource Allocation**: Multi-goal optimization prevents double-counting of limited capital
-- **Progress Tracking**: Real-time success probability and projected outcome visualization
-
-### Neuro-Symbolic AI Architecture
-- **LLM Layer (Neural)**: Natural language understanding, context analysis, recommendation synthesis
-- **Algorithm Layer (Symbolic)**: Deterministic computation for portfolio optimization, simulation, constraint solving
-- **Integration**: Function-calling interface enables LLM to invoke computational tools
-
-### Explainable AI
-- Complete decision audit trail via `GoalDecisionLog` model
-- Thought process, rationale, and user action tracking
-- RAG citation system for evidence-based recommendations
-
-### Privacy Engineering
-- Three-layer protection: global toggle, granular allowlist, PII sanitization
-- Request-level override for per-conversation control
-- GDPR-compliant data handling
-
-### Intelligent Document Processing
-- 73.9% quality retention rate (678→501 chunks)
-- Automated content type detection and semantic filtering
-- LLM-powered metadata generation for searchable attributes
-
-### Dynamic User Interface
-- AI-generated form schemas adapt to user context
-- Session-based context isolation prevents state leakage
-- Smart routing for seamless multi-goal planning
-
-### Research Applications
-- Goal-based investment framework for personal finance
-- Privacy-preserving AI financial advisory framework
-- Explainable decision logging for regulated industries
-- Neuro-symbolic architecture for trustworthy AI systems
-- Automated knowledge base curation for domain-specific RAG
-
----
-
-## License
-
-MIT License - See LICENSE file for details.
-
-## References
+### Academic References
 
 1. Financial Markets Authority (FMA). (2025). *KiwiSaver Annual Report 2025*.
 2. Reserve Bank of New Zealand (RBNZ). (2025). *Monetary Policy Statement November 2025*.
 3. Commission for Financial Capability (CFFC). (2024). *New Zealand Retirement Expenditure Guidelines*.
 4. Ministry of Housing and Urban Development (MHUD). (2025). *Housing in Aotearoa 2025*.
 
-## Acknowledgments
+### Data Providers
 
-Data sources and infrastructure providers:
-- Financial Markets Authority - KiwiSaver product data (1,092 instruments)
-- Vectara - RAG platform (501 curated document chunks)
-- DeepSeek - Primary LLM API
-- MongoDB - Database infrastructure
+- **Financial Markets Authority (FMA)**: KiwiSaver product data (800+ funds)
+- **Managed Funds Association**: Managed fund data (200+ products)
+- **Banks**: Term deposit rates (90+ products)
+- **Vectara**: RAG platform (501 curated document chunks)
+- **DeepSeek**: Primary LLM API
+- **MongoDB**: Database infrastructure
 
 ---
 
-**Maintainer**: [Your Name]  
-**Institution**: University of Auckland, Department of Computer Science  
-**Contact**: [your.email@auckland.ac.nz]
+## 👥 Team
+
+FinTwin was built by a collaborative team at the University of Auckland:
+
+| Member | Role | Responsibilities |
+|--------|------|-----------------|
+| **Lucas** | Product Owner & Lead Engineer | Architecture design, AI/LLM integration, goal engine implementation, API design, database schema |
+| **Kuda** | Project Manager & Data Lead | Project coordination, algorithm validation, financial compliance review, data cleaning & preparation |
+| **Ray** | Backend Developer | CRUD API implementation, data persistence, backend-frontend integration, service layer maintenance |
+| **Ming** | Frontend Developer | Data visualization (Recharts), component development (Playground, Wealth Center, Marketplace) |
+| **Ava** | Frontend Developer & QA | User authentication UI, global styling, demo assets preparation, user testing & bug reporting |
+
+---
+
+## 🙏 Acknowledgments
+
+Special thanks to:
+
+- **University of Auckland, Department of Computer Science** - Research support and guidance
+- **DeepSeek Team** - Providing accessible AI reasoning capabilities
+- **Vectara Team** - Enabling powerful RAG infrastructure
+- **Financial Markets Authority (NZ)** - Open data for financial products
+- **Open Source Community** - Libraries and tools that made this possible
+
+---
+
+## 📧 Contact & Support
+
+### Project Lead
+- **Name**: Lucas
+- **Role**: Product Owner & Lead Engineer
+- **Institution**: University of Auckland, Department of Computer Science
+- **Email**: [Contact via GitHub](https://github.com/your-org/money-minds)
+
+### Getting Help
+
+- **Live Demo**: [http://13.210.244.120/](http://13.210.244.120/)
+- **Issues**: [GitHub Issues](https://github.com/your-org/money-minds/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/your-org/money-minds/discussions)
+
+### Citation
+
+If you use FinTwin in your research, please cite:
+
+```bibtex
+@software{fintwin2026,
+  author = {Lucas and Kuda and Ray and Ming and Ava},
+  title = {FinTwin: AI-Powered Goal-Based Financial Planning},
+  year = {2026},
+  publisher = {University of Auckland},
+  url = {http://13.210.244.120/}
+}
+```
+
+---
+
+<div align="center">
+
+**Built with ❤️ for better financial futures**
+
+[⬆ Back to Top](#fintwin-ai-powered-goal-based-financial-planning)
+
+</div>
