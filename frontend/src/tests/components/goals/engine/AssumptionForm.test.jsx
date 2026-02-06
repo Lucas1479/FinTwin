@@ -69,20 +69,24 @@ describe('AssumptionForm', () => {
         });
     });
 
-    it('should call onCancel when cancelling', () => {
+    it('should call onCancel when cancelling', async () => {
         const onCancel = vi.fn();
         render(<AssumptionForm onCancel={onCancel} />);
         
-        const cancelButton = screen.getByText('Back to edit');
+        const cancelButton = await screen.findByText('Back to edit');
         fireEvent.click(cancelButton);
         
-        expect(onCancel).toHaveBeenCalledTimes(1);
+        await waitFor(() => {
+            expect(onCancel).toHaveBeenCalledTimes(1);
+        });
     });
 
-    it('should not show cancel button when onCancel is not provided', () => {
+    it('should not show cancel button when onCancel is not provided', async () => {
         render(<AssumptionForm />);
         
-        expect(screen.queryByText('Back to edit')).not.toBeInTheDocument();
+        await waitFor(() => {
+            expect(screen.queryByText('Back to edit')).toBeNull();
+        });
     });
 
     it('should show risk attitude options', () => {
