@@ -874,11 +874,11 @@ FinTwin was built by a collaborative team at the University of Auckland:
 
 | Member | Role | Responsibilities |
 |--------|------|-----------------|
-| **Lucas** | Product Owner & Lead Engineer | Architecture design, AI/LLM integration, goal engine implementation, API design, database schema |
-| **Kuda** | Project Manager & Data Lead | Project coordination, algorithm validation, financial compliance review, data cleaning & preparation |
+| **Lucas** | Product Manager & Lead Engineer | Architecture design, AI/LLM integration, goal engine implementation, API design, database schema |
+| **Kuda** | Project Manager & Data Lead | Project coordination, AWS deployment, financial compliance review, data cleaning & preparation |
 | **Ray** | Backend Developer | CRUD API implementation, data persistence, backend-frontend integration, service layer maintenance |
-| **Ming** | Frontend Developer | Data visualization (Recharts), component development (Playground, Wealth Center, Marketplace) |
-| **Ava** | Frontend Developer & QA | User authentication UI, global styling, demo assets preparation, user testing & bug reporting |
+| **Ming** | Frontend Developer | Data visualization (Recharts), component development, user research & requirements gathering |
+| **Ava** | Frontend Developer & QA | User authentication UI, global styling, demo assets preparation, backend API testing, user testing & bug reporting |
 
 ---
 
