@@ -1,0 +1,45 @@
+name: Frontend Tests
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+    
+    - name: Install happy-dom for testing
+      working-directory: ./frontend
+      run: npm install --save-dev happy-dom
+    
+    - name: Run frontend tests
+      working-directory: ./frontend
+      run: npm test -- --run --reporter=verbose
+    
+    - name: Test Summary
+      if: always()
+      working-directory: ./frontend
+      run: |
+        echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "✅ All tests completed" >> $GITHUB_STEP_SUMMARY

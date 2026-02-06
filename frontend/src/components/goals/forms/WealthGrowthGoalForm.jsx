@@ -434,7 +434,7 @@ const PlanningParametersForm = ({ initialValues, onChange }) => {
                     <option value="quarterly">Quarterly (Recommended)</option>
                     <option value="semi_annual">Semi-Annual</option>
                     <option value="annual">Annual</option>
-                    <option value="threshold">When allocation drifts >5%</option>
+                    <option value="threshold">When allocation drifts &gt;5%</option>
                 </select>
             </div>
 
@@ -518,19 +518,11 @@ const GapFeasibilityForm = ({ initialValues, onChange }) => {
         onChange({
             goal_details: {
                 ...initialValues.goal_details,
-                current_portfolio_value: formData.current_portfolio_value,
-                monthly_investment: formData.monthly_investment,
-                annual_bonus: formData.annual_bonus,
-                employer_contribution: formData.employer_contribution
+                ...formData
             }
         });
-    }, [
-        formData.current_portfolio_value, 
-        formData.monthly_investment,
-        formData.annual_bonus,
-        formData.employer_contribution,
-        onChange
-    ]);
+    }, [formData, onChange]);
+      
 
     // Calculations
     const targetAmount = initialValues.target_amount || 100000;
@@ -542,27 +534,28 @@ const GapFeasibilityForm = ({ initialValues, onChange }) => {
     const afterTaxReturn = annualReturn * (1 - taxRate);
     const afterTaxMonthlyReturn = afterTaxReturn / 12;
 
-    // Future value calculations
-    const futureValueCurrent = formData.current_portfolio_value * Math.pow(1 + afterTaxMonthlyReturn, months);
+   // Future value calculations
+   const futureValueCurrent = (formData.current_portfolio_value || 0) * Math.pow(1 + (afterTaxMonthlyReturn || 0), (months || 0));
     
-    const totalMonthlyInvestment = formData.monthly_investment + (formData.employer_contribution / 12);
-    const futureValueMonthly = totalMonthlyInvestment > 0
-        ? totalMonthlyInvestment * ((Math.pow(1 + afterTaxMonthlyReturn, months) - 1) / afterTaxMonthlyReturn)
-        : 0;
-    
-    const futureValueBonus = formData.annual_bonus > 0
-        ? formData.annual_bonus * ((Math.pow(1 + afterTaxReturn, years) - 1) / afterTaxReturn)
-        : 0;
-    
-    const totalProjected = futureValueCurrent + futureValueMonthly + futureValueBonus;
-    const gap = Math.max(0, targetAmount - totalProjected);
-    const isFeasible = totalProjected >= targetAmount * 0.9;
-    
-    const requiredMonthly = gap > 0 && months > 0
-        ? gap / ((Math.pow(1 + afterTaxMonthlyReturn, months) - 1) / afterTaxMonthlyReturn)
-        : 0;
+   const totalMonthlyInvestment = (formData.monthly_investment || 0) + ((formData.employer_contribution || 0) / 12);
+   
+   const futureValueMonthly = (afterTaxMonthlyReturn > 0 && months > 0)
+       ? totalMonthlyInvestment * ((Math.pow(1 + afterTaxMonthlyReturn, months) - 1) / afterTaxMonthlyReturn)
+       : totalMonthlyInvestment * (months || 0); // Simple sum if return is 0
+   
+   const futureValueBonus = (afterTaxReturn > 0 && years > 0)
+       ? (formData.annual_bonus || 0) * ((Math.pow(1 + afterTaxReturn, years) - 1) / afterTaxReturn)
+       : (formData.annual_bonus || 0) * (years || 0); // Simple sum if return is 0
+   
+   const totalProjected = (futureValueCurrent || 0) + (futureValueMonthly || 0) + (futureValueBonus || 0);
+   const gap = Math.max(0, (targetAmount || 0) - totalProjected);
+   const isFeasible = totalProjected >= (targetAmount || 0) * 0.9;
+   
+   const requiredMonthly = (gap > 0 && afterTaxMonthlyReturn > 0 && months > 0)
+       ? gap / ((Math.pow(1 + afterTaxMonthlyReturn, months) - 1) / afterTaxMonthlyReturn)
+       : (gap > 0 && (months > 0)) ? gap / months : 0;
 
-    // Passive income calculation
+   // Passive income calculation
     const targetPassiveIncome = initialValues.goal_details?.target_passive_income || 0;
     const withdrawalRate = 0.04; // 4% rule
     const requiredPortfolioForIncome = targetPassiveIncome * 12 / withdrawalRate;

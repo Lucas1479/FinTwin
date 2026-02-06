@@ -12,6 +12,7 @@ import GoalIntakePage from './pages/GoalIntakePage';
 import GoalGalleryPage from './pages/GoalGalleryPage';
 import GoalDetailPage from './pages/GoalDetailPage';
 import SettingsPage from './pages/SettingsPage';
+import ComponentShowcase from './pages/ComponentShowcase';
 import { SidebarProvider } from './context/SidebarContext';
 import { SimulationProvider } from './context/SimulationContext';
 import { HelpProvider } from './context/HelpContext';
@@ -40,6 +41,7 @@ function App() {
               <Route path="/marketplace" element={<MarketplacePage />} />
               <Route path="/playground" element={<PlaygroundPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/showcase" element={<ComponentShowcase />} />
               
 
               {/* Fallback */}

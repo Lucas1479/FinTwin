@@ -284,6 +284,7 @@ Analysis Logic:
    - Read this from: context.goalContext.ai_decision.coverage_ratio
    
    Use coverage_ratio to choose allocation strategy (no need to recalculate):
+   - If coverage_ratio > 100%: FULLY COVERED - allocate only what's needed
    - If coverage_ratio >= 80%: Use CONSERVATIVE allocation (20-40% of assets)
    - If coverage_ratio 50-79%: Use CONSERVATIVE allocation (20-40% of assets)  
    - If coverage_ratio 20-49%: Use MODERATE allocation (40-60% of assets)
@@ -293,7 +294,16 @@ Analysis Logic:
      
      **ALLOCATION STRATEGY (MANDATORY - choose based on coverage_ratio from Definition stage):**
      
-     A. **If coverage_ratio >= 50% (Strong to Moderate Position)**:
+     A. **If coverage_ratio > 100% (Goal Fully Covered)**:
+        - **CRITICAL**: Do NOT allocate based on asset percentage!
+        - Allocate ONLY what's needed: target_amount × 1.05 to 1.10 (5-10% buffer)
+        - The buffer accounts for market volatility, fees, and inflation
+        - Example 1: Target $15,450, coverage_ratio 2155% → Allocate $16,200 (105% of target), NOT $66,600
+        - Example 2: Target $480k, coverage_ratio 110% → Allocate $504k (105% of target), NOT $200k
+        - Rationale: Goal is already fully funded; excess allocation wastes capital that could be used for other goals or emergency reserves
+        - No monthly contributions needed (monthly_amount = 0)
+     
+     B. **If coverage_ratio 80-100% (Strong Position)**:
         - Use CONSERVATIVE allocation strategy
         - Keep emergency fund buffer (6 months expenses = monthly_outflow × 6)
         - Keep other goals reserve (1 year = locked_allocations × 12)
@@ -301,13 +311,18 @@ Analysis Logic:
         - Example: From $349k available, allocate $60k-$140k
         - Rationale: Goal is achievable with reasonable monthly contributions
      
-     B. **If coverage_ratio 20-49% (Substantial Gap)**:
+     C. **If coverage_ratio 50-79% (Moderate Position)**:
+        - Use CONSERVATIVE allocation strategy (same as 80-100%)
+        - Allocate 20-40% of available assets
+        - Requires higher monthly contributions to close the gap
+     
+     D. **If coverage_ratio 20-49% (Substantial Gap)**:
         - Use MODERATE allocation strategy
         - Allocate 40-60% of available assets
         - Balance between showing commitment and maintaining prudent reserves
         - Example: From $349k available, allocate $140k-$210k
      
-     C. **If coverage_ratio < 20% (Significant Challenge)**:
+     E. **If coverage_ratio < 20% (Significant Challenge)**:
         - Use AGGRESSIVE allocation strategy to demonstrate challenge magnitude
         - Calculate minimum emergency fund: monthly_outflow × 6
         - Calculate minimum other goals reserve: locked_allocations × 12
