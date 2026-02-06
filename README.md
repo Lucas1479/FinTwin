@@ -108,6 +108,34 @@ FinTwin is a **goal-based financial planning platform** that combines Large Lang
 
 > **Note**: This is a demo deployment hosted on AWS. Feel free to create an account and explore the features!
 
+### 🎯 Quick Start with Demo Data
+
+To quickly explore all features without manual data entry:
+
+<table>
+<tr>
+<td width="70%">
+
+**Steps:**
+1. **Register/Login** to your account
+2. **Click "Load Demo Data"** button in dashboard or settings
+3. **Auto-populated content includes**:
+   - Sample financial assets (savings, investments, property)
+   - Monthly cash flows (income and expenses)
+   - Multiple goal examples (retirement, home, education)
+   - Realistic NZ-based financial scenarios
+
+> **💡 Tip**: Demo data helps you understand the full workflow without manual setup. You can clear and start fresh anytime!
+
+</td>
+<td width="30%" align="center">
+
+<img src="docs/screenshots/Load_demo_data.png" alt="Load Demo Data" width="250"/>
+
+</td>
+</tr>
+</table>
+
 ### 📸 Screenshots
 
 #### Dashboard Overview
@@ -118,8 +146,6 @@ FinTwin is a **goal-based financial planning platform** that combines Large Lang
 
 #### Portfolio Optimization
 ![Portfolio](docs/screenshots/portfolio-optimization.png)
-
-> **Note**: Screenshots will be added in the next release.
 
 ---
 
