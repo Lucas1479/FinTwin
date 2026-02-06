@@ -5,6 +5,8 @@
 **A neuro-symbolic AI system that helps users achieve their financial goals through personalized, transparent, and privacy-first investment planning.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI Pipeline](https://img.shields.io/badge/CI-passing-brightgreen)](https://github.com/CS778-LY-2025-Consulting-Challenge/Money-Minds/actions)
+[![Backend Tests](https://img.shields.io/badge/backend%20tests-25%20passed-success)](https://github.com/CS778-LY-2025-Consulting-Challenge/Money-Minds)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)](https://nodejs.org/)
 [![React Version](https://img.shields.io/badge/react-19.2.0-blue)](https://reactjs.org/)
 [![MongoDB](https://img.shields.io/badge/mongodb-6.x-green)](https://www.mongodb.com/)
@@ -34,6 +36,7 @@
 - [Project Structure](#-project-structure)
 - [Core Innovations](#-core-innovations)
 - [API Documentation](#-api-documentation)
+- [Testing & CI/CD](#-testing)
 - [Contributing](#-contributing)
 - [License](#-license)
 
@@ -97,6 +100,8 @@ FinTwin is a **goal-based financial planning platform** that combines Large Lang
 - **Session Isolation**: Prevents context leakage between goals
 - **Intelligent Document Processing**: Automated quality filtering for RAG corpus
 - **Background Tasks**: Asynchronous simulation execution with progress tracking
+- **Comprehensive Testing**: 25+ backend tests, 5+ frontend component test suites
+- **Automated CI/CD**: GitHub Actions pipelines for testing, linting, and build verification
 
 ---
 
@@ -231,9 +236,12 @@ To quickly explore all features without manual data entry:
   - `katex` - Math formula rendering
 
 ### Development Tools
-- **Testing**: Vitest 4.x + Testing Library
+- **Testing**: 
+  - Frontend: Vitest 4.x + Testing Library + Happy-DOM
+  - Backend: Jest + Supertest
 - **E2E Testing**: Cypress
 - **Linting**: ESLint 9.x
+- **CI/CD**: GitHub Actions (automated testing, linting, build verification)
 - **Authentication**: JWT (jsonwebtoken)
 - **Environment**: dotenv
 
@@ -391,6 +399,31 @@ Frontend will start at `http://localhost:5173`
 2. **Toggle AI Sharing**: Enable/disable data sharing with AI
 3. **Granular Control**: Select which data types to share (assets, income, debts, etc.)
 4. **Per-Request Override**: Use chatbox privacy toggle for one-time exceptions
+
+### Running Tests Locally
+
+Before committing changes, run tests locally to ensure code quality:
+
+```bash
+# Backend tests (Jest)
+cd backend
+npm test
+
+# Frontend tests (Vitest)
+cd frontend
+npm test -- --run
+
+# Frontend tests with coverage
+npm test -- --run --coverage
+
+# Linting
+npm run lint
+
+# Build verification
+npm run build
+```
+
+**CI/CD Integration**: All tests run automatically via GitHub Actions on push/PR to main branches. Check the [Actions tab](https://github.com/CS778-LY-2025-Consulting-Challenge/Money-Minds/actions) for build status.
 
 ---
 
@@ -630,7 +663,7 @@ For complete API documentation, see [API_REFERENCE.md](docs/API_REFERENCE.md).
 ### Run All Tests
 
 ```bash
-# Backend tests (if implemented)
+# Backend tests
 cd backend
 npm test
 
@@ -646,9 +679,36 @@ npx cypress open
 ### Test Coverage
 
 Current test coverage:
-- **Backend**: TBD
-- **Frontend Components**: 0% (test files to be created)
+- **Backend**: ✅ 6 test suites, 25 tests (all passing)
+  - Auth middleware tests
+  - User API tests
+  - Goal API tests
+  - Product API tests
+  - Cash flow API tests
+  - Misc API tests
+- **Frontend Components**: 5 test suites for goal engine components
 - **E2E Tests**: 23 Cypress test files
+
+### CI/CD Pipeline
+
+The project includes automated GitHub Actions workflows:
+
+#### **CI Pipeline** (`ci.yml`)
+- **Frontend Tests**: Unit tests with coverage reporting
+- **Backend Tests**: API and middleware tests
+- **Code Quality**: ESLint checks and large file detection
+- **Build Verification**: Production build validation and size monitoring
+
+#### **Test Workflow** (`test.yml`)
+- Matrix testing on Node.js 18.x and 20.x
+- Automated testing on push/PR to main branches
+
+#### **PR Protection** (`pr-protection.yml`)
+- Large deletion detection (>1000 lines)
+- Test file deletion warnings
+- Prevents accidental code loss
+
+For detailed CI/CD documentation, see [`.github/workflows/README.md`](.github/workflows/README.md)
 
 ---
 
@@ -661,10 +721,18 @@ We welcome contributions from the community! Please follow these guidelines:
 1. **Fork the repository**
 2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
 3. **Make your changes**: Follow existing code style
-4. **Test your changes**: Ensure all tests pass
-5. **Commit your changes**: `git commit -m 'Add amazing feature'`
-6. **Push to the branch**: `git push origin feature/amazing-feature`
-7. **Open a Pull Request**: Describe your changes in detail
+4. **Test locally**: Run `npm test` in both frontend and backend directories
+5. **Check linting**: Run `npm run lint` to ensure code quality
+6. **Commit your changes**: `git commit -m 'Add amazing feature'`
+7. **Push to the branch**: `git push origin feature/amazing-feature`
+8. **Open a Pull Request**: Describe your changes in detail
+9. **Wait for CI checks**: All automated tests must pass before merging
+
+**⚠️ PR Guidelines:**
+- CI pipeline will automatically run all tests
+- Large deletions (>1000 lines) will trigger warnings
+- Ensure test coverage for new features
+- Fix any linting errors before requesting review
 
 ### Code Style
 
