@@ -136,13 +136,31 @@ const fetchLocationName = async (lat, lng) => {
 
 // --- STAGE 1: VISION (Detailed Budget Builder) ---
 const TravelVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
+    // Default start_date: 1 year from now (reasonable default for travel planning)
+    const getDefaultStartDate = () => {
+        const date = new Date();
+        date.setFullYear(date.getFullYear() + 1);
+        return date.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+    };
+
+    // Default end_date: 2 weeks after start_date
+    const getDefaultEndDate = (startDate) => {
+        if (!startDate) return '';
+        const date = new Date(startDate);
+        date.setDate(date.getDate() + 14);
+        return date.toISOString().split('T')[0];
+    };
+
+    const defaultStartDate = initialValues.goal_details?.start_date || getDefaultStartDate();
+    const defaultEndDate = initialValues.goal_details?.end_date || getDefaultEndDate(defaultStartDate);
+
     const [formData, setFormData] = useState({
         goal_name: initialValues.goal_name || 'Dream Trip',
         destination: initialValues.goal_details?.destination || 'Europe',
         adults: initialValues.goal_details?.adults || 2,
         children: initialValues.goal_details?.children || 0,
-        start_date: initialValues.goal_details?.start_date || '',
-        end_date: initialValues.goal_details?.end_date || '',
+        start_date: defaultStartDate,
+        end_date: defaultEndDate,
         flight_class: initialValues.goal_details?.flight_class || 'economy',
         accommodation_style: initialValues.goal_details?.accommodation_style || 'hotel',
         lifestyle_level: initialValues.goal_details?.lifestyle_level || 'moderate',
@@ -296,9 +314,13 @@ const TravelVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
 
     // Sync to parent
     useEffect(() => {
+        // Use start_date as the goal's due_date (when the trip starts)
+        const dueDate = formData.start_date || null;
+        
         onChange?.({
             goal_name: formData.goal_name,
             target_amount: costBreakdown.total,
+            due_date: dueDate,  // Set top-level due_date from start_date
             goal_details: {
                 ...initialValues.goal_details,
                 ...formData,
@@ -343,13 +365,13 @@ const TravelVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 xl:gap-8">
                 {/* LEFT: Configuration (8 Cols) */}
-                <div className="xl:col-span-7 space-y-8">
+                <div className="xl:col-span-7 space-y-8 min-w-0">
                     
                     {/* 1. BASICS & MAP TOGGLE */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
-                         <div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+                         <div className="min-w-0">
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Region</label>
                             <select 
                                 value={formData.destination}
@@ -364,7 +386,7 @@ const TravelVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
                         <button
                             type="button"
                             onClick={() => setShowMap(!showMap)}
-                            className={`h-[46px] flex items-center justify-center gap-2 rounded-xl border text-sm font-bold transition-all ${
+                            className={`h-[46px] flex items-center justify-center gap-2 rounded-xl border text-sm font-bold transition-all whitespace-nowrap ${
                                 showMap 
                                 ? 'bg-indigo-50 border-indigo-500 text-indigo-700' 
                                 : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'
@@ -469,11 +491,11 @@ const TravelVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
                         />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Travelers</label>
                              <div className="flex gap-4">
-                                <div className="flex-1">
+                                <div className="flex-1 min-w-0">
                                     <label className="text-[10px] text-slate-400 block mb-1">Adults</label>
                                     <input 
                                         type="number" min={1} 
@@ -486,7 +508,7 @@ const TravelVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
                                         placeholder="1"
                                     />
                                 </div>
-                                <div className="flex-1">
+                                <div className="flex-1 min-w-0">
                                     <label className="text-[10px] text-slate-400 block mb-1">Children</label>
                                     <input 
                                         type="number" min={0} 
@@ -504,21 +526,34 @@ const TravelVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
 
                         <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
                             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Dates</label>
-                             <div className="flex gap-2">
-                                <div className="flex-1">
+                             <div className="flex flex-col sm:flex-row gap-2">
+                                <div className="flex-1 min-w-0">
                                     <label className="text-[10px] text-slate-400 block mb-1">Start</label>
                                     <input 
                                         type="date" 
                                         value={formData.start_date}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, start_date: e.target.value }))}
+                                        onChange={(e) => {
+                                            const newStartDate = e.target.value;
+                                            setFormData(prev => {
+                                                // Auto-update end_date if it's before new start_date
+                                                let newEndDate = prev.end_date;
+                                                if (newStartDate && (!newEndDate || new Date(newEndDate) <= new Date(newStartDate))) {
+                                                    const endDate = new Date(newStartDate);
+                                                    endDate.setDate(endDate.getDate() + 14); // Default: 2 weeks trip
+                                                    newEndDate = endDate.toISOString().split('T')[0];
+                                                }
+                                                return { ...prev, start_date: newStartDate, end_date: newEndDate };
+                                            });
+                                        }}
                                         className="w-full input-base text-xs px-2"
                                     />
                                 </div>
-                                <div className="flex-1">
+                                <div className="flex-1 min-w-0">
                                     <label className="text-[10px] text-slate-400 block mb-1">End</label>
                                     <input 
                                         type="date" 
                                         value={formData.end_date}
+                                        min={formData.start_date}
                                         onChange={(e) => setFormData(prev => ({ ...prev, end_date: e.target.value }))}
                                         className="w-full input-base text-xs px-2"
                                     />
@@ -605,8 +640,8 @@ const TravelVisionForm = ({ initialValues, onChange, onSubstageSubmit }) => {
                 </div>
 
                 {/* RIGHT: Summary Receipt (5 Cols) */}
-                <div className="xl:col-span-5">
-                    <div className="sticky top-4 bg-white border border-slate-200 rounded-3xl p-6 shadow-xl shadow-slate-200/50">
+                <div className="xl:col-span-5 min-w-0">
+                    <div className="xl:sticky xl:top-4 bg-white border border-slate-200 rounded-3xl p-6 shadow-xl shadow-slate-200/50">
                         <div className="flex justify-between items-start mb-6">
                             <div>
                                 <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Estimated Total</div>

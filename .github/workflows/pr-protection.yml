@@ -1,0 +1,82 @@
+name: PR Protection
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-large-changes:
+    name: Check for Large Deletions
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Check for large deletions
+      run: |
+        echo "## 🔍 Check Large Code Changes" >> $GITHUB_STEP_SUMMARY
+        
+        # Get file change statistics from PR
+        CHANGED_FILES=$(git diff --stat ${{ github.event.pull_request.base.sha }}...${{ github.sha }})
+        
+        echo "$CHANGED_FILES"
+        
+        # Check for large deletions (over 1000 lines)
+        LARGE_DELETIONS=$(echo "$CHANGED_FILES" | awk '{
+          if ($3 ~ /^[0-9]+$/) {
+            deletions = $3
+          } else if ($4 ~ /^[0-9]+$/) {
+            deletions = $4
+          } else {
+            deletions = 0
+          }
+          
+          if (deletions > 1000) {
+            print "⚠️  **WARNING**: " $1 " has " deletions " deletions"
+            found = 1
+          }
+        } END {
+          if (found) exit 1
+        }')
+        
+        if [ $? -eq 1 ]; then
+          echo "### ⚠️ WARNING: Large Deletions Detected!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Found deletions exceeding 1000 lines. Please ensure:" >> $GITHUB_STEP_SUMMARY
+          echo "1. This is intentional refactoring, not accidental deletion" >> $GITHUB_STEP_SUMMARY
+          echo "2. All functionality has been reimplemented elsewhere" >> $GITHUB_STEP_SUMMARY
+          echo "3. Changes have been reviewed by team members" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Change Details:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "$CHANGED_FILES" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          
+          # Don't fail, just warn
+          echo "⚠️  Large deletions detected, please review carefully"
+        else
+          echo "✅ No large deletions detected" >> $GITHUB_STEP_SUMMARY
+        fi
+    
+    - name: Check test coverage
+      run: |
+        echo "## 📊 Test Coverage Check" >> $GITHUB_STEP_SUMMARY
+        
+        # Check if any test files were deleted
+        DELETED_TESTS=$(git diff --name-status ${{ github.event.pull_request.base.sha }}...${{ github.sha }} | \
+          grep "^D" | grep -E "\.test\.(js|jsx|ts|tsx)$" || true)
+        
+        if [ -n "$DELETED_TESTS" ]; then
+          echo "### ⚠️ WARNING: Test files deleted!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "$DELETED_TESTS" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Please ensure corresponding functionality is also removed, or tests have been migrated to other files." >> $GITHUB_STEP_SUMMARY
+        else
+          echo "✅ No test files deleted" >> $GITHUB_STEP_SUMMARY
+        fi

@@ -13,9 +13,9 @@ const Navbar = () => {
       </Link>
 
       <div className="hidden md:flex gap-8 text-slate-500 text-sm font-bold">
-        <a href="#" className="hover:text-primary transition-colors">Simulators</a>
-        <a href="#" className="hover:text-primary transition-colors">Methodology</a>
-        <a href="#" className="hover:text-primary transition-colors">Pricing</a>
+        <Link to="/login" className="hover:text-primary transition-colors">Simulators</Link>
+        <Link to="/login" className="hover:text-primary transition-colors">Methodology</Link>
+        <Link to="/login" className="hover:text-primary transition-colors">Pricing</Link>
       </div>
 
       <div className="hidden md:flex gap-4 items-center">
@@ -32,9 +32,9 @@ const Navbar = () => {
       {/* Mobile Menu */}
       {isOpen && (
         <div className="absolute top-full left-0 w-full bg-white shadow-xl rounded-b-2xl p-6 flex flex-col gap-4 md:hidden border-t border-slate-100 animate-fade-in">
-            <a href="#" className="text-slate-600 font-bold text-lg">Simulators</a>
-            <a href="#" className="text-slate-600 font-bold text-lg">Methodology</a>
-            <a href="#" className="text-slate-600 font-bold text-lg">Pricing</a>
+            <Link to="/login" className="text-slate-600 font-bold text-lg">Simulators</Link>
+            <Link to="/login" className="text-slate-600 font-bold text-lg">Methodology</Link>
+            <Link to="/login" className="text-slate-600 font-bold text-lg">Pricing</Link>
             <div className="h-px bg-slate-100 my-2"></div>
             <Link to="/login" className="text-slate-600 font-bold text-lg">Log in</Link>
             <Link to="/register" className="btn-primary-rounded text-center justify-center">Get Started</Link>

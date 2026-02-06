@@ -1,19 +1,11 @@
-/**
- * GoalIntakePage.jsx
- * 
- * Goal Engine - Multi-stage goal planning with AI assistance
- * 
- * Architecture:
- * - Modular component design with extracted engine components
- * - SubstageStepIndicator, ConfirmedCard, GapAnalysisForm, AssumptionForm
- * - Copilot AI assistant with RAG and privacy controls
- * - See: frontend/src/components/goals/engine/
- */
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import MainLayout from '../components/layout/MainLayout';
 import GoalDefinitionForm from '../components/goals/GoalDefinitionForm';
+import HomeGoalForm from '../components/goals/forms/HomeGoalForm';
+import RetirementGoalForm from '../components/goals/forms/RetirementGoalForm';
 import { renderGoalForm, hasCustomForm } from '../components/goals/forms/GoalFormRegistry.jsx';
 import StageStrategy from '../components/goals/StageStrategy';
 import StageProduct from '../components/goals/StageProduct';
@@ -25,16 +17,8 @@ import { computeFinancialsFromCashFlows, extractOtherGoalsMonthly } from '../uti
 import { getUserProfile } from '../services/userService';
 import { getRequiredDataTypes, getDataTypeLabels, shouldShowPermissionCard } from '../constants/privacyDataTypes';
 import { extractField } from '../utils/streamHelpers';
-
-// Import engine components
-import { SubstageStepIndicator } from '../components/goals/engine/SubstageStepIndicator';
-import { ConfirmedCard } from '../components/goals/engine/ConfirmedCard';
-import { GapAnalysisForm } from '../components/goals/engine/GapAnalysisForm';
-import { AssumptionForm } from '../components/goals/engine/AssumptionForm';
-import Copilot from '../components/goals/engine/Copilot';
-import { GENERIC_SUBSTAGES, getSubstagesForCategory, buildInitialSubstageState } from '../components/goals/engine/constants';
-
 import {
+    Send,
     ChevronRight,
     ChevronLeft,
     Target,
@@ -43,19 +27,1242 @@ import {
     Activity,
     CheckCircle2,
     Brain,
+    Copy,
+    Check,
+    ExternalLink,
+    Search,
+    Edit2,
+    ChevronDown,
+    ChevronUp,
+    ShieldCheck,
+    ShieldOff,
     HelpCircle,
     X
 } from 'lucide-react';
 import OnboardingGuide from '../components/goals/OnboardingGuide';
 
+// Typewriter Effect Component - NOW SUPPORTS MARKDOWN
+const TypewriterMessage = ({ text, onComplete, role }) => {
+    const [displayedText, setDisplayedText] = useState('');
+    
+    useEffect(() => {
+        let index = 0;
+        const timer = setInterval(() => {
+            setDisplayedText(text.slice(0, index + 1));
+            index++;
+            if (index >= text.length) {
+                clearInterval(timer);
+                if (onComplete) onComplete();
+            }
+        }, 10);
+        return () => clearInterval(timer);
+    }, [text]);
+
+    return (
+        <ReactMarkdown 
+            remarkPlugins={[remarkGfm]}
+            components={{
+                table: ({node, ...props}) => (
+                    <div className="overflow-x-auto my-4 w-full border border-slate-100 rounded-lg no-scrollbar">
+                        <table className="min-w-full divide-y divide-slate-100" {...props} />
+                    </div>
+                )
+            }}
+        >
+            {displayedText}
+        </ReactMarkdown>
+    );
+};
+
+// Substage config (Stage 1)
+const GENERIC_SUBSTAGES = [
+    { id: 'goal_discovery', label: 'Goal Discovery', required: true, description: 'Details, timeline, constraints' },
+    { id: 'assumptions', label: 'Key Assumptions', required: false, description: 'Return, inflation, risk, cashflow flexibility' },
+    { id: 'gap_analysis', label: 'GAP Analysis', required: true, description: 'Income/assets/debts/policy for gap sizing' }
+    // Note: 'summary' substage removed - retirement uses its own summary page, others use the stage summary button
+];
+
+// All categories use the same generic substage flow
+const getSubstagesForCategory = (category) => {
+    return GENERIC_SUBSTAGES;
+};
+
+const buildInitialSubstageState = () => ({
+    definition: {
+        order: GENERIC_SUBSTAGES.map(s => s.id),
+        currentIndex: 0,
+        statusById: GENERIC_SUBSTAGES.reduce((acc, s) => ({ ...acc, [s.id]: 'collecting' }), {})
+    }
+});
+
+const SubstageStepIndicator = ({ config, state }) => {
+    const current = state?.currentIndex ?? 0;
+    return (
+        <div className="flex items-center gap-3 mb-4">
+            {config.map((item, idx) => {
+                const status = state?.statusById?.[item.id] || 'collecting';
+                const isActive = idx === current;
+                const isDone = status === 'confirmed';
+                const nextExists = idx < config.length - 1;
+                return (
+                    <div key={item.id} className="flex items-center gap-3">
+                        <div className="relative group">
+                            <div
+                                className={`
+                                    w-4 h-4 rounded-full border-2 transition-all
+                                    ${isDone ? 'border-green-500 bg-green-500/20' : isActive ? 'border-slate-900 bg-slate-900' : 'border-slate-300 bg-white'}
+                                `}
+                            />
+                            <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-semibold text-slate-600 opacity-0 group-hover:opacity-100 transition">
+                                {item.label}
+                            </div>
+                        </div>
+                        {nextExists && (
+                            <div className={`h-0.5 w-12 sm:w-20 ${isDone ? 'bg-green-400' : 'bg-slate-200'}`}></div>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
+const ConfirmedCard = ({ title, dataLines = [], onEdit, isExpanded, onToggle }) => (
+    <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+        <div className="flex justify-between items-start">
+            <div className="flex-1">
+                <div className="flex items-center gap-2">
+                    <CheckCircle2 size={16} className="text-green-600" />
+                    <div className="font-bold text-slate-900">{title}</div>
+                </div>
+                <div className="text-xs text-slate-500 mt-1">Confirmed · Click edit to modify</div>
+            </div>
+            <div className="flex items-center gap-2">
+                {onEdit && (
+                    <button
+                        type="button"
+                        onClick={onEdit}
+                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                        title="Edit"
+                    >
+                        <Edit2 size={16} />
+                    </button>
+                )}
+                {onToggle && (
+                    <button
+                        type="button"
+                        onClick={onToggle}
+                        className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
+                        title={isExpanded ? 'Collapse' : 'Expand'}
+                    >
+                    {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
+                )}
+            </div>
+        </div>
+        {isExpanded && dataLines.length > 0 && (
+            <div className="mt-3 space-y-1 text-sm text-slate-600 border-t border-slate-100 pt-3">
+                {dataLines.map((line, idx) => (
+                    <div key={idx} className="flex justify-between gap-2">
+                        <span className="text-slate-500">{line.label}</span>
+                        <span className="font-semibold text-slate-800">{line.value}</span>
+                    </div>
+                ))}
+            </div>
+        )}
+    </div>
+);
+
+const GapAnalysisForm = ({ initialValues = {}, onSubmit, onCancel }) => {
+    const [form, setForm] = useState(() => ({
+        monthly_income: '',
+        liquid_assets: '',
+        investments: '',
+        debts: '',
+        region_policy: '',
+        ...initialValues
+    }));
+
+    const updateField = (key, value) => {
+        setForm(prev => ({ ...prev, [key]: value }));
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (onSubmit) onSubmit(form);
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Monthly Income</label>
+                    <input
+                        type="number"
+                        value={form.monthly_income}
+                        onChange={(e) => updateField('monthly_income', e.target.value)}
+                        className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                        placeholder="e.g., 12000"
+                    />
+                </div>
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Liquid Assets</label>
+                    <input
+                        type="number"
+                        value={form.liquid_assets}
+                        onChange={(e) => updateField('liquid_assets', e.target.value)}
+                        className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                        placeholder="Cash / short-term holdings"
+                    />
+                </div>
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Investments</label>
+                    <input
+                        type="number"
+                        value={form.investments}
+                        onChange={(e) => updateField('investments', e.target.value)}
+                        className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                        placeholder="Funds / stocks / pension"
+                    />
+                </div>
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Debt / Loans</label>
+                    <input
+                        type="number"
+                        value={form.debts}
+                        onChange={(e) => updateField('debts', e.target.value)}
+                        className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                        placeholder="Mortgage / auto / credit"
+                    />
+                </div>
+            </div>
+            <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Policy / Tax Constraints</label>
+                <textarea
+                    value={form.region_policy}
+                    onChange={(e) => updateField('region_policy', e.target.value)}
+                    className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                    rows={3}
+                    placeholder="Region, tax benefits, regulatory constraints"
+                />
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                {onCancel && (
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="text-sm font-bold text-slate-500 hover:text-slate-700"
+                    >
+                        Back to edit
+                    </button>
+                )}
+                <button
+                    type="submit"
+                    className="btn-primary-rounded px-5 py-2 text-sm"
+                >
+                    Save & review
+                </button>
+            </div>
+        </form>
+    );
+};
+
+const AssumptionForm = ({ initialValues = {}, onSubmit, onCancel }) => {
+    const [form, setForm] = useState(() => ({
+        expected_return_pct: initialValues.expected_return_pct || 6,
+        inflation_pct: initialValues.inflation_pct || 2.5,
+        risk_attitude: initialValues.risk_attitude || 'balanced',
+        cashflow_flexibility: initialValues.cashflow_flexibility || 'medium',
+        ...initialValues
+    }));
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSubmit?.(form);
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Expected Return (%)</label>
+                    <input
+                        type="number"
+                        value={form.expected_return_pct}
+                        onChange={(e) => setForm(prev => ({ ...prev, expected_return_pct: Number(e.target.value) }))}
+                        className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                    />
+                </div>
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Inflation (%)</label>
+                    <input
+                        type="number"
+                        value={form.inflation_pct}
+                        onChange={(e) => setForm(prev => ({ ...prev, inflation_pct: Number(e.target.value) }))}
+                        className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                    />
+                </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Risk Attitude</label>
+                    <select
+                        value={form.risk_attitude}
+                        onChange={(e) => setForm(prev => ({ ...prev, risk_attitude: e.target.value }))}
+                        className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                    >
+                        <option value="conservative">Conservative</option>
+                        <option value="balanced">Balanced</option>
+                        <option value="growth">Growth</option>
+                    </select>
+                </div>
+                <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Cashflow Flexibility</label>
+                    <select
+                        value={form.cashflow_flexibility}
+                        onChange={(e) => setForm(prev => ({ ...prev, cashflow_flexibility: e.target.value }))}
+                        className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2"
+                    >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                    </select>
+                </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                {onCancel && (
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="text-sm font-bold text-slate-500 hover:text-slate-700"
+                    >
+                        Back to edit
+                    </button>
+                )}
+                <button
+                    type="submit"
+                    className="btn-primary-rounded px-5 py-2 text-sm"
+                >
+                    Save & review
+                </button>
+            </div>
+        </form>
+    );
+};
+
+// Copilot Component - NOW ACTIVE AND CONNECTED
+const Copilot = ({ 
+    stage, 
+    currentStageLabel, 
+    goalContext, 
+    onUpdateContext, 
+    messages, 
+    setMessages,
+    useRag,
+    setUseRag,
+    mode,
+    setMode,
+    allowAIDataSharing,
+    setAllowAIDataSharing,
+    pendingQuery,
+    setPendingQuery,
+    showPermissionCard,
+    setShowPermissionCard,
+    requestedDataTypes,
+    setRequestedDataTypes,
+    selectedAllowlist,
+    setSelectedAllowlist,
+    onExecuteSubstageWithPermission,
+    quickStartPrompt,
+    isLoadingAI,
+    setIsLoadingAI
+}) => {
+    const [inputText, setInputText] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [copiedId, setCopiedId] = useState(null); 
+    const [showReasoning, setShowReasoning] = useState(true);
+    const [expandedRef, setExpandedRef] = useState(null);
+    const [showSources, setShowSources] = useState(false);
+    const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+    
+    const scrollRef = useRef(null);
+    const textareaRef = useRef(null); 
+
+    useEffect(() => {
+        if (!scrollRef.current) return;
+        const el = scrollRef.current;
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        const nearBottom = distanceFromBottom < 120;
+        if (nearBottom) {
+            el.scrollTop = el.scrollHeight;
+            setShowJumpToLatest(false);
+        } else {
+            setShowJumpToLatest(true);
+        }
+    }, [messages]);
+
+    // Auto-trigger AI response when quick start prompt is set
+    useEffect(() => {
+        if (quickStartPrompt && !isLoading) {
+            handleSend(quickStartPrompt);
+        }
+    }, [quickStartPrompt]); 
+
+    const handleChatScroll = () => {
+        if (!scrollRef.current) return;
+        const el = scrollRef.current;
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        const nearBottom = distanceFromBottom < 120;
+        setShowJumpToLatest(!nearBottom);
+    };
+
+    const jumpToLatest = () => {
+        if (!scrollRef.current) return;
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        setShowJumpToLatest(false);
+    };
+
+    const handleCopy = (text, id) => {
+        navigator.clipboard.writeText(text);
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
+
+    // Handle permission response (Accept/Deny) - NOTE: Callback to parent needed for executeSubstageWithPermission
+    const handlePermissionResponse = async (granted) => {
+        setShowPermissionCard(false);
+        
+        if (!granted) {
+            // User denied permission - show feedback message
+            setMessages(prev => [...prev, { 
+                role: 'system', 
+                text: '🔒 Access denied. AI will provide generic advice without your financial data.' 
+            }]);
+            setPendingQuery(null);
+            return;
+        }
+        
+        if (!pendingQuery) {
+            setPendingQuery(null);
+            return;
+        }
+
+        // Check if this is an auto-substage request
+        if (pendingQuery.startsWith('auto_substage:')) {
+            const nextSubId = pendingQuery.replace('auto_substage:', '');
+            setPendingQuery(null);
+            
+            // User authorized - execute substage with permissions
+            if (onExecuteSubstageWithPermission) {
+                onExecuteSubstageWithPermission(nextSubId, selectedAllowlist);
+            }
+            return;
+        }
+
+        // Handle normal chat message with permission
+        const queryText = pendingQuery;
+        const oneTimePermission = granted;
+        setPendingQuery(null);
+        
+        setIsLoading(true);
+
+        // Calculate AI message index using functional update to get latest state
+        let aiMsgIndex = 0;
+        setMessages(prev => {
+            aiMsgIndex = prev.length;
+            return [...prev, { 
+                role: 'assistant', 
+                text: '', 
+                isTyping: true,
+                isStreaming: true,
+                mode
+            }];
+        });
+
+        try {
+            let accumulatedRaw = '';
+            
+            const askHistory = messages
+                .filter(m => m.mode === 'ask' && (m.role === 'user' || m.role === 'assistant') && m.text)
+                .slice(-8)
+                .map(m => ({ role: m.role, text: m.text }));
+
+            const finalData = await goalEngineService.generateDecisionStream({
+                stage: currentStageLabel,
+                goalContext,
+                userInput: { text: queryText },
+                previousDecisions: [],
+                useRag,
+                allowAIDataSharing: oneTimePermission,
+                dataAllowlist: selectedAllowlist,
+                mode,
+                askHistory
+            }, (chunk) => {
+                accumulatedRaw += chunk;
+                
+                const streamingThought = extractField('thought_process', accumulatedRaw);
+                const streamingRationale = extractField('rationale', accumulatedRaw);
+
+                setMessages(prev => {
+                    const newMessages = [...prev];
+                    if (newMessages[aiMsgIndex]) {
+                        // Priority: Rationale > Thought Process > Loading State
+                        let displayText = streamingRationale || streamingThought || "Thinking...";
+
+                        newMessages[aiMsgIndex] = {
+                            ...newMessages[aiMsgIndex],
+                            text: displayText,
+                            thought_process: streamingThought,
+                            isStreaming: true
+                        };
+                    } else {
+                        console.warn('[Permission] Stream update: aiMsgIndex', aiMsgIndex, 'not found in', newMessages.length, 'messages');
+                    }
+                    return newMessages;
+                });
+            });
+            
+            if (finalData) {
+                // finalData is the json field from SSE (ai_decision + form_schema)
+                const aiDecision = finalData.ai_decision;
+                
+                // --- FAULT TOLERANCE: Try to extract fields manually if aiDecision is missing ---
+                let fallbackDecision = {};
+                if (!aiDecision) {
+                    console.warn('[Goal Engine] AI Decision object missing, attempting manual extraction from raw text');
+                    fallbackDecision = {
+                        goal_name: extractField('goal_name', accumulatedRaw),
+                        category: extractField('category', accumulatedRaw),
+                        priority: extractField('priority', accumulatedRaw),
+                        target_amount: Number(extractField('target_amount', accumulatedRaw)) || undefined,
+                        due_date: extractField('due_date', accumulatedRaw)
+                    };
+                    
+                    // Filter out undefined
+                    Object.keys(fallbackDecision).forEach(key => 
+                        fallbackDecision[key] === undefined && delete fallbackDecision[key]
+                    );
+                }
+
+                const aiText = aiDecision?.rationale || extractField('rationale', accumulatedRaw) || "I've updated the plan based on your request.";
+
+                setMessages(prev => {
+                    const newMessages = [...prev];
+                    if (newMessages[aiMsgIndex]) {
+                        newMessages[aiMsgIndex] = {
+                            ...newMessages[aiMsgIndex],
+                            text: aiText,
+                            isTyping: false,
+                            isStreaming: false,
+                            thought_process: aiDecision?.thought_process || extractField('thought_process', accumulatedRaw),
+                            references: aiDecision?.references,
+                            rag_summary: aiDecision?.rag_summary
+                        };
+                    } else {
+                        console.error('[Permission] ERROR: No message at index', aiMsgIndex, '! Array length:', newMessages.length);
+                    }
+                    return newMessages;
+                });
+
+                const effectiveDecision = aiDecision || (Object.keys(fallbackDecision).length > 0 ? fallbackDecision : null);
+                
+                if (mode !== 'ask' && effectiveDecision && onUpdateContext) {
+                    onUpdateContext(effectiveDecision);
+                }
+            }
+        } catch (err) {
+            console.error('[Permission] Error:', err);
+            setMessages(prev => [...prev, { role: 'system', text: "Sorry, I'm having trouble connecting to the brain." }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Helper to format text with clickable citations
+    const formatMessage = (text, references = []) => {
+        if (!text) return '';
+        if (!references || references.length === 0) return text;
+
+        let formattedText = text;
+        // Search for patterns like [1], [2], etc.
+        const citationRegex = /\[(\d+)\]/g;
+        
+        // This is a simple replacement, ReactMarkdown handles the rendering
+        // We'll turn [1] into a markdown link to the source if available
+        formattedText = formattedText.replace(citationRegex, (match, num) => {
+            const index = parseInt(num) - 1;
+            const ref = references[index];
+            if (ref && ref.url) {
+                return `[${match}](${ref.url})`;
+            }
+            return match;
+        });
+
+        return formattedText;
+    };
+
+    const formatSnippet = (snippet) => {
+        if (!snippet) return '';
+        return snippet.replace(/\s+/g, ' ').trim();
+    };
+
+    const handleSend = async (overrideText) => {
+        const textToSend = typeof overrideText === 'string' ? overrideText : inputText;
+        if (!textToSend.trim()) return;
+        
+        // Set parent loading state if in definition stage
+        if (currentStageLabel === 'definition' && setIsLoadingAI) {
+            setIsLoadingAI(true);
+        }
+        
+        // Check if current request needs privacy data
+        const requiredTypes = getRequiredDataTypes(
+            currentStageLabel, 
+            goalContext?.substage, 
+            goalContext?.category
+        );
+        
+        const needsPermission = shouldShowPermissionCard(
+            currentStageLabel,
+            goalContext?.substage,
+            goalContext?.category,
+            allowAIDataSharing
+        );
+        
+        // Only show permission card when sensitive data is needed
+        if (needsPermission && mode !== 'ask') {
+            // Show user message first
+            const userMsg = { role: 'user', text: textToSend, mode };
+            setMessages(prev => [...prev, userMsg]);
+            
+            setPendingQuery(textToSend);
+            setRequestedDataTypes(requiredTypes); // Store required data types
+            setSelectedAllowlist(requiredTypes); // Default select all required data
+            setShowPermissionCard(true);
+            setInputText(''); // Clear input
+            if (textareaRef.current) textareaRef.current.style.height = 'auto';
+            return; // Wait for user response
+        }
+        
+        const userMsg = { role: 'user', text: textToSend, mode };
+        setMessages(prev => [...prev, userMsg]);
+        setInputText('');
+        if (textareaRef.current) textareaRef.current.style.height = 'auto';
+        
+        setIsLoading(true);
+
+        // Add a placeholder assistant message that we will update with the stream
+        const aiMsgIndex = messages.length + 1;
+        setMessages(prev => [...prev, { 
+            role: 'assistant', 
+            text: '', 
+            isTyping: true,
+            isStreaming: true,
+            mode
+        }]);
+
+        try {
+            let accumulatedRaw = '';
+            
+            const askHistory = messages
+                .filter(m => m.mode === 'ask' && (m.role === 'user' || m.role === 'assistant') && m.text)
+                .slice(-8)
+                .map(m => ({ role: m.role, text: m.text }));
+
+            const finalData = await goalEngineService.generateDecisionStream({
+                stage: currentStageLabel,
+                goalContext,
+                userInput: { text: userMsg.text },
+                previousDecisions: [],
+                useRag,
+                allowAIDataSharing,
+                mode,
+                askHistory
+            }, (chunk) => {
+                accumulatedRaw += chunk;
+                
+                const streamingThought = extractField('thought_process', accumulatedRaw);
+                const streamingRationale = extractField('rationale', accumulatedRaw);
+
+                setMessages(prev => {
+                    const newMessages = [...prev];
+                    if (newMessages[aiMsgIndex]) {
+                        // Priority: Rationale > Thought Process > Loading State
+                        let displayText = streamingRationale || streamingThought || "Thinking...";
+
+                        newMessages[aiMsgIndex] = {
+                            ...newMessages[aiMsgIndex],
+                            text: displayText,
+                            thought_process: streamingThought,
+                            isStreaming: true
+                        };
+                    }
+                    return newMessages;
+                });
+            });
+            
+            if (finalData) {
+                // finalData is the json field from SSE (ai_decision + form_schema)
+                const aiDecision = finalData.ai_decision;
+                
+                // --- FAULT TOLERANCE: Try to extract fields manually if aiDecision is missing ---
+                let fallbackDecision = {};
+                if (!aiDecision) {
+                    console.warn('[Goal Engine] AI Decision object missing, attempting manual extraction from raw text');
+                    fallbackDecision = {
+                        goal_name: extractField('goal_name', accumulatedRaw),
+                        category: extractField('category', accumulatedRaw),
+                        priority: extractField('priority', accumulatedRaw),
+                        target_amount: Number(extractField('target_amount', accumulatedRaw)) || undefined,
+                        due_date: extractField('due_date', accumulatedRaw)
+                    };
+                    
+                    // Filter out undefined
+                    Object.keys(fallbackDecision).forEach(key => 
+                        fallbackDecision[key] === undefined && delete fallbackDecision[key]
+                    );
+                }
+
+                const aiText = aiDecision?.rationale || extractField('rationale', accumulatedRaw) || "I've updated the plan based on your request.";
+
+                setMessages(prev => {
+                    const newMessages = [...prev];
+                    if (newMessages[aiMsgIndex]) {
+                        newMessages[aiMsgIndex] = {
+                            ...newMessages[aiMsgIndex],
+                            text: aiText,
+                            isTyping: false,
+                            isStreaming: false,
+                            thought_process: aiDecision?.thought_process || extractField('thought_process', accumulatedRaw),
+                            references: aiDecision?.references,
+                            rag_summary: aiDecision?.rag_summary
+                        };
+                    }
+                    return newMessages;
+                });
+
+                const effectiveDecision = aiDecision || (Object.keys(fallbackDecision).length > 0 ? fallbackDecision : null);
+                
+                if (mode !== 'ask' && effectiveDecision && onUpdateContext) {
+                    onUpdateContext(effectiveDecision);
+                }
+            }
+        } catch (err) {
+            console.error(err);
+            setMessages(prev => [...prev, { role: 'system', text: "Sorry, I'm having trouble connecting to the brain." }]);
+        } finally {
+            setIsLoading(false);
+            
+            // Reset parent loading state after a delay to ensure form is ready
+            if (currentStageLabel === 'definition' && setIsLoadingAI) {
+                setTimeout(() => {
+                    setIsLoadingAI(false);
+                }, 500);
+            }
+        }
+    };
+
+    const hasUserMessages = messages.some(m => m.role === 'user');
+
+    return (
+        <div className="h-full flex flex-col">
+            {/* Header with reasoning & RAG Toggle */}
+            <div className="flex items-center justify-between mb-2 shrink-0">
+                <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 lg:w-7 lg:h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+                        <Activity size={12} className="lg:w-[14px] lg:h-[14px]" />
+                    </div>
+                    <span className="font-bold text-slate-900 text-xs lg:text-sm">FinTwin Copilot</span>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                    {/* RAG Switch */}
+                    <button 
+                        onClick={() => setUseRag(!useRag)}
+                        className={`flex items-center gap-1.5 px-2 py-0.5 lg:px-2.5 lg:py-1 rounded-full text-[9px] lg:text-[10px] font-bold transition-all ${
+                            useRag 
+                            ? 'bg-brand-500 text-white shadow-md shadow-brand-100' 
+                            : 'bg-slate-100 text-slate-400'
+                        }`}
+                    >
+                        <Search size={10} />
+                        {useRag ? 'Search ON' : 'Search OFF'}
+                    </button>
+
+                    {/* Reasoning Switch */}
+                    <button 
+                        onClick={() => setShowReasoning(!showReasoning)}
+                        className={`flex items-center gap-1.5 px-2 py-0.5 lg:px-2.5 lg:py-1 rounded-full text-[9px] lg:text-[10px] font-bold transition-all ${
+                            showReasoning 
+                            ? 'bg-brand-500 text-white shadow-md shadow-brand-100' 
+                            : 'bg-slate-100 text-slate-400'
+                        }`}
+                    >
+                        <Brain size={10} />
+                        {showReasoning ? 'Reasoning ON' : 'Reasoning OFF'}
+                    </button>
+                </div>
+            </div>
+            
+            <div className="relative flex-1 min-h-0">
+                {/* Permission Request - Smart & Context-Aware */}
+                {showPermissionCard && (() => {
+                    const dataTypeLabels = getDataTypeLabels(requestedDataTypes);
+                    const allSelected = selectedAllowlist.length === requestedDataTypes.length;
+                    
+                    return (
+                        <div className="absolute bottom-3 left-3 right-3 z-50 animate-in slide-in-from-bottom-2 duration-300">
+                            <div className="bg-white/95 backdrop-blur border border-indigo-100/80 rounded-xl shadow-lg shadow-indigo-500/10 ring-1 ring-indigo-50/50 p-3">
+                                
+                                {/* Header */}
+                                <div className="flex items-center gap-2.5 mb-2">
+                                    <div className="p-1.5 rounded-full bg-indigo-50 text-indigo-600 flex-shrink-0">
+                                        <Shield size={16} />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-slate-800">
+                                            AI needs access to your data
+                                        </p>
+                                        <p className="text-[10px] text-slate-500">
+                                            For personalized financial advice
+                                        </p>
+                                    </div>
+                                </div>
+                                
+                                {/* Data Types List (MVP: Simple display) */}
+                                <div className="bg-slate-50 rounded-lg p-2.5 mb-3 space-y-1.5">
+                                    {dataTypeLabels.map((dt, idx) => {
+                                        const isSelected = selectedAllowlist.includes(dt.value);
+                                        return (
+                                            <label 
+                                                key={dt.value}
+                                                className="flex items-center gap-2 p-1.5 hover:bg-white rounded-md cursor-pointer transition-colors"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => {
+                                                        setSelectedAllowlist(prev => 
+                                                            isSelected 
+                                                                ? prev.filter(v => v !== dt.value)
+                                                                : [...prev, dt.value]
+                                                        );
+                                                    }}
+                                                    className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300"
+                                                />
+                                                <span className="text-xs mr-1">{dt.icon}</span>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-medium text-slate-700 truncate">
+                                                        {dt.label}
+                                                    </p>
+                                                    <p className="text-[10px] text-slate-500 truncate">
+                                                        {dt.description}
+                                                    </p>
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                                
+                                {/* Quick Actions */}
+                                <div className="flex items-center justify-between gap-2 mb-3">
+                                    <button
+                                        onClick={() => {
+                                            if (allSelected) {
+                                                setSelectedAllowlist([]);
+                                            } else {
+                                                setSelectedAllowlist(requestedDataTypes);
+                                            }
+                                        }}
+                                        className="text-[10px] text-indigo-600 hover:text-indigo-700 font-medium"
+                                    >
+                                        {allSelected ? 'Deselect All' : 'Select All'}
+                                    </button>
+                                    <p className="text-[10px] text-slate-400">
+                                        {selectedAllowlist.length} of {requestedDataTypes.length} selected
+                                    </p>
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => handlePermissionResponse(false)}
+                                        className="flex-1 px-3 py-2 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 transition-colors"
+                                    >
+                                        Deny All
+                                    </button>
+                                    <button
+                                        onClick={() => handlePermissionResponse(true)}
+                                        disabled={selectedAllowlist.length === 0}
+                                        className="flex-1 px-3 py-2 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 shadow-sm shadow-indigo-200 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        Allow ({selectedAllowlist.length})
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
+                
+                <div 
+                    ref={scrollRef}
+                    onScroll={handleChatScroll}
+                    className="h-full bg-slate-50/50 rounded-lg lg:rounded-2xl p-2 lg:p-3 mb-2 lg:mb-4 overflow-y-auto border border-slate-100/50 flex flex-col gap-2 scrollbar-soft"
+                >
+                {messages.map((msg, i) => (
+                    <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} group w-full`}>
+                        {/* Thought Process (CoT) */}
+                        {msg.role === 'assistant' && msg.thought_process && showReasoning && (
+                            <div className="max-w-[85%] mb-1 animate-fade-in">
+                                <div className="bg-slate-100/50 border border-slate-200/60 rounded-2xl rounded-bl-none p-3 text-[11px] text-slate-500 leading-relaxed italic">
+                                    <div className="flex items-center gap-1 mb-1 font-bold uppercase tracking-wider text-[9px] text-brand-600">
+                                        <Brain size={10} /> Thought Process
+                                    </div>
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                        {msg.thought_process}
+                                    </ReactMarkdown>
+                                </div>
+                            </div>
+                        )}
+
+                        {msg.text && (
+                            <div className={`
+                                relative max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed pr-8 break-words
+                                ${msg.role === 'user' 
+                                    ? 'bg-slate-900 text-white rounded-br-none' 
+                                    : 'bg-white border border-slate-200 text-slate-600 rounded-tl-none shadow-sm'}
+                            `}>
+                                {/* Main Message Content with Markdown */}
+                                <div className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert text-white' : 'text-slate-600'}`}>
+                                    {msg.role === 'assistant' && msg.isTyping && !msg.isStreaming && i === messages.length - 1 ? (
+                                        <TypewriterMessage 
+                                            text={formatMessage(msg.text, msg.references)} 
+                                            onComplete={() => {
+                                                const newMessages = [...messages];
+                                                if (newMessages[i]) {
+                                                    newMessages[i].isTyping = false;
+                                                    setMessages(newMessages);
+                                                }
+                                            }} 
+                                        />
+                                    ) : (
+                                        <ReactMarkdown 
+                                            remarkPlugins={[remarkGfm]}
+                                            components={{
+                                                table: ({node, ...props}) => (
+                                                    <div className="overflow-x-auto my-4 w-full border border-slate-100 rounded-lg no-scrollbar">
+                                                        <table className="min-w-full divide-y divide-slate-100" {...props} />
+                                                    </div>
+                                                ),
+                                                a: ({node, ...props}) => (
+                                                    <a {...props} target="_blank" rel="noopener noreferrer" className="text-brand-600 font-bold hover:underline" />
+                                                )
+                                            }}
+                                        >
+                                            {formatMessage(msg.text, msg.references)}
+                                        </ReactMarkdown>
+                                    )}
+                                </div>
+
+                                {/* References */}
+                                {msg.role === 'assistant' && ((msg.references && msg.references.length > 0) || msg.rag_summary) && (
+                                    <div className="mt-3 pt-2 border-t border-slate-100 flex flex-col gap-2">
+                                        {/* Preview (collapsed) */}
+                                        {!showSources && (
+                                            <>
+                                                {msg.rag_summary && (
+                                                    <div className="px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600">
+                                                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">KB Summary</div>
+                                                        <div className="text-left whitespace-normal line-clamp-2">{formatSnippet(msg.rag_summary)}</div>
+                                                    </div>
+                                                )}
+                                                {(msg.references || []).slice(0, 2).map((ref, idx) => {
+                                                    const marker = ref.marker || `[${idx + 1}]`;
+                                                    const title = ref.title || 'Source';
+                                                    const hasUrl = !!ref.url;
+                                                    const refKey = `${idx}-${title}-${marker}`;
+                                                    const isOpen = expandedRef === refKey;
+                                                    const source = ref.source || 'KnowledgeBase';
+
+                                                    const header = (
+                                                        <>
+                                                            <span className="text-slate-500 font-semibold">{marker}</span>
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center gap-1 text-[11px] font-semibold">
+                                                                    {hasUrl ? <ExternalLink size={10} /> : null} {title}
+                                                                </div>
+                                                                {!hasUrl && ref.snippet && (
+                                                                    <div className="text-[10px] text-slate-500 line-clamp-1 text-left">
+                                                                        {formatSnippet(ref.snippet)}
+                                                                    </div>
+                                                                )}
+                                                                <div className="text-[10px] text-slate-400">{source}</div>
+                                                            </div>
+                                                        </>
+                                                    );
+
+                                                    if (hasUrl) {
+                                                        return (
+                                                            <a
+                                                                key={idx}
+                                                                href={ref.url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="flex items-start gap-2 px-2 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-[11px] text-slate-600 transition-colors"
+                                                            >
+                                                                {header}
+                                                            </a>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        <div
+                                                            key={idx}
+                                                            className="flex flex-col gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600 cursor-pointer hover:bg-slate-100"
+                                                            onClick={() => setExpandedRef(isOpen ? null : refKey)}
+                                                        >
+                                                            <div className="flex items-start gap-2">{header}</div>
+                                                            {ref.snippet && isOpen && (
+                                                                <div className="mt-1 p-2 bg-white border border-slate-200 rounded text-[11px] text-slate-600 shadow-sm whitespace-normal text-left">
+                                                                    {formatSnippet(ref.snippet)}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </>
+                                        )}
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowSources(prev => !prev)}
+                                            className="self-start px-2 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 hover:bg-slate-200 transition"
+                                            title={showSources ? 'Hide sources' : 'Show sources'}
+                                        >
+                                            {showSources ? 'Collapse' : 'Expand more'}
+                                            {msg.references?.length ? ` (${msg.references.length})` : ''}
+                                        </button>
+
+                                        {showSources && (
+                                            <>
+                                                {msg.rag_summary && (
+                                                    <div className="px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600">
+                                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">KB Summary</div>
+                                                        <div className="text-left whitespace-normal">{formatSnippet(msg.rag_summary)}</div>
+                                                    </div>
+                                                )}
+                                                {(msg.references || []).map((ref, idx) => {
+                                                    const marker = ref.marker || `[${idx + 1}]`;
+                                                    const title = ref.title || 'Source';
+                                                    const hasUrl = !!ref.url;
+                                                    const refKey = `${idx}-${title}-${marker}`;
+                                                    const isOpen = expandedRef === refKey;
+                                                    const source = ref.source || 'KnowledgeBase';
+
+                                                    const header = (
+                                                        <>
+                                                            <span className="text-slate-500 font-semibold">{marker}</span>
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center gap-1 text-[11px] font-semibold">
+                                                                    {hasUrl ? <ExternalLink size={10} /> : null} {title}
+                                                                </div>
+                                                                {!hasUrl && ref.snippet && (
+                                                                    <div className="text-[10px] text-slate-500 line-clamp-2 text-left">
+                                                                        {formatSnippet(ref.snippet)}
+                                                                    </div>
+                                                                )}
+                                                                <div className="text-[10px] text-slate-400">{source}</div>
+                                                            </div>
+                                                        </>
+                                                    );
+
+                                                    if (hasUrl) {
+                                                        return (
+                                                            <a
+                                                                key={idx}
+                                                                href={ref.url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="flex items-start gap-2 px-2 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-[11px] text-slate-600 transition-colors"
+                                                            >
+                                                                {header}
+                                                            </a>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        <div
+                                                            key={idx}
+                                                            className="flex flex-col gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600 cursor-pointer hover:bg-slate-100"
+                                                            onClick={() => setExpandedRef(isOpen ? null : refKey)}
+                                                        >
+                                                            <div className="flex items-start gap-2">{header}</div>
+                                                            {ref.snippet && isOpen && (
+                                                                <div className="mt-1 p-2 bg-white border border-slate-200 rounded text-[11px] text-slate-600 shadow-sm whitespace-normal text-left">
+                                                                    {formatSnippet(ref.snippet)}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Copy Button */}
+                                <button 
+                                    onClick={() => handleCopy(msg.text, i)}
+                                    className={`
+                                        absolute top-2 right-2 p-1 rounded-md transition-all duration-200
+                                        ${msg.role === 'user' ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-300 hover:text-slate-600 hover:bg-slate-100'}
+                                        ${copiedId === i ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
+                                    `}
+                                    title="Copy text"
+                                >
+                                    {copiedId === i ? <Check size={12} /> : <Copy size={12} />}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                ))}
+                    {isLoading && (
+                        <div className="self-start bg-slate-100 p-3 rounded-2xl rounded-tl-none text-xs text-slate-400 italic">
+                            Thinking...
+                        </div>
+                    )}
+                </div>
+                {showJumpToLatest && (
+                    <button
+                        type="button"
+                        onClick={jumpToLatest}
+                        className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-white/60 text-slate-600 border border-white/80 shadow-sm backdrop-blur hover:bg-white/80 hover:text-slate-800 transition"
+                        title="Jump to latest"
+                    >
+                        Jump to latest
+                    </button>
+                )}
+            </div>
+
+            {/* Quick Options */}
+            {currentStageLabel === 'definition' && !hasUserMessages && !showPermissionCard && (
+                <div className="flex flex-wrap justify-end gap-2 mb-3">
+                    {[
+                        "I want a retirement plan that lets me travel overseas once a year.",
+                        "Who is eligible for NZ Super?",
+                        "I want to buy a big house on Waiheke Island within 5 years"
+                    ].map((opt, idx) => (
+                        <button
+                            key={idx}
+                            onClick={() => handleSend(opt)}
+                            disabled={showPermissionCard}
+                            className="px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-full text-[11px] text-indigo-700 font-bold hover:bg-indigo-100 transition-all active:scale-95 shadow-sm text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {opt}
+                        </button>
+                    ))}
+                </div>
+            )}
+            {/* Input Area */}
+            <div className="relative shrink-0">
+                {/* Mode Switch + Privacy Control (Compact) */}
+                <div className="flex items-center justify-between gap-3 mb-2">
+                    {/* Left: Mode Switch */}
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] lg:text-[11px] text-slate-400">
+                            {mode === 'auto' && 'Auto-fill'}
+                            {mode === 'ask' && 'Q&A'}
+                            {mode === 'agent' && 'Smart'}
+                        </span>
+                        <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-full">
+                            {['auto', 'ask', 'agent'].map((opt) => (
+                                <button
+                                    key={opt}
+                                    onClick={() => setMode(opt)}
+                                    className={`px-2 py-0.5 rounded-full text-[9px] lg:text-[10px] font-bold transition-all ${
+                                        mode === opt ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'
+                                    }`}
+                                    title={`Mode: ${opt}`}
+                                    type="button"
+                                >
+                                    {opt.toUpperCase()}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    
+                    {/* Right: Privacy Control (Compact) */}
+                    <div 
+                        className="flex items-center gap-1.5 group"
+                        title={allowAIDataSharing 
+                            ? 'AI can access your financial data for personalized advice. Click to disable.' 
+                            : 'Privacy mode: AI will provide generic advice only. Click to enable data sharing.'}
+                    >
+                        <span className="text-[10px] text-slate-500 font-medium cursor-help">
+                            Privacy
+                        </span>
+                        {allowAIDataSharing ? (
+                            <ShieldCheck size={14} className="text-green-600" />
+                        ) : (
+                            <ShieldOff size={14} className="text-amber-600" />
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => setAllowAIDataSharing(prev => !prev)}
+                            className={`
+                                w-8 h-4 rounded-full transition-all relative flex items-center px-0.5
+                                ${allowAIDataSharing ? 'bg-green-500' : 'bg-amber-500'}
+                            `}
+                            aria-label={allowAIDataSharing ? 'Disable AI data sharing' : 'Enable AI data sharing'}
+                        >
+                            <div className={`w-3 h-3 bg-white rounded-full shadow-sm transition-all ${allowAIDataSharing ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </button>
+                    </div>
+                </div>
+                
+                <div className="relative flex items-center">
+                    <textarea 
+                        ref={textareaRef}
+                        value={inputText}
+                        onChange={(e) => {
+                            setInputText(e.target.value);
+                            e.target.style.height = 'auto';
+                            e.target.style.height = `${e.target.scrollHeight}px`;
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSend();
+                            }
+                        }}
+                        placeholder={showPermissionCard ? "Waiting for permission..." : "Ask Copilot..."} 
+                        rows={1}
+                        disabled={showPermissionCard}
+                        className="w-full bg-white border border-slate-200 rounded-xl py-3 pl-4 pr-12 text-sm focus:outline-none focus:border-brand-500 transition-colors resize-none overflow-hidden min-h-[46px] max-h-[150px] disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <button 
+                        onClick={handleSend}
+                        disabled={isLoading || !inputText.trim() || showPermissionCard}
+                        className="absolute right-2 p-1.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors disabled:opacity-50"
+                    >
+                        <Send size={14} />
+                    </button>
+                </div>
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1">
+                For reference only. Not investment advice. AI responses may be inaccurate—please verify.
+            </div>
+        </div>
+    );
+};
+
+
 const GoalEnginePage = () => {
   const navigate = useNavigate();
   const STORAGE_KEY = 'goal_engine_session_v1';
-  
   const buildFreshGoalContext = () => ({
     session_id: `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   });
-  
   const [currentStage, setCurrentStage] = useState(0);
   const [goalContext, setGoalContext] = useState(buildFreshGoalContext);
   const [submitting, setSubmitting] = useState(false);
@@ -87,7 +1294,6 @@ const GoalEnginePage = () => {
 
   // Track loading state for stage transitions
   const [isLoadingAI, setIsLoadingAI] = useState(false);
-  
   // Substage state machine with reversible data
   const [substageState, setSubstageState] = useState(buildInitialSubstageState);
   const [substageData, setSubstageData] = useState({});
@@ -140,10 +1346,12 @@ const GoalEnginePage = () => {
   useEffect(() => {
     if (!showOnboarding) return;
     
+    // Close when AI has generated goal data
     if (goalContext.goal_name || goalContext.category) {
       setTimeout(() => setShowOnboarding(false), 300);
     }
     
+    // Close when user sends first message
     const hasUserMessage = messages.some(m => m.role === 'user');
     if (hasUserMessage) {
       setTimeout(() => setShowOnboarding(false), 500);
@@ -190,7 +1398,6 @@ const GoalEnginePage = () => {
           }
           return value;
       };
-      
       const isAiDecisionPayload = Boolean(
           normalized.strategy_recommendation ||
           normalized.thought_process ||
@@ -215,16 +1422,26 @@ const GoalEnginePage = () => {
       }
       
       const detailFields = [
+          // Goal discovery fields - Retirement
           'retirement_age', 'life_expectancy', 'living_expense_pa', 'lumpy_expenses', 'include_superannuation',
+          // Goal discovery fields - Home
           'location', 'property_price_estimate', 'deposit_percentage', 'is_first_home',
+          // Goal discovery fields - Education
           'study_country', 'institution_tier', 'living_situation', 'tuition_fees_pa', 'living_costs_pa',
+          // Goal discovery fields - Vehicle
           'tier', 'brand', 'model_id', 'model_name', 'condition', 'fuel_type', 'vehicle_type', 'trade_in_value',
+          // Goal discovery fields - Travel
           'destination', 'flight_class', 'accommodation_style', 'lifestyle_level', 'adults', 'children', 'duration_days', 'travelers_count',
+          // Goal discovery fields - Emergency
           'primary_motivation', 'monthly_spend_est', 'target_months_rough',
+          // Goal discovery fields - Wealth
           'target_passive_income', 'time_horizon_years', 'current_net_worth', 'growth_objective',
+          // Goal discovery fields - Big Purchase (Major Purchase / Event)
           'purchase_category', 'estimated_amount', 'description',
+          // Assumptions fields
           'expected_return_pct', 'inflation_pct', 'risk_attitude', 'cashflow_flexibility',
           'mortgage_rate_pct', 'loan_term_years',
+          // Gap analysis fields
           'liquid_assets', 'investments', 'debts', 'monthly_income',
           'current_super_balance', 'annual_contribution', 'current_amount', 'region_policy'
       ];
@@ -232,6 +1449,7 @@ const GoalEnginePage = () => {
       let detailsFound = false;
       const newDetails = {};
 
+      // Extract from root level
       detailFields.forEach(field => {
           if (normalized[field] !== undefined) {
               newDetails[field] = normalized[field];
@@ -240,6 +1458,7 @@ const GoalEnginePage = () => {
           }
       });
 
+      // ✅ Also extract from nested goal_details if present
       if (normalized.goal_details) {
           Object.keys(normalized.goal_details).forEach(field => {
               newDetails[field] = normalized.goal_details[field];
@@ -248,7 +1467,9 @@ const GoalEnginePage = () => {
           delete normalized.goal_details;
       }
 
+      // Also extract financial fields and assumption fields from ai_decision if present
       if (normalized.ai_decision) {
+          // Financial fields from gap_analysis
           const financialFields = ['liquid_assets', 'investments', 'debts', 'monthly_income', 'current_super_balance'];
           financialFields.forEach(field => {
               if (normalized.ai_decision[field] !== undefined) {
@@ -257,10 +1478,21 @@ const GoalEnginePage = () => {
               }
           });
           
+          // Assumption fields from assumptions substage (need to be in goal_details for forms)
           const assumptionFields = [
-              'expected_return_pct', 'inflation_pct', 'risk_attitude', 'cashflow_flexibility',
-              'retirement_age', 'life_expectancy', 'include_superannuation',
-              'mortgage_rate_pct', 'loan_term_years', 'property_appreciation_pct', 'stress_test_rate_pct'
+              'expected_return_pct', 
+              'inflation_pct', 
+              'risk_attitude',
+              'cashflow_flexibility',
+              // Retirement assumptions
+              'retirement_age',
+              'life_expectancy',
+              'include_superannuation',
+              // Home assumptions
+              'mortgage_rate_pct',
+              'loan_term_years',
+              'property_appreciation_pct',
+              'stress_test_rate_pct'
           ];
           assumptionFields.forEach(field => {
               if (normalized.ai_decision[field] !== undefined) {
@@ -270,6 +1502,7 @@ const GoalEnginePage = () => {
           });
       }
 
+      // ✅ Track which root-level fields are being updated (before Object.assign)
       const updatedRootFields = Object.keys(normalized).filter(k => k !== 'ai_decision');
 
       setGoalContext(prev => {
@@ -283,6 +1516,12 @@ const GoalEnginePage = () => {
           }
 
           Object.assign(nextState, normalized);
+          
+          // if (nextState.category === 'retirement' || nextState.category === 'home') {
+          //     if (prev.target_amount && !updates.target_amount_manual_override) {
+          //         nextState.target_amount = prev.target_amount; 
+          //     }
+          // }
 
           if (detailsFound) {
               nextState.goal_details = {
@@ -290,6 +1529,8 @@ const GoalEnginePage = () => {
                   ...newDetails
               };
 
+              // ✅ Clear stale AI values when user modifies goal_details
+              // This prevents old AI suggestions from overriding user changes
               if (nextState.ai_decision && !isAiDecisionPayload) {
                   const aiDecision = { ...nextState.ai_decision };
                   Object.keys(newDetails).forEach(field => {
@@ -301,6 +1542,7 @@ const GoalEnginePage = () => {
               }
           }
 
+          // ✅ Also clear AI values when user modifies root-level fields (like target_amount)
           if (nextState.ai_decision && !isAiDecisionPayload && updatedRootFields.length > 0) {
               const aiDecision = { ...nextState.ai_decision };
               let needsUpdate = false;
@@ -314,7 +1556,6 @@ const GoalEnginePage = () => {
                   nextState.ai_decision = aiDecision;
               }
           }
-          
           if (normalized.ai_decision?.strategy_recommendation) {
              nextState.ai_decision = {
                  ...prev.ai_decision,
@@ -324,12 +1565,12 @@ const GoalEnginePage = () => {
 
           return nextState;
       });
-  }, []);
+  }, []); // setGoalContext is stable, no other dependencies needed
 
   const currentStageId = STAGES[currentStage].id;
   const currentSubstageConfig = activeSubstages[currentStageId];
-  
   const computeCurrentSubstageId = () => {
+      // If current stage has no substages, return null
       if (!currentSubstageConfig || currentSubstageConfig.length === 0) return null;
       
       const state = substageState?.[currentStageId];
@@ -338,7 +1579,6 @@ const GoalEnginePage = () => {
       if (firstPending === -1) return order.length > 0 ? order[order.length - 1] : 'goal_discovery';
       return order[firstPending];
   };
-  
   const currentSubstageId = computeCurrentSubstageId();
   const currentSubstageIndex = currentSubstageConfig ? Math.max(0, currentSubstageConfig.findIndex(s => s.id === currentSubstageId)) : -1;
 
@@ -370,7 +1610,9 @@ const GoalEnginePage = () => {
   const executeSubstageWithPermission = async (nextSubId, allowlist) => {
       const stageId = 'definition';
       const config = activeSubstages[stageId];
+      const currentState = substageState[stageId];
       
+      // Update to next substage IMMEDIATELY so loading UI can display
       const nextIdx = config.findIndex(s => s.id === nextSubId);
       setSubstageState(prev => ({
           ...prev,
@@ -380,8 +1622,10 @@ const GoalEnginePage = () => {
           }
       }));
       
+      // Set loading state AFTER updating index
       setIsLoadingAI(true);
       
+      // Use functional update to get latest message index
       const nextLabel = config.find(s => s.id === nextSubId)?.label || nextSubId;
       let aiMsgIndex = 0;
       setMessages(prev => {
@@ -430,12 +1674,14 @@ const GoalEnginePage = () => {
               });
           });
 
+          // Mark as answered
           setMessages(prev => {
               const updated = [...prev];
               if (updated[aiMsgIndex]) {
                   const aiDecision = data?.ai_decision;
                   const finalText = aiDecision?.rationale || accumulatedRaw || `${nextLabel} analysis complete.`;
                   
+                  // Store AI decision in goalContext (especially important for gap_analysis financial data)
                   if (aiDecision) {
                       handleContextUpdate({ ai_decision: aiDecision });
                   }
@@ -452,6 +1698,7 @@ const GoalEnginePage = () => {
               return updated;
           });
           
+          // Delay resetting loading state to ensure user sees the transition animation
           setTimeout(() => {
               setIsLoadingAI(false);
           }, 400);
@@ -478,8 +1725,10 @@ const GoalEnginePage = () => {
 
   // Execute substage - core logic extracted for permission flow
   const handleSubstageSubmit = async (stageId, subId, payload) => {
+      // 1. Persist context
       handleContextUpdate(payload);
       
+      // 2. Save substage data
       const updatedSubstageData = {
           ...substageData,
           [stageId]: {
@@ -490,22 +1739,26 @@ const GoalEnginePage = () => {
       setSubstageData(updatedSubstageData);
       setStageSummary(prev => ({ ...prev, [stageId]: { confirmed: false } }));
       
+      // 3. Clear recalc flag
       setRecalcFlags(prev => ({
           ...prev,
           [stageId]: { ...(prev[stageId] || {}), [subId]: false }
       }));
 
+      // 4. Calculate next substage BEFORE setState (to avoid closure issues)
       const config = activeSubstages[stageId];
       const currentState = substageState[stageId] || { 
           order: activeSubstages[stageId].map(s => s.id), 
           statusById: {} 
       };
       
+      // Simulate the new status after confirming current substage
       const newStatusById = {
           ...currentState.statusById,
           [subId]: 'confirmed'
       };
       
+      // Find next substage ID
       let nextSubId = null;
       if (config) {
          const firstIncomplete = config.findIndex((item) => {
@@ -517,6 +1770,7 @@ const GoalEnginePage = () => {
          }
       }
       
+      // Now update state
       setSubstageState(prev => {
           const stage = prev[stageId] || currentState;
           
@@ -525,12 +1779,15 @@ const GoalEnginePage = () => {
               [stageId]: {
                   ...stage,
                   statusById: newStatusById
+                  // currentIndex stays the same for now
               }
           };
       });
 
+    // 5. Auto-trigger AI guidance for next substage (definition stage only)
     if (stageId === 'definition') {
         if (!nextSubId) {
+            // All substages completed! Show summary card
             setMessages(prev => [...prev, { 
                 role: 'system', 
                 text: "✓ All substages completed! Click 'Confirm & continue' below to proceed to Strategy stage." 
@@ -538,6 +1795,7 @@ const GoalEnginePage = () => {
             return;
         }
         
+        // SPECIAL CASE: For 'summary' substage, don't call AI, just advance immediately
         if (nextSubId === 'summary') {
             const nextIdx = config.findIndex(s => s.id === nextSubId);
             setSubstageState(prev => ({
@@ -555,6 +1813,7 @@ const GoalEnginePage = () => {
             return;
         }
 
+        // Check permissions before auto-executing substage
         const requiredTypes = getRequiredDataTypes(
             'definition', 
             nextSubId, 
@@ -568,13 +1827,16 @@ const GoalEnginePage = () => {
             allowAIDataSharing
         );
         
+        // If permission needed, show card instead of executing
         if (needsPermission) {
+            // Add user confirmation message
             const confirmedLabel = config.find(s => s.id === subId)?.label || subId;
             setMessages(prev => [...prev, { 
                 role: 'user', 
                 text: `✓ ${confirmedLabel} confirmed` 
             }]);
             
+            // Set pending state and wait for user authorization
             setPendingQuery(`auto_substage:${nextSubId}`);
             setRequestedDataTypes(requiredTypes);
             setSelectedAllowlist(requiredTypes);
@@ -582,28 +1844,37 @@ const GoalEnginePage = () => {
             return;
         }
         
+        // Add user confirmation message
         const confirmedLabel = config.find(s => s.id === subId)?.label || subId;
         setMessages(prev => [...prev, { 
             role: 'user', 
             text: `✓ ${confirmedLabel} confirmed` 
         }]);
         
+        // Privacy enabled or user authorized - execute substage
         const allowlist = allowAIDataSharing ? ['all'] : selectedAllowlist;
         await executeSubstageWithPermission(nextSubId, allowlist);
         return;
     }
   };
 
+  // Simplified: No longer need separate confirm handler since submit now auto-confirms
+  // Keep this for backward compatibility with edit flow
+
   const handleSubstageEdit = (stageId, subId) => {
+      // Mark as collecting and set as current
       updateSubstageStatus(stageId, subId, 'collecting');
       
+      // Flag for recompute
       setRecalcFlags(prev => ({
           ...prev,
           [stageId]: { ...(prev[stageId] || {}), [subId]: true }
       }));
       
+      // Invalidate stage summary
       setStageSummary(prev => ({ ...prev, [stageId]: { confirmed: false } }));
       
+      // Jump to this substage
       const config = activeSubstages[stageId];
       if (config) {
           const targetIdx = config.findIndex(s => s.id === subId);
@@ -618,6 +1889,7 @@ const GoalEnginePage = () => {
           }
       }
       
+      // Add guidance message
       const guidance = getSubstageGuidance(subId);
       setMessages(prev => [...prev, { 
           role: 'system', 
@@ -749,7 +2021,9 @@ const GoalEnginePage = () => {
 
   // Handle quick start from onboarding guide
   const handleQuickStart = (prompt) => {
+      // Set prompt to trigger Copilot's response
       setQuickStartPrompt(prompt);
+      // Clear after setting to allow retriggering
       setTimeout(() => setQuickStartPrompt(null), 100);
   };
 
@@ -781,7 +2055,7 @@ const GoalEnginePage = () => {
     fetchRealData();
   }, []);
 
-  // Derive monthly surplus from cashflows
+  // Derive monthly surplus from cashflows so Strategy UI uses real numbers
   useEffect(() => {
     if (!cashFlows || cashFlows.length === 0) return;
 
@@ -830,6 +2104,7 @@ const GoalEnginePage = () => {
       stageAnalysisRunningRef.current = true;
       setIsLoadingAI(true);
       
+      // Atomic update: Set greeting AND analyzing message together to avoid race conditions
       const greeting = getGreeting(stageIdx);
       const analyzingMsg = { 
           role: 'assistant', 
@@ -839,13 +2114,15 @@ const GoalEnginePage = () => {
       };
 
       setMessages([greeting, analyzingMsg]);
-      const aiMsgIndex = 1;
+      const aiMsgIndex = 1; // It's always the second message in a fresh stage analysis
 
       try {
           let accumulatedRaw = "";
           
+          // Process real goals data to match simulation_data.other_goals format
           const currentGoalId = context?._id || context?.goal_id;
           
+          // Helper: convert amount to annual based on frequency
           const TO_ANNUAL = { 'Weekly': 52, 'Fortnightly': 26, 'Monthly': 12, 'Yearly': 1, 'One-Off': 0 };
           const toMonthly = (amount, freq) => (amount * (TO_ANNUAL[freq] || 0)) / 12;
 
@@ -853,6 +2130,7 @@ const GoalEnginePage = () => {
             ? realGoals
                 .filter(g => g._id !== currentGoalId)
                 .map(g => {
+                    // Find matching cashflow to get real monthly allocation
                     const cf = cashFlows.find(f => f.type === 'Investment' && f.name.includes(`(${g.goal_name})`));
                     return {
                         name: g.goal_name,
@@ -863,6 +2141,7 @@ const GoalEnginePage = () => {
                 .filter(g => g.monthly_allocation > 0)
             : [];
 
+          // --- Optional: build a simulation summary using the same Monte Carlo helper as the UI ---
           let simulationSummary = {};
           if (stageId === 'simulation') {
             const hashStringToSeed = (str = 'simulation_default') => {
@@ -903,6 +2182,7 @@ const GoalEnginePage = () => {
             const targetAmount = context?.target_amount || context?.goal_details?.target_amount || 0;
             const currentAmount = context?.current_amount || 0;
 
+            // Run the same Monte Carlo helper to align with UI numbers
             try {
               const simParams = {
                 initialCapital: currentAmount,
@@ -912,6 +2192,7 @@ const GoalEnginePage = () => {
               const mc = runMonteCarlo(simParams, exposure, horizonYears, glidePath, simSeed, targetAmount);
               const finalYear = mc.summaryData[mc.summaryData.length - 1] || {};
               
+              // Use real Monte Carlo success probability
               const successProb = mc.realSuccessProbability !== null 
                 ? mc.realSuccessProbability 
                 : 0;
@@ -932,10 +2213,12 @@ const GoalEnginePage = () => {
                 glide_path_enabled: !!glidePath?.enabled,
               };
             } catch (err) {
-              console.warn('Simulation summary build failed', err);
+              console.warn('Simulation summary build failed, falling back to previous logic', err);
             }
           }
 
+          // === Frontend-led: Calculate latest financial snapshot ===
+          // currentGoalId is already declared at line 1615, use directly
           const otherGoalsData = extractOtherGoalsMonthly(realGoals, currentGoalId);
           const otherGoalsMonthlyTotal = otherGoalsData.reduce((sum, g) => sum + (g.monthly_allocation || 0), 0);
           
@@ -944,6 +2227,8 @@ const GoalEnginePage = () => {
             otherGoalsMonthly: otherGoalsMonthlyTotal
           });
 
+          // Calculate monthly_surplus_allocatable (surplus before investment, after deducting reserve and other goals)
+          // Logic: (surplus_total - other_goals_locked) * (1 - reserve%)
           const reservePct = context?.simulation_data?.financials?.reserve_for_other_goals_pct ?? 25;
           const surplusTotal = financialsSnapshot.monthly_surplus_total || 0;
           const afterOtherGoals = Math.max(0, surplusTotal - otherGoalsMonthlyTotal);
@@ -954,8 +2239,11 @@ const GoalEnginePage = () => {
             simulation_data: {
               ...(context?.simulation_data || {}),
               financials: {
+                // Keep all original fields
                 ...(context?.simulation_data?.financials || {}),
+                // Overwrite with latest calculated fields
                 ...financialsSnapshot,
+                // Add allocatable surplus
                 monthly_surplus_allocatable: surplusAllocatable,
                 reserve_for_other_goals_pct: reservePct,
                 locked_allocations: otherGoalsMonthlyTotal,
@@ -966,6 +2254,8 @@ const GoalEnginePage = () => {
             }
           };
 
+
+          // Ensure UI state also sees the other goals list for display (simulation only)
           if (stageId === 'simulation') {
             setGoalContext(prev => ({
               ...prev,
@@ -980,7 +2270,7 @@ const GoalEnginePage = () => {
               stage: stageId,
               goalContext: contextWithOthers,
               useRag,
-              allowAIDataSharing
+              allowAIDataSharing // 🔒 Pass chatbox privacy toggle
           }, (chunk) => {
               accumulatedRaw += chunk;
               const streamingThought = extractField('thought_process', accumulatedRaw);
@@ -1018,7 +2308,8 @@ const GoalEnginePage = () => {
                   return newMessages;
               });
           } else {
-              console.warn('[Goal Engine] AI Decision missing during stage transition');
+              // --- FAULT TOLERANCE: Manual extraction for stage transitions too ---
+              console.warn('[Goal Engine] AI Decision missing during stage transition, attempting manual extraction');
               const fallbackDecision = {
                   goal_name: extractField('goal_name', accumulatedRaw),
                   category: extractField('category', accumulatedRaw),
@@ -1056,6 +2347,7 @@ const GoalEnginePage = () => {
       }
   };
 
+  // Product Stage Analysis - Uses Function Calling with SSE Progress
   const runProductAnalysis = async (context, stageIdx) => {
       setIsLoadingAI(true);
       
@@ -1074,12 +2366,14 @@ const GoalEnginePage = () => {
       try {
           let accumulatedThought = '';
           
+          // Use streaming API to show Function Calling progress
           const data = await goalEngineService.generateDecisionStream({
               stage: 'product',
               goalContext: context,
               useRag,
-              allowAIDataSharing
+              allowAIDataSharing // 🔒 Pass chatbox privacy toggle
           }, (chunk) => {
+              // Extract thought_process from chunks for CoT display
               const thought = extractField('thought_process', chunk);
               const rationale = extractField('rationale', chunk);
               
@@ -1112,6 +2406,7 @@ const GoalEnginePage = () => {
               }
           });
           
+          // Handle final response
           const aiDecision = data?.ai_decision;
           const displayText = data?.text || aiDecision?.rationale || "I've found some suitable products for your goal.";
           
@@ -1191,17 +2486,21 @@ const GoalEnginePage = () => {
           
           setCurrentStage(nextStageIndex);
           
+          // Auto-trigger analysis for Strategy, Product, and Simulation stages
           if (nextStageId === 'strategy') {
               runStageAnalysis(nextStageId, goalContext, nextStageIndex);
           } else if (nextStageId === 'product') {
               runProductAnalysis(goalContext, nextStageIndex);
           } else if (nextStageId === 'simulation') {
+              // Set loading state immediately for smooth transition
               setIsLoadingAI(true);
               
+              // Simulate Monte Carlo processing time (1-1.5s) before showing content
               setTimeout(() => {
                   setIsLoadingAI(false);
               }, 1000 + Math.random() * 500);
               
+              // Trigger LLM explanation/analysis for the simulation stage (SSE streaming) in background
               runStageAnalysis(nextStageId, goalContext, nextStageIndex);
           } else {
               setMessages([getGreeting(nextStageIndex)]);
@@ -1217,14 +2516,33 @@ const GoalEnginePage = () => {
       }
   };
 
+  const handleCreate = async (payload) => {
+    const updatedContext = { ...goalContext, ...payload };
+    setGoalContext(updatedContext);
+    
+    // Move to next stage MANUALLY here so we can use the fresh context
+    const nextStageIndex = currentStage + 1;
+    setCurrentStage(nextStageIndex);
+    
+    // Trigger Analysis with FRESH context
+    if (STAGES[nextStageIndex]?.id === 'strategy') {
+        runStageAnalysis('strategy', updatedContext, nextStageIndex);
+    } else {
+        setMessages([getGreeting(nextStageIndex)]);
+    }
+  };
+
   const handleFinalCommit = async () => {
       setSubmitting(true);
       try {
+          // Generate a session ID if not present
           const sessionId = goalContext.session_id || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
           
+          // Call API to create goal and plan
           const result = await createGoalWithPlan({
               ...goalContext,
               session_id: sessionId,
+              // Include selected portfolio if user made a selection (prefer full selection data)
               selectedPortfolio: goalContext.selectedPortfolio || 
                   goalContext.product ||
                   goalContext.ai_decision?.portfolio_options?.find(p => p.option_id === goalContext.selectedPortfolioId) ||
@@ -1253,6 +2571,7 @@ const GoalEnginePage = () => {
             { label: 'Category', value: (payload.category || goalContext.category || '—').replace(/_/g, ' ') }
           ];
           
+          // Add category-specific discovery fields
           if (goalContext.category === 'retirement') {
               lines.push(
                   { label: 'Annual Expense', value: fmt(payload.living_expense_pa || goalContext.goal_details?.living_expense_pa) },
@@ -1306,6 +2625,8 @@ const GoalEnginePage = () => {
       return [];
   };
 
+  // Removed: No longer need awaiting_confirm state - forms auto-confirm on submit
+
   const renderDefinitionSubstageBody = (subId, needsRecompute = false) => {
       const subData = substageData.definition?.[subId]?.data || {};
       
@@ -1314,7 +2635,9 @@ const GoalEnginePage = () => {
           handleSubstageSubmit('definition', subId, finalPayload);
       };
 
+      // 1. Unified Registry Lookup for Custom Forms
       if (hasCustomForm(goalContext.category)) {
+          // Special handling for Gap Analysis merge logic
           const submitHandler = subId === 'gap_analysis' 
               ? createSubmitHandler((payload) => {
                   handleContextUpdate({ 
@@ -1340,7 +2663,10 @@ const GoalEnginePage = () => {
 
           if (customForm) return customForm;
       }
+
+      // 2. Fallbacks for Generic/Legacy Flows
       
+      // === GOAL DISCOVERY ===
       if (subId === 'goal_discovery') {
           return (
               <GoalDefinitionForm
@@ -1352,6 +2678,7 @@ const GoalEnginePage = () => {
           );
       }
 
+      // === ASSUMPTIONS ===
       if (subId === 'assumptions') {
           return (
               <AssumptionForm
@@ -1361,6 +2688,7 @@ const GoalEnginePage = () => {
           );
       }
 
+      // === GAP ANALYSIS ===
       if (subId === 'gap_analysis') {
           const gapMergeLogic = (payload) => {
               handleContextUpdate({ 
@@ -1404,23 +2732,27 @@ const GoalEnginePage = () => {
     const handleMouseMove = (e) => {
       if (!isResizing || !containerRef.current) return;
       
+      // Get container position to calculate relative X
       const containerRect = containerRef.current.getBoundingClientRect();
       let newWidth = e.clientX - containerRect.left;
       
       const minWidth = 320;
-      const collapseThreshold = 100;
+      const collapseThreshold = 100; // If dragged beyond this, collapse
       const maxWidth = containerRect.width * 0.6;
       
+      // Check for collapse left (dragging left edge to the left)
       if (newWidth < collapseThreshold) {
         setCollapsed('left');
         return;
       }
       
+      // Check for collapse right (dragging left edge to the right)
       if (newWidth > containerRect.width - collapseThreshold) {
         setCollapsed('right');
         return;
       }
       
+      // Normal resize within bounds
       if (collapsed !== 'none') setCollapsed('none');
       if (newWidth < minWidth) newWidth = minWidth;
       if (newWidth > maxWidth) newWidth = maxWidth;
@@ -1454,6 +2786,7 @@ const GoalEnginePage = () => {
 
       const guidance = getSubstageGuidance(currentSubstageId);
       setMessages(prev => {
+          // Avoid spamming identical guidance
           const last = prev[prev.length - 1];
           if (last && last.role === 'system' && last.text === guidance) return prev;
           return [...prev, { role: 'system', text: guidance }];
@@ -1501,6 +2834,7 @@ const GoalEnginePage = () => {
             </div>
 
             <div className="flex items-center gap-2">
+                {/* Help Button */}
                 <button
                     type="button"
                     onClick={() => setShowOnboardingModal(true)}
@@ -1510,6 +2844,7 @@ const GoalEnginePage = () => {
                     <HelpCircle size={18} />
                 </button>
                 
+                {/* Clear Session Button */}
                 <button
                     type="button"
                     onClick={handleClearLocalSession}
@@ -1589,7 +2924,7 @@ const GoalEnginePage = () => {
                 </button>
             )}
 
-            {/* RESIZER HANDLE */}
+            {/* RESIZER HANDLE (Overlay to remove gap) */}
             {collapsed === 'none' && (
                 <div 
                     onMouseDown={startResizing}
@@ -1618,6 +2953,7 @@ const GoalEnginePage = () => {
             >
                 {collapsed !== 'right' && (
                 <>
+                {/* 🎭 Welcome Guide - Shows on first visit or after clear */}
                 {showOnboarding && currentStage === 0 ? (
                     <OnboardingGuide 
                         mode="page"
@@ -1653,21 +2989,27 @@ const GoalEnginePage = () => {
                </>
             )}
 
+            {/* Sequential substage rendering: confirmed cards + current form/loading */}
             <div className={currentSubstageId === 'summary' ? '' : 'space-y-3'}>
                                 {(() => {
                                     const order = activeSubstages.definition.map(s => s.id);
                                     const state = substageState.definition;
+                                    // Use explicit currentIndex from state, NOT calculated from statusById
                                     const currentIdx = state?.currentIndex ?? 0;
 
     return order.map((subId, idx) => {
         const status = getSubstageStatus('definition', subId);
         const config = activeSubstages.definition.find(s => s.id === subId);
         
+        // Only render up to current substage (use state.currentIndex!)
         if (idx > currentIdx) return null;
 
+        // SPECIAL CASE: If we are at the 'summary' substage, 
+        // hide previous confirmed cards to show a clean full-page summary
         const isAtSummary = order[currentIdx] === 'summary';
         if (isAtSummary && subId !== 'summary') return null;
 
+        // Confirmed substages: show compact card
         if (status === 'confirmed') {
                                             const isExpanded = cardExpanded[subId];
                                             return (
@@ -1682,11 +3024,15 @@ const GoalEnginePage = () => {
                                             );
                                         }
 
+                                      // Collecting: show full form OR loading state
                                       if (status === 'collecting') {
                                           const hasAnyConfirmedSubstage = Object.values(state.statusById || {}).some(s => s === 'confirmed');
                                           
+                                          // Show loading animation when AI is preparing this substage
                                           if (isLoadingAI && idx === currentIdx) {
+                                              // Different UI for first substage vs substage transitions
                                               if (!hasAnyConfirmedSubstage) {
+                                                  // First substage: Large centered loading animation
                                                   return (
                                                       <div key={subId} className="animate-fade-in">
                                                           <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm">
@@ -1709,6 +3055,7 @@ const GoalEnginePage = () => {
                                                       </div>
                                                   );
                                               } else {
+                                                  // Substage transition: Compact loading card that fits below confirmed cards
                                                   return (
                                                       <div key={subId} className="animate-fade-in">
                                                           <div className="bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-2xl p-6 shadow-sm">
@@ -1749,6 +3096,7 @@ const GoalEnginePage = () => {
                                 })()}
                              </div>
 
+                             {/* Stage summary appears after required substages are confirmed */}
                              {allDefinitionConfirmed && currentSubstageId !== 'summary' && (
                                 <div className="animate-fade-in">
                                     <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mt-6">
@@ -1760,14 +3108,18 @@ const GoalEnginePage = () => {
                                             <button
                                                 type="button"
                                                 onClick={() => {
+                                                    // Mark stage summary as confirmed
                                                     handleStageSummaryConfirm('definition');
                                                     
+                                                    // Directly advance to next stage (skip handleNext validation)
+                                                    // We know all substages are confirmed because this button only shows when allDefinitionConfirmed is true
                                                     if (currentStage < STAGES.length - 1) {
                                                         const nextStageIndex = currentStage + 1;
                                                         const nextStageId = STAGES[nextStageIndex].id;
                                                         
                                                         setCurrentStage(nextStageIndex);
                                                         
+                                                        // Auto-trigger analysis for Strategy stage
                                                         if (nextStageId === 'strategy') {
                                                             runStageAnalysis(nextStageId, goalContext, nextStageIndex);
                                                         }
@@ -1804,7 +3156,7 @@ const GoalEnginePage = () => {
                                 onSelect={(portfolio) => setGoalContext({
                                     ...goalContext, 
                                     product: portfolio,
-                                    selectedPortfolio: portfolio,
+                                    selectedPortfolio: portfolio,  // mirror to selectedPortfolio
                                     selectedPortfolioId: portfolio.option_id
                                 })} 
                             />
@@ -1818,6 +3170,7 @@ const GoalEnginePage = () => {
                     )}
                 </div>
 
+                {/* Navigation Footer (For Stages 1, 2, 3) */}
                 {currentStage > 0 && (
                     <div className="pt-4 lg:pt-6 mt-2 lg:mt-4 border-t border-slate-50 flex justify-between items-center shrink-0">
                         <button 
@@ -1873,10 +3226,12 @@ const GoalEnginePage = () => {
 
       </div>
 
+      {/* 🎭 Help Modal - Accessible anytime via ? button */}
       {showOnboardingModal && (
         <div 
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
           onClick={(e) => {
+            // Close when clicking backdrop
             if (e.target === e.currentTarget) {
               setShowOnboardingModal(false);
             }
