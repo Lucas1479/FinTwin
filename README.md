@@ -84,7 +84,7 @@ FinTwin is a **goal-based financial planning platform** that combines Large Lang
 - **Liquidity Analysis**: Three-tier asset classification (liquid/semi-liquid/locked)
 
 ### 📊 Portfolio Optimization
-- **1,092 Products**: KiwiSaver funds, managed funds, term deposits
+- **1,100+ Products**: KiwiSaver funds (339), managed funds (750+), term deposits
 - **Automated Construction**: 3 portfolio options (lowest cost, diversified, balanced)
 - **Constraint Satisfaction**: Product weights, exposure targets, fee limits
 - **Monte Carlo Simulation**: 100 iterations with probabilistic outcome analysis
@@ -334,7 +334,7 @@ VITE_ENABLE_DEBUG=false
 ```bash
 cd backend
 
-# Import 1,092 financial products (KiwiSaver, managed funds, term deposits)
+# Import financial products (KiwiSaver funds, managed funds)
 npm run seed
 
 # (Optional) Upload documents to Vectara for RAG
@@ -791,7 +791,7 @@ test: add unit tests for privacy middleware
 
 - ✅ Goal-based planning (4-stage pipeline)
 - ✅ Wealth management center
-- ✅ Portfolio optimization (1,092 products)
+- ✅ Portfolio optimization (1,100+ products)
 - ✅ Privacy-first AI architecture
 - ✅ RAG integration (501 curated chunks)
 - ✅ Monte Carlo simulation
@@ -857,12 +857,14 @@ copies of the Software...
 
 ### Data Providers
 
-- **Financial Markets Authority (FMA)**: KiwiSaver product data (800+ funds)
-- **Managed Funds Association**: Managed fund data (200+ products)
-- **Banks**: Term deposit rates (90+ products)
+- **Financial Markets Authority (FMA)**: KiwiSaver product data (339 funds)
+- **Managed Funds Association**: Managed fund data (750+ funds)
+- **Banks**: Term deposit rates (limited coverage)
 - **Vectara**: RAG platform (501 curated document chunks)
 - **DeepSeek**: Primary LLM API
 - **MongoDB**: Database infrastructure
+
+> **Note**: Bank API integration is limited. The product database primarily focuses on investment products with extensible architecture for future data source expansion.
 
 ---
 
