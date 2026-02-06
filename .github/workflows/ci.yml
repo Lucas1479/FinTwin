@@ -29,14 +29,7 @@ jobs:
     
     - name: Run tests
       working-directory: ./frontend
-      run: npm test -- --run --coverage
-    
-    - name: Upload coverage
-      uses: codecov/codecov-action@v3
-      with:
-        files: ./frontend/coverage/coverage-final.json
-        flags: frontend
-        fail_ci_if_error: false
+      run: npm test -- --run
 
   # 后端测试
   backend-test:
