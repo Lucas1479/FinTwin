@@ -16,7 +16,7 @@
 ---
 
 ### 🌟 Quick Links
-- **Try Now**: [Live Demo →](http://13.210.244.120/)
+- **Demo of Goal Engine**: https://github.com/user-attachments/assets/bc24173b-8edc-4a50-8486-bb4f4780c98f
 - **Documentation**: [See Below](#-table-of-contents)
 - **GitHub**: [Repository](https://github.com/your-org/money-minds)
 
@@ -38,6 +38,10 @@
 - [API Documentation](#-api-documentation)
 - [Testing & CI/CD](#-testing)
 - [Contributing](#-contributing)
+
+
+
+
 - [License](#-license)
 
 ---
