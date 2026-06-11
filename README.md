@@ -880,7 +880,7 @@ FinTwin was built by a collaborative team at the University of Auckland, ICT Sch
 
 | Member | Role | Responsibilities |
 |--------|------|-----------------|
-| **Lucas** | Lead Architect | Architecture design, AI/LLM integration, goal engine implementation, API design, database schema, AWS deployment |
+| **Lucas** |Architect | Architecture design, AI/LLM integration, goal engine implementation, API design, database schema, AWS deployment |
 | **Kuda** | Data Lead | Financial compliance review, data cleaning & preparation |
 | **Ray** | Backend Developer | CRUD API implementation, service layer maintenance |
 | **Ming** | Frontend Developer | Data visualization (Recharts), component development, user research & requirements gathering |
