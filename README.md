@@ -1,4 +1,4 @@
-# FinTwin: AI-Powered Goal-Based Financial Planning
+# FinTwin: AI-Native Goal-Based Financial Planning Platform
 
 <div align="center">
 
