@@ -11,7 +11,7 @@
 [![React Version](https://img.shields.io/badge/react-19.2.0-blue)](https://reactjs.org/)
 [![MongoDB](https://img.shields.io/badge/mongodb-6.x-green)](https://www.mongodb.com/)
 
-[🚀 Live Demo](http://13.210.244.120/) • [Features](#-key-features) • [Installation](#-installation) • [Architecture](#-architecture) • [Team](#-team)
+[🚀 Live Demo]() • [Features](#-key-features) • [Installation](#-installation) • [Architecture](#-architecture) • [Team](#-team)
 
 ---
 
@@ -22,6 +22,12 @@
 - **Demo of Goal Engine**: 
   
 https://github.com/user-attachments/assets/bc24173b-8edc-4a50-8486-bb4f4780c98f
+
+- **XAI**: 
+
+https://github.com/user-attachments/assets/18367b00-81f2-4862-a0fb-4b8b3f32e8a3
+
+
 </div>
 
 ---
